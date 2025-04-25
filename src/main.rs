@@ -1,3 +1,6 @@
+use std::error::Error;
+use std::fs;
+
 use clap::Parser;
 
 /// C-compiler for learning real compiler construction
@@ -31,7 +34,23 @@ struct Args {
     emit_assembly: bool,
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    println!("{:?}", args);
+    let source_code = fs::read_to_string(&args.input_file)?;
+    Ok(invoke_compiler_driver(&args, source_code)?)
+}
+
+/// invoke_compiler_driver invokes different compiler stages. Depending on
+/// the flags, it may stop early in some stage
+fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dyn Error>> {
+    if args.stop_at_lexer {
+        return Ok(());
+    }
+    if args.stop_at_parser {
+        return Ok(());
+    }
+    if args.stop_at_codegen {
+        return Ok(());
+    }
+    Ok(())
 }
