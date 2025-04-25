@@ -9,25 +9,25 @@ struct Args {
     input_file: String,
 
     /// Output object file name
-    #[arg(short = 'o', long, default_value_t = String::new())]
+    #[arg(short = 'o', default_value_t = String::new())]
     output: String,
 
     /// Stop compiler at Lexer (useful for debugging)
-    #[arg(short = 'L', long, default_value_t = false)]
-    lexer: bool,
+    #[arg(short = 'L', long = "lexer", default_value_t = false)]
+    stop_at_lexer: bool,
 
     /// Stop compiler at Parsing stage
     /// (Runs Lexer and Parser)
-    #[arg(short = 'P', long, default_value_t = false)]
-    parser: bool,
+    #[arg(short = 'P', long = "parser", long, default_value_t = false)]
+    stop_at_parser: bool,
 
     /// Generate assembly code, but stop before emitting .S file
     /// for the assembler and linker.
-    #[arg(short = 'C', long, default_value_t = false)]
-    codegen: bool,
+    #[arg(short = 'C', long = "codegen", long, default_value_t = false)]
+    stop_at_codegen: bool,
 
     /// Generate and emit .S file for assembler
-    #[arg(short = 'S', long, default_value_t = true)]
+    #[arg(short = 'S', long = "emit-assembly", long, default_value_t = true)]
     emit_assembly: bool,
 }
 
