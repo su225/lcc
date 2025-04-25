@@ -1,3 +1,5 @@
+mod lexer;
+
 use std::error::Error;
 use std::fs;
 
