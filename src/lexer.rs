@@ -217,6 +217,16 @@ mod test {
     }
 
     #[test]
+    fn test_tokenizing_semicolon() {
+        let source = ";".to_string();
+        let lexer = Lexer::new(source);
+        let tokens = lexer.into_iter().collect::<Vec<Token>>();
+        assert_eq!(tokens, vec![
+            Token { token_type: TokenType::Semicolon, line: 1, column: 1 },
+        ]);
+    }
+
+    #[test]
     fn test_tokenizing_valid_identifiers() {
         let identifiers = vec![
             "abcde",
@@ -224,6 +234,8 @@ mod test {
             "hello_world_123",
             "helloWorld123",
             "_abcde",
+            "_123",
+            "_123_456",
         ];
         for src in identifiers.into_iter() {
             let lexer = Lexer::new(src.to_string());
@@ -234,6 +246,28 @@ mod test {
             assert_eq!(tokens, expected_tokens,
                        "lexing identifier {}: expected: {:?}, actual:{:?}",
                         src, expected_tokens, tokens);
+        }
+    }
+
+    #[test]
+    fn test_tokenizing_valid_integers() {
+        let integers = vec![
+            "1",
+            "0",
+            "100",
+            "189087931798698368761873",
+            "0xdeadbeef",
+            "-1000",
+        ];
+        for src in integers.into_iter() {
+            let lexer = Lexer::new(src.to_string());
+            let tokens = lexer.into_iter().collect::<Vec<Token>>();
+            let expected_tokens = vec![
+                Token { token_type: TokenType::IntConstant(src.to_string()), line: 1, column: 1 }
+            ];
+            assert_eq!(tokens, expected_tokens,
+                       "lexing identifier {}: expected: {:?}, actual:{:?}",
+                       src, expected_tokens, tokens);
         }
     }
 }
