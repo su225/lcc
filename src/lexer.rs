@@ -30,6 +30,8 @@ pub enum TokenType<'a> {
     Semicolon,
     Identifier(&'a str),
     IntConstant(&'a str, Radix),
+
+    OperatorDiv,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -74,7 +76,6 @@ static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
     HashMap::from([
         ("int", KeywordIdentifier::TypeInt),
         ("void", KeywordIdentifier::TypeVoid),
-
         ("return", KeywordIdentifier::Return),
     ])
 });
@@ -83,7 +84,6 @@ static KEYWORD_STRINGS: Lazy<HashMap<KeywordIdentifier, &'static str>> = Lazy::n
     HashMap::from([
         (KeywordIdentifier::TypeInt, "int"),
         (KeywordIdentifier::TypeVoid, "void"),
-
         (KeywordIdentifier::Return, "return"),
     ])
 });
@@ -99,6 +99,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::Semicolon => f.write_str(";"),
             TokenType::Identifier(x) => f.write_fmt(format_args!("identifier:{}", x)),
             TokenType::IntConstant(x, radix) => f.write_fmt(format_args!("int:[{}, radix:{}]", x, radix)),
+            TokenType::OperatorDiv => f.write_str("/"),
         }
     }
 }
@@ -109,8 +110,16 @@ pub struct Token<'a> {
     location: Location,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum LexerMode {
+    Default,
+    LineComment,
+    BlockComment,
+}
+
 pub struct Lexer<'a> {
     input: &'a str,
+    lexer_mode: LexerMode,
     char_stream: Peekable<Chars<'a>>,
     cur_stream_pos: usize,
     cur_location: Location,
@@ -120,6 +129,7 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             input,
+            lexer_mode: LexerMode::Default,
             char_stream: input.chars().peekable(),
             cur_stream_pos: 0,
             cur_location: Location { line: 1, column: 1 },
@@ -141,7 +151,7 @@ impl<'a> Lexer<'a> {
         return ch;
     }
 
-    fn tokenize_single_char(&mut self, token_type: TokenType<'a>) -> Token<'a>  {
+    fn tokenize_single_char(&mut self, token_type: TokenType<'a>) -> Token<'a> {
         let token = Token {
             token_type,
             location: self.cur_location.clone(),
@@ -192,7 +202,7 @@ impl<'a> Lexer<'a> {
         return Ok(Token {
             location: start_loc,
             token_type: TokenType::IntConstant(&self.input[start_pos..self.cur_stream_pos], expected_radix),
-        })
+        });
     }
 
     fn tokenize_identifier_or_keyword(&mut self) -> Result<Token<'a>, LexerError> {
@@ -200,7 +210,7 @@ impl<'a> Lexer<'a> {
         let start_pos = self.cur_stream_pos;
         let first_char = self.next_char().unwrap();
         if first_char != '_' && !first_char.is_alphabetic() {
-            return Err(LexerError::InvalidIdentifierCharacter{ location: start_loc, ch: first_char });
+            return Err(LexerError::InvalidIdentifierCharacter { location: start_loc, ch: first_char });
         }
         loop {
             let cur_loc = self.cur_location;
@@ -216,11 +226,11 @@ impl<'a> Lexer<'a> {
         }
         let word = &self.input[start_pos..self.cur_stream_pos];
         match KEYWORDS.get(word) {
-            None => Ok(Token{
+            None => Ok(Token {
                 location: start_loc,
                 token_type: TokenType::Identifier(word),
             }),
-            Some(k) => Ok(Token{
+            Some(k) => Ok(Token {
                 location: start_loc,
                 token_type: TokenType::Keyword(k.clone()),
             })
@@ -236,39 +246,93 @@ impl<'a> Lexer<'a> {
                 return Ok(None);
             }
             let cur_char = cur.unwrap();
-            match *cur_char {
-                ';' => {
-                    let token = self.tokenize_single_char(TokenType::Semicolon);
-                    return Ok(Some(token));
+            match self.lexer_mode {
+                LexerMode::Default => {
+                    match *cur_char {
+                        ';' => {
+                            let token = self.tokenize_single_char(TokenType::Semicolon);
+                            return Ok(Some(token));
+                        }
+                        '(' => {
+                            let token = self.tokenize_single_char(TokenType::OpenParentheses);
+                            return Ok(Some(token));
+                        }
+                        ')' => {
+                            let token = self.tokenize_single_char(TokenType::CloseParentheses);
+                            return Ok(Some(token));
+                        }
+                        '{' => {
+                            let token = self.tokenize_single_char(TokenType::OpenBrace);
+                            return Ok(Some(token));
+                        }
+                        '}' => {
+                            let token = self.tokenize_single_char(TokenType::CloseBrace);
+                            return Ok(Some(token));
+                        }
+                        '/' => {
+                            let div_loc = self.cur_location;
+                            self.next_char();
+
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '/' {
+                                    self.lexer_mode = LexerMode::LineComment;
+                                    self.next_char();
+                                    continue;
+                                }
+                                if nxt == '*' {
+                                    self.lexer_mode = LexerMode::BlockComment;
+                                    self.next_char();
+                                    continue;
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorDiv,
+                                location: div_loc,
+                            }))
+                        }
+                        '0'..='9' => {
+                            let token = self.tokenize_integer_constant()?;
+                            return Ok(Some(token));
+                        }
+                        '\n' | '\t' | ' ' => {
+                            self.next_char();
+                        }
+                        _ => {
+                            let token = self.tokenize_identifier_or_keyword()?;
+                            return Ok(Some(token));
+                        }
+                    }
                 },
-                '(' => {
-                    let token = self.tokenize_single_char(TokenType::OpenParentheses);
-                    return Ok(Some(token));
+
+                LexerMode::LineComment => {
+                    match *cur_char {
+                        '\n' => {
+                            self.lexer_mode = LexerMode::Default;
+                            self.next_char();
+                        }
+                        _ => {
+                            self.next_char();
+                        }
+                    }
                 },
-                ')' => {
-                    let token = self.tokenize_single_char(TokenType::CloseParentheses);
-                    return Ok(Some(token));
-                },
-                '{' => {
-                    let token = self.tokenize_single_char(TokenType::OpenBrace);
-                    return Ok(Some(token));
-                },
-                '}' => {
-                    let token = self.tokenize_single_char(TokenType::CloseBrace);
-                    return Ok(Some(token));
-                },
-                '0'..='9' => {
-                    let token = self.tokenize_integer_constant()?;
-                    return Ok(Some(token));
-                },
-                '\n' | '\t' | ' ' => {
-                    self.next_char();
-                    continue;
-                },
-                _ => {
-                    let token = self.tokenize_identifier_or_keyword()?;
-                    return Ok(Some(token));
-                },
+
+                LexerMode::BlockComment => {
+                    match *cur_char {
+                        '*' => {
+                            self.next_char();
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '/' {
+                                    self.lexer_mode = LexerMode::Default;
+                                    self.next_char(); // consume /
+                                    continue;
+                                }
+                            }
+                        },
+                        _ => {
+                            self.next_char();
+                        }
+                    }
+                }
             }
         }
     }
@@ -300,8 +364,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 2 }},
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 2 } },
         ]));
     }
 
@@ -311,8 +375,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenBrace, location: Location { line: 1, column: 1 }},
-            Token { token_type: TokenType::CloseBrace, location: Location { line: 1, column: 2 }},
+            Token { token_type: TokenType::OpenBrace, location: Location { line: 1, column: 1 } },
+            Token { token_type: TokenType::CloseBrace, location: Location { line: 1, column: 2 } },
         ]));
     }
 
@@ -322,8 +386,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 3, column: 1 }},
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 3, column: 1 } },
         ]));
     }
 
@@ -333,8 +397,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 8 }},
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 8 } },
         ]));
     }
 
@@ -344,8 +408,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 5 }},
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 5 } },
         ]));
     }
 
@@ -355,7 +419,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::Semicolon, location: Location { line: 1, column: 1 }},
+            Token { token_type: TokenType::Semicolon, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -378,11 +442,11 @@ mod test {
             let lexer = Lexer::new(src);
             let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
             let expected_tokens: LexerResult<Vec<Token>> = Ok(vec![
-                Token { token_type: TokenType::Identifier(src), location: Location { line: 1, column: 1 }},
+                Token { token_type: TokenType::Identifier(src), location: Location { line: 1, column: 1 } },
             ]);
             assert_eq!(tokens, expected_tokens,
                        "lexing identifier {}: expected: {:?}, actual:{:?}",
-                        src, expected_tokens, tokens);
+                       src, expected_tokens, tokens);
         }
     }
 
@@ -395,8 +459,8 @@ mod test {
                 Token { token_type: Keyword(kwid.clone()), location: Location { line: 1, column: 1 } },
             ]);
             assert_eq!(tokens, expected_tokens,
-                      "lexing keyword identifier {}: expected: {:?}, actual:{:?}",
-                      kw, expected_tokens, tokens);
+                       "lexing keyword identifier {}: expected: {:?}, actual:{:?}",
+                       kw, expected_tokens, tokens);
         }
     }
 
@@ -420,9 +484,9 @@ mod test {
         ];
 
         let integers_hex = vec!["0xdeadbeef",
-            "0Xcafebabe",
-            "0XDEADBEEF",
-            "0xCAFEbabe",
+                                "0Xcafebabe",
+                                "0XDEADBEEF",
+                                "0xCAFEbabe",
         ];
 
         let integers_octal = vec![
@@ -449,7 +513,7 @@ mod test {
                 let lexer = Lexer::new(src);
                 let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
                 let expected_tokens = Ok(vec![
-                    Token { token_type: TokenType::IntConstant(src.trim(), base), location: Location { line: 1, column: 1 }},
+                    Token { token_type: TokenType::IntConstant(src.trim(), base), location: Location { line: 1, column: 1 } },
                 ]);
                 assert_eq!(tokens, expected_tokens,
                            "lexing identifier {}: expected: {:?}, actual:{:?}",
@@ -464,9 +528,49 @@ mod test {
         let lexer = Lexer::new(src);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         let expected = Err(LexerError::InvalidIdentifierCharacter {
-            location: Location {line: 1, column: 5},
+            location: Location { line: 1, column: 5 },
             ch: '@',
         });
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_comment_with_anything() {
+        let src = "()//comment@bad\nabcde";
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        let expected = Ok(vec![
+            Token {
+                token_type: TokenType::OpenParentheses,
+                location: Location { line: 1, column: 1 },
+            },
+            Token {
+                token_type: TokenType::CloseParentheses,
+                location: Location { line: 1, column: 2 },
+            },
+            Token {
+                token_type: TokenType::Identifier("abcde"),
+                location: Location { line: 2, column: 1 },
+            }
+        ]);
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_block_comment() {
+        let src = "abcde/*hello*/xyz";
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        let expected = Ok(vec![
+            Token {
+                token_type: TokenType::Identifier("abcde"),
+                location: Location { line: 1, column: 1 },
+            },
+            Token {
+                token_type: TokenType::Identifier("xyz"),
+                location: Location { line: 1, column: 15 },
+            }
+        ]);
         assert_eq!(tokens, expected);
     }
 }
