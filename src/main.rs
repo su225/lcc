@@ -1,9 +1,11 @@
-mod lexer;
-
 use std::error::Error;
 use std::fs;
 
 use clap::Parser;
+
+use crate::lexer::{Lexer, LexerError, Token};
+
+mod lexer;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
@@ -18,7 +20,7 @@ struct Args {
     output: String,
 
     /// Stop compiler at Lexer (useful for debugging)
-    #[arg(short = 'L', long = "lexer", default_value_t = false)]
+    #[arg(short = 'L', long = "lex", default_value_t = false)]
     stop_at_lexer: bool,
 
     /// Stop compiler at Parsing stage
@@ -45,7 +47,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// invoke_compiler_driver invokes different compiler stages. Depending on
 /// the flags, it may stop early in some stage
 fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dyn Error>> {
+    let lexer = Lexer::new(&source_code);
     if args.stop_at_lexer {
+        let tokens: Result<Vec<Token>, LexerError> = lexer.collect();
+        println!("{:#?}", tokens);
+        if tokens.is_err() {
+            return Err(format!("lexer error: {}", tokens.err().unwrap()).into());
+        }
         return Ok(());
     }
     if args.stop_at_parser {

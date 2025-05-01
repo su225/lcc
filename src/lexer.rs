@@ -64,9 +64,6 @@ pub enum LexerError {
     #[error("{location:?}: invalid digit {digit:?} for radix {radix:?}")]
     InvalidDigitForRadix { location: Location, digit: char, radix: Radix },
 
-    #[error("{location:?}: invalid start of identifier {ch:?}")]
-    InvalidStartOfIdentifier { location: Location, ch: char },
-
     #[error("{location:?}: invalid character {ch:?} for identifier")]
     InvalidIdentifierCharacter { location: Location, ch: char },
 }
@@ -112,7 +109,7 @@ pub struct Token<'a> {
     location: Location,
 }
 
-struct Lexer<'a> {
+pub struct Lexer<'a> {
     input: &'a str,
     char_stream: Peekable<Chars<'a>>,
     cur_stream_pos: usize,
@@ -120,7 +117,7 @@ struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         Self {
             input,
             char_stream: input.chars().peekable(),
@@ -173,7 +170,7 @@ impl<'a> Lexer<'a> {
             } else if !digit2.is_digit(OCTAL as u32) {
                 // If it is neither 0x, 0X, 0b, 0B or 0[Octal digit]
                 // then it is an invalid number. Hence, it is an error.
-                return Err(LexerError::UnknownRadixRepresentation { location: start_loc });
+                return Ok(Token { location: start_loc, token_type: TokenType::IntConstant("0", DECIMAL) });
             }
         }
         // Once we have determined the radix, we iterate through the digits as long
@@ -182,21 +179,15 @@ impl<'a> Lexer<'a> {
         // don't support digit grouping yet to keep the lexer simple.
         loop {
             let loc = self.cur_location.clone();
-            let next = self.next_char();
+            let next = self.char_stream.peek();
             if next.is_none() {
                 break;
             }
-            let n = next.unwrap();
-            if n.is_whitespace() {
+            let n = next.unwrap().clone();
+            if !n.is_digit(expected_radix as u32) {
                 break;
             }
-            if !n.is_digit(expected_radix as u32) {
-                return Err(LexerError::InvalidDigitForRadix {
-                    location: loc,
-                    digit: n,
-                    radix: expected_radix,
-                });
-            }
+            self.next_char();
         }
         return Ok(Token {
             location: start_loc,
@@ -209,18 +200,19 @@ impl<'a> Lexer<'a> {
         let start_pos = self.cur_stream_pos;
         let first_char = self.next_char().unwrap();
         if first_char != '_' && !first_char.is_alphabetic() {
-            return Err(LexerError::InvalidStartOfIdentifier{ location: start_loc, ch: first_char });
+            return Err(LexerError::InvalidIdentifierCharacter{ location: start_loc, ch: first_char });
         }
         loop {
             let cur_loc = self.cur_location;
-            let ch = self.next_char();
+            let ch = self.char_stream.peek();
             if ch.is_none() {
                 break;
             }
-            let c = ch.unwrap();
+            let c = ch.unwrap().clone();
             if !c.is_alphanumeric() && c != '_' {
-                return Err(LexerError::InvalidIdentifierCharacter { location: cur_loc, ch: c })
+                break;
             }
+            self.next_char();
         }
         let word = &self.input[start_pos..self.cur_stream_pos];
         match KEYWORDS.get(word) {
@@ -269,16 +261,13 @@ impl<'a> Lexer<'a> {
                     let token = self.tokenize_integer_constant()?;
                     return Ok(Some(token));
                 },
-                c if c == '_' || c.is_alphabetic() => {
-                    let token = self.tokenize_identifier_or_keyword()?;
-                    return Ok(Some(token));
-                },
                 '\n' | '\t' | ' ' => {
                     self.next_char();
                     continue;
                 },
                 _ => {
-                    return Err(LexerError::UnexpectedCharacter { location: self.cur_location });
+                    let token = self.tokenize_identifier_or_keyword()?;
+                    return Ok(Some(token));
                 },
             }
         }
@@ -425,6 +414,9 @@ mod test {
             "888",
             "9189",
             "189087931798698368761873",
+            "0\t\t",
+            "0  ",
+            "0\n",
         ];
 
         let integers_hex = vec!["0xdeadbeef",
@@ -457,7 +449,7 @@ mod test {
                 let lexer = Lexer::new(src);
                 let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
                 let expected_tokens = Ok(vec![
-                    Token { token_type: TokenType::IntConstant(src, base), location: Location { line: 1, column: 1 }},
+                    Token { token_type: TokenType::IntConstant(src.trim(), base), location: Location { line: 1, column: 1 }},
                 ]);
                 assert_eq!(tokens, expected_tokens,
                            "lexing identifier {}: expected: {:?}, actual:{:?}",
@@ -476,21 +468,5 @@ mod test {
             ch: '@',
         });
         assert_eq!(tokens, expected);
-    }
-
-    #[test]
-    fn test_bad_radix_digit() {
-        let tests = vec![
-            ("100a", 'a', DECIMAL, Location { line: 1, column: 4 }),
-            ("0128", '8', OCTAL, Location { line: 1, column: 4 }),
-            ("0xabcdg", 'g', HEXADECIMAL, Location { line: 1, column: 7 }),
-            ("0b2011", '2', BINARY, Location { line: 1, column: 3 }),
-        ];
-        for (src, digit, radix, err_loc) in tests.into_iter() {
-            let lexer = Lexer::new(src);
-            let expected = Err(LexerError::InvalidDigitForRadix {location: err_loc, digit, radix });
-            let actual: LexerResult<Vec<Token>> = lexer.collect();
-            assert_eq!(expected, actual, "test:{}", src);
-        }
     }
 }
