@@ -54,14 +54,20 @@ impl Location {
 
 #[derive(Error, Debug, PartialEq)]
 pub enum LexerError {
-    #[error("unexpected character at {location:?}")]
+    #[error("{location:?}: unexpected character")]
     UnexpectedCharacter { location: Location },
 
-    #[error("unknown radix representation of integer at {location:?}")]
+    #[error("{location:?}: unknown radix representation of integer")]
     UnknownRadixRepresentation { location: Location },
 
-    #[error("invalid digit {digit:?} for radix {radix:?}")]
+    #[error("{location:?}: invalid digit {digit:?} for radix {radix:?}")]
     InvalidDigitForRadix { location: Location, digit: char, radix: Radix },
+
+    #[error("{location:?}: invalid start of identifier {ch:?}")]
+    InvalidStartOfIdentifier { location: Location, ch: char },
+
+    #[error("{location:?}: invalid character {ch:?} for identifier")]
+    InvalidIdentifierCharacter { location: Location, ch: char },
 }
 
 type LexerResult<T> = Result<T, LexerError>;
@@ -127,8 +133,9 @@ impl<'a> Lexer<'a> {
         if ch.is_none() {
             return None;
         }
-        self.cur_stream_pos += 1;
-        match ch.unwrap() {
+        let c = ch.unwrap();
+        self.cur_stream_pos += c.len_utf8();
+        match c {
             '\n' => self.cur_location.advance_line(),
             '\t' => self.cur_location.advance_tab(),
             _ => self.cur_location.advance(),
@@ -192,7 +199,30 @@ impl<'a> Lexer<'a> {
         }
         return Ok(Token {
             location: start_loc,
-            token_type: TokenType::IntConstant(&self.input[start_pos..self.cur_stream_pos], expected_radix)
+            token_type: TokenType::IntConstant(&self.input[start_pos..self.cur_stream_pos], expected_radix),
+        })
+    }
+
+    fn tokenize_identifier_or_keyword(&mut self) -> Result<Token<'a>, LexerError> {
+        let start_loc = self.cur_location;
+        let start_pos = self.cur_stream_pos;
+        let first_char = self.next_char().unwrap();
+        if first_char != '_' && !first_char.is_alphabetic() {
+            return Err(LexerError::InvalidStartOfIdentifier{ location: start_loc, ch: first_char });
+        }
+        loop {
+            let ch = self.next_char();
+            if ch.is_none() {
+                break;
+            }
+            let c = ch.unwrap();
+            if !c.is_alphanumeric() && c != '_' {
+                return Err(LexerError::InvalidIdentifierCharacter { location: start_loc, ch: c })
+            }
+        }
+        return Ok(Token{
+            location: start_loc,
+            token_type: TokenType::Identifier(&self.input[start_pos..self.cur_stream_pos]),
         })
     }
 
@@ -228,6 +258,10 @@ impl<'a> Lexer<'a> {
                 },
                 '0'..='9' => {
                     let token = self.tokenize_integer_constant()?;
+                    return Ok(Some(token));
+                },
+                c if c == '_' || c.is_alphabetic() => {
+                    let token = self.tokenize_identifier_or_keyword()?;
                     return Ok(Some(token));
                 },
                 '\n' | '\t' | ' ' => {
@@ -335,6 +369,10 @@ mod test {
             "_abcde",
             "_123",
             "_123_456",
+            "café",
+            "αριθμός",
+            "число",
+            "数字",
         ];
         for src in identifiers.into_iter() {
             let lexer = Lexer::new(src);
