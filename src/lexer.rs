@@ -212,13 +212,14 @@ impl<'a> Lexer<'a> {
             return Err(LexerError::InvalidStartOfIdentifier{ location: start_loc, ch: first_char });
         }
         loop {
+            let cur_loc = self.cur_location;
             let ch = self.next_char();
             if ch.is_none() {
                 break;
             }
             let c = ch.unwrap();
             if !c.is_alphanumeric() && c != '_' {
-                return Err(LexerError::InvalidIdentifierCharacter { location: start_loc, ch: c })
+                return Err(LexerError::InvalidIdentifierCharacter { location: cur_loc, ch: c })
             }
         }
         let word = &self.input[start_pos..self.cur_stream_pos];
@@ -301,7 +302,7 @@ impl<'a> Iterator for Lexer<'a> {
 mod test {
     use std::collections::HashMap;
 
-    use crate::lexer::{KEYWORDS, Lexer, LexerResult, Location, Token, TokenType};
+    use crate::lexer::{BINARY, DECIMAL, HEXADECIMAL, KEYWORDS, Lexer, LexerError, LexerResult, Location, OCTAL, Token, TokenType};
     use crate::lexer::TokenType::Keyword;
 
     #[test]
@@ -462,6 +463,34 @@ mod test {
                            "lexing identifier {}: expected: {:?}, actual:{:?}",
                            src, expected_tokens, tokens);
             }
+        }
+    }
+
+    #[test]
+    fn test_bad_identifier_error() {
+        let src = "abcd@";
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        let expected = Err(LexerError::InvalidIdentifierCharacter {
+            location: Location {line: 1, column: 5},
+            ch: '@',
+        });
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_bad_radix_digit() {
+        let tests = vec![
+            ("100a", 'a', DECIMAL, Location { line: 1, column: 4 }),
+            ("0128", '8', OCTAL, Location { line: 1, column: 4 }),
+            ("0xabcdg", 'g', HEXADECIMAL, Location { line: 1, column: 7 }),
+            ("0b2011", '2', BINARY, Location { line: 1, column: 3 }),
+        ];
+        for (src, digit, radix, err_loc) in tests.into_iter() {
+            let lexer = Lexer::new(src);
+            let expected = Err(LexerError::InvalidDigitForRadix {location: err_loc, digit, radix });
+            let actual: LexerResult<Vec<Token>> = lexer.collect();
+            assert_eq!(expected, actual, "test:{}", src);
         }
     }
 }
