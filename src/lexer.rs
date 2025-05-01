@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::str::Chars;
+
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
@@ -220,10 +221,17 @@ impl<'a> Lexer<'a> {
                 return Err(LexerError::InvalidIdentifierCharacter { location: start_loc, ch: c })
             }
         }
-        return Ok(Token{
-            location: start_loc,
-            token_type: TokenType::Identifier(&self.input[start_pos..self.cur_stream_pos]),
-        })
+        let word = &self.input[start_pos..self.cur_stream_pos];
+        match KEYWORDS.get(word) {
+            None => Ok(Token{
+                location: start_loc,
+                token_type: TokenType::Identifier(word),
+            }),
+            Some(k) => Ok(Token{
+                location: start_loc,
+                token_type: TokenType::Keyword(k.clone()),
+            })
+        }
     }
 
     fn next_token(&mut self) -> Result<Option<Token<'a>>, LexerError> {
@@ -292,7 +300,9 @@ impl<'a> Iterator for Lexer<'a> {
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;
-    use crate::lexer::{Lexer, LexerError, LexerResult, Location, Token, TokenType};
+
+    use crate::lexer::{KEYWORDS, Lexer, LexerResult, Location, Token, TokenType};
+    use crate::lexer::TokenType::Keyword;
 
     #[test]
     fn test_tokenizing_open_and_close_parentheses() {
@@ -383,6 +393,20 @@ mod test {
             assert_eq!(tokens, expected_tokens,
                        "lexing identifier {}: expected: {:?}, actual:{:?}",
                         src, expected_tokens, tokens);
+        }
+    }
+
+    #[test]
+    fn test_tokenizing_keywords() {
+        for (kw, kwid) in KEYWORDS.iter() {
+            let lexer = Lexer::new(kw);
+            let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+            let expected_tokens: LexerResult<Vec<Token>> = Ok(vec![
+                Token { token_type: Keyword(kwid.clone()), location: Location { line: 1, column: 1 } },
+            ]);
+            assert_eq!(tokens, expected_tokens,
+                      "lexing keyword identifier {}: expected: {:?}, actual:{:?}",
+                      kw, expected_tokens, tokens);
         }
     }
 
