@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::str::Chars;
 use once_cell::sync::Lazy;
+use thiserror::Error;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum KeywordIdentifier {
@@ -10,6 +11,60 @@ pub enum KeywordIdentifier {
     TypeVoid,
     Return,
 }
+
+type Radix = u8;
+
+const DECIMAL: Radix = 10;
+const OCTAL: Radix = 8;
+const HEXADECIMAL: Radix = 16;
+const BINARY: Radix = 2;
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum TokenType<'a> {
+    Keyword(KeywordIdentifier),
+    OpenParentheses,
+    CloseParentheses,
+    OpenBrace,
+    CloseBrace,
+    Semicolon,
+    Identifier(&'a str),
+    IntConstant(&'a str, Radix),
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+struct Location {
+    line: usize,
+    column: usize,
+}
+
+impl Location {
+    fn advance_line(&mut self) {
+        self.line += 1;
+        self.column = 1;
+    }
+
+    fn advance_tab(&mut self) {
+        self.column = ((self.column + 7) / 8) * 8;
+    }
+
+    fn advance(&mut self) {
+        self.column += 1;
+    }
+}
+
+#[derive(Error, Debug, PartialEq)]
+pub enum LexerError {
+    #[error("unexpected character at {location:?}")]
+    UnexpectedCharacter { location: Location },
+
+    #[error("unknown radix representation of integer at {location:?}")]
+    UnknownRadixRepresentation { location: Location },
+
+    #[error("invalid digit {digit:?} for radix {radix:?}")]
+    InvalidDigitForRadix { location: Location, digit: char, radix: Radix },
+}
+
+type LexerResult<T> = Result<T, LexerError>;
 
 static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
     HashMap::from([
@@ -29,21 +84,6 @@ static KEYWORD_STRINGS: Lazy<HashMap<KeywordIdentifier, &'static str>> = Lazy::n
     ])
 });
 
-type Radix = u8;
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum TokenType<'a> {
-    Keyword(KeywordIdentifier),
-    OpenParentheses,
-    CloseParentheses,
-    OpenBrace,
-    CloseBrace,
-    Semicolon,
-    Identifier(&'a str),
-    IntConstant(&'a str, Radix),
-    Unknown,
-}
-
 impl<'a> Display for TokenType<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &self {
@@ -55,7 +95,6 @@ impl<'a> Display for TokenType<'a> {
             TokenType::Semicolon => f.write_str(";"),
             TokenType::Identifier(x) => f.write_fmt(format_args!("identifier:{}", x)),
             TokenType::IntConstant(x, radix) => f.write_fmt(format_args!("int:[{}, radix:{}]", x, radix)),
-            TokenType::Unknown => f.write_str("unknown"),
         }
     }
 }
@@ -63,21 +102,14 @@ impl<'a> Display for TokenType<'a> {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Token<'a> {
     token_type: TokenType<'a>,
-    line: usize,
-    column: usize,
-}
-
-impl<'a> Display for Token<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("<line:{}, col:{}, token:{}>", self.line, self.column, self.token_type))
-    }
+    location: Location,
 }
 
 struct Lexer<'a> {
     input: &'a str,
     char_stream: Peekable<Chars<'a>>,
-    cur_line: usize,
-    cur_col: usize,
+    cur_stream_pos: usize,
+    cur_location: Location,
 }
 
 impl<'a> Lexer<'a> {
@@ -85,78 +117,125 @@ impl<'a> Lexer<'a> {
         Self {
             input,
             char_stream: input.chars().peekable(),
-            cur_line: 1,
-            cur_col: 1,
+            cur_stream_pos: 0,
+            cur_location: Location { line: 1, column: 1 },
         }
+    }
+
+    fn next_char(&mut self) -> Option<char> {
+        let ch = self.char_stream.next();
+        if ch.is_none() {
+            return None;
+        }
+        self.cur_stream_pos += 1;
+        match ch.unwrap() {
+            '\n' => self.cur_location.advance_line(),
+            '\t' => self.cur_location.advance_tab(),
+            _ => self.cur_location.advance(),
+        }
+        return ch;
     }
 
     fn tokenize_single_char(&mut self, token_type: TokenType<'a>) -> Token<'a>  {
         let token = Token {
             token_type,
-            line: self.cur_line,
-            column: self.cur_col,
+            location: self.cur_location.clone(),
         };
-        self.char_stream.next();
-        self.cur_col += 1;
+        self.next_char();
         token
     }
 
-    fn tokenize_integer_constant(&mut self) -> Token<'a> {
-        todo!("tokenize integer constant with radix")
+    fn tokenize_integer_constant(&mut self) -> Result<Token<'a>, LexerError> {
+        let start_loc = self.cur_location.clone();
+        let start_pos = self.cur_stream_pos;
+        let first_digit = self.next_char().unwrap();
+        let mut expected_radix = OCTAL;
+        if first_digit != '0' {
+            expected_radix = DECIMAL;
+        } else {
+            let second_digit = self.next_char();
+            if second_digit.is_none() {
+                return Ok(Token { location: start_loc, token_type: TokenType::IntConstant("0", DECIMAL) });
+            }
+            let digit2 = second_digit.unwrap();
+            if digit2 == 'x' || digit2 == 'X' {
+                expected_radix = HEXADECIMAL;
+            } else if digit2 == 'b' || digit2 == 'B' {
+                expected_radix = BINARY;
+            } else if !digit2.is_digit(OCTAL as u32) {
+                // If it is neither 0x, 0X, 0b, 0B or 0[Octal digit]
+                // then it is an invalid number. Hence, it is an error.
+                return Err(LexerError::UnknownRadixRepresentation { location: start_loc });
+            }
+        }
+        // Once we have determined the radix, we iterate through the digits as long
+        // as we find a valid stop point: semicolon, whitespace (space, new-line, tab), end.
+        // If we stop at characters that are not valid digits, then we throw an error. We
+        // don't support digit grouping yet to keep the lexer simple.
+        loop {
+            let loc = self.cur_location.clone();
+            let next = self.next_char();
+            if next.is_none() {
+                break;
+            }
+            let n = next.unwrap();
+            if n.is_whitespace() {
+                break;
+            }
+            if !n.is_digit(expected_radix as u32) {
+                return Err(LexerError::InvalidDigitForRadix {
+                    location: loc,
+                    digit: n,
+                    radix: expected_radix,
+                });
+            }
+        }
+        return Ok(Token {
+            location: start_loc,
+            token_type: TokenType::IntConstant(&self.input[start_pos..self.cur_stream_pos], expected_radix)
+        })
     }
 
-    fn next_token(&mut self) -> Option<Token<'a>> {
+    fn next_token(&mut self) -> Result<Option<Token<'a>>, LexerError> {
         loop {
             let cur = self.char_stream.peek();
             if cur.is_none() {
                 // We have reached the end of the stream. Hence, we cannot
                 // tokenize anymore. So we just return None
-                return None;
+                return Ok(None);
             }
             let cur_char = cur.unwrap();
             match *cur_char {
                 ';' => {
                     let token = self.tokenize_single_char(TokenType::Semicolon);
-                    return Some(token);
+                    return Ok(Some(token));
                 },
                 '(' => {
                     let token = self.tokenize_single_char(TokenType::OpenParentheses);
-                    return Some(token);
+                    return Ok(Some(token));
                 },
                 ')' => {
                     let token = self.tokenize_single_char(TokenType::CloseParentheses);
-                    return Some(token);
+                    return Ok(Some(token));
                 },
                 '{' => {
                     let token = self.tokenize_single_char(TokenType::OpenBrace);
-                    return Some(token);
+                    return Ok(Some(token));
                 },
                 '}' => {
                     let token = self.tokenize_single_char(TokenType::CloseBrace);
-                    return Some(token);
+                    return Ok(Some(token));
                 },
-                '0'..'9' => {
-                    let token = self.tokenize_integer_constant();
-                    return Some(token);
+                '0'..='9' => {
+                    let token = self.tokenize_integer_constant()?;
+                    return Ok(Some(token));
                 },
-                '\n' => {
-                    self.cur_line += 1;
-                    self.cur_col = 1;
-                    self.char_stream.next();
+                '\n' | '\t' | ' ' => {
+                    self.next_char();
                     continue;
                 },
-                '\t' => {
-                    self.cur_col = ((self.cur_col + 7) / 8) * 8;
-                    self.char_stream.next();
-                    continue;
-                },
-                ' ' => {
-                    self.cur_col += 1;
-                    self.char_stream.next();
-                    continue;
-                }
                 _ => {
-                    return Some(self.tokenize_single_char(TokenType::Unknown));
+                    return Err(LexerError::UnexpectedCharacter { location: self.cur_location });
                 },
             }
         }
@@ -164,81 +243,86 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
+    type Item = Result<Token<'a>, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token()
+        let next_tok = self.next_token();
+        match next_tok {
+            Ok(Some(tok)) => Some(Ok(tok)),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;
-    use crate::lexer::{Lexer, Token, TokenType};
+    use crate::lexer::{Lexer, LexerError, LexerResult, Location, Token, TokenType};
 
     #[test]
     fn test_tokenizing_open_and_close_parentheses() {
         let source = "()";
         let lexer = Lexer::new(source);
-        let tokens = lexer.into_iter().collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![
-            Token { token_type: TokenType::OpenParentheses, line: 1, column: 1},
-            Token { token_type: TokenType::CloseParentheses, line: 1, column: 2 },
-        ]);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 2 }},
+        ]));
     }
 
     #[test]
     fn test_tokenizing_open_and_close_braces() {
         let source = "{}";
         let lexer = Lexer::new(source);
-        let tokens = lexer.into_iter().collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![
-            Token { token_type: TokenType::OpenBrace, line: 1, column: 1 },
-            Token { token_type: TokenType::CloseBrace, line: 1, column: 2 },
-        ]);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OpenBrace, location: Location { line: 1, column: 1 }},
+            Token { token_type: TokenType::CloseBrace, location: Location { line: 1, column: 2 }},
+        ]));
     }
 
     #[test]
     fn test_tokenizing_with_newlines() {
         let source = "(\n\n)";
         let lexer = Lexer::new(source);
-        let tokens = lexer.into_iter().collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![
-            Token { token_type: TokenType::OpenParentheses, line: 1, column: 1 },
-            Token { token_type: TokenType::CloseParentheses, line: 3, column: 1 },
-        ]);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 3, column: 1 }},
+        ]));
     }
 
     #[test]
     fn test_tokenizing_with_tabs() {
         let source = "(\t)";
         let lexer = Lexer::new(source);
-        let tokens = lexer.into_iter().collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![
-            Token { token_type: TokenType::OpenParentheses, line: 1, column: 1 },
-            Token { token_type: TokenType::CloseParentheses, line: 1, column: 8 },
-        ]);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 8 }},
+        ]));
     }
 
     #[test]
     fn test_tokenizing_with_whitespaces() {
         let source = "(   )";
         let lexer = Lexer::new(source);
-        let tokens = lexer.into_iter().collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![
-            Token { token_type: TokenType::OpenParentheses, line: 1, column: 1 },
-            Token { token_type: TokenType::CloseParentheses, line: 1, column: 5 },
-        ]);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 }},
+            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 5 }},
+        ]));
     }
 
     #[test]
     fn test_tokenizing_semicolon() {
         let source = ";";
         let lexer = Lexer::new(source);
-        let tokens = lexer.into_iter().collect::<Vec<Token>>();
-        assert_eq!(tokens, vec![
-            Token { token_type: TokenType::Semicolon, line: 1, column: 1 },
-        ]);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::Semicolon, location: Location { line: 1, column: 1 }},
+        ]));
     }
 
     #[test]
@@ -254,10 +338,10 @@ mod test {
         ];
         for src in identifiers.into_iter() {
             let lexer = Lexer::new(src);
-            let tokens = lexer.into_iter().collect::<Vec<Token>>();
-            let expected_tokens = vec![
-                Token { token_type: TokenType::Identifier(src), line: 1, column: 1 }
-            ];
+            let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+            let expected_tokens: LexerResult<Vec<Token>> = Ok(vec![
+                Token { token_type: TokenType::Identifier(src), location: Location { line: 1, column: 1 }},
+            ]);
             assert_eq!(tokens, expected_tokens,
                        "lexing identifier {}: expected: {:?}, actual:{:?}",
                         src, expected_tokens, tokens);
@@ -308,10 +392,10 @@ mod test {
         for (base, srcs) in int_tests.into_iter() {
             for src in srcs.into_iter() {
                 let lexer = Lexer::new(src);
-                let tokens = lexer.into_iter().collect::<Vec<Token>>();
-                let expected_tokens = vec![
-                    Token { token_type: TokenType::IntConstant(src, base), line: 1, column: 1 }
-                ];
+                let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+                let expected_tokens = Ok(vec![
+                    Token { token_type: TokenType::IntConstant(src, base), location: Location { line: 1, column: 1 }},
+                ]);
                 assert_eq!(tokens, expected_tokens,
                            "lexing identifier {}: expected: {:?}, actual:{:?}",
                            src, expected_tokens, tokens);
