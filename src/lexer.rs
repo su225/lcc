@@ -13,12 +13,35 @@ pub enum KeywordIdentifier {
     Return,
 }
 
-type Radix = u8;
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+pub enum Radix {
+    Binary,
+    Octal,
+    Decimal,
+    Hexadecimal,
+}
 
-const DECIMAL: Radix = 10;
-const OCTAL: Radix = 8;
-const HEXADECIMAL: Radix = 16;
-const BINARY: Radix = 2;
+impl Radix {
+    pub fn value(&self) -> u32 {
+        match self {
+            Radix::Binary => 2,
+            Radix::Octal => 8,
+            Radix::Decimal => 10,
+            Radix::Hexadecimal => 16,
+        }
+    }
+}
+
+impl Display for Radix {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Radix::Binary => f.write_str("binary"),
+            Radix::Octal => f.write_str("octal"),
+            Radix::Decimal => f.write_str("decimal"),
+            Radix::Hexadecimal => f.write_str("hexadecimal"),
+        }
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum TokenType<'a> {
@@ -35,7 +58,7 @@ pub enum TokenType<'a> {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct Location {
+pub struct Location {
     line: usize,
     column: usize,
 }
@@ -57,15 +80,6 @@ impl Location {
 
 #[derive(Error, Debug, PartialEq)]
 pub enum LexerError {
-    #[error("{location:?}: unexpected character")]
-    UnexpectedCharacter { location: Location },
-
-    #[error("{location:?}: unknown radix representation of integer")]
-    UnknownRadixRepresentation { location: Location },
-
-    #[error("{location:?}: invalid digit {digit:?} for radix {radix:?}")]
-    InvalidDigitForRadix { location: Location, digit: char, radix: Radix },
-
     #[error("{location:?}: invalid character {ch:?} for identifier")]
     InvalidIdentifierCharacter { location: Location, ch: char },
 }
@@ -164,23 +178,25 @@ impl<'a> Lexer<'a> {
         let start_loc = self.cur_location.clone();
         let start_pos = self.cur_stream_pos;
         let first_digit = self.next_char().unwrap();
-        let mut expected_radix = OCTAL;
+        let mut expected_radix = Radix::Octal;
         if first_digit != '0' {
-            expected_radix = DECIMAL;
+            expected_radix = Radix::Decimal;
         } else {
-            let second_digit = self.next_char();
+            let second_digit = self.char_stream.peek();
             if second_digit.is_none() {
-                return Ok(Token { location: start_loc, token_type: TokenType::IntConstant("0", DECIMAL) });
+                return Ok(Token { location: start_loc, token_type: TokenType::IntConstant("0", Radix::Decimal) });
             }
-            let digit2 = second_digit.unwrap();
+            let digit2 = second_digit.unwrap().clone();
             if digit2 == 'x' || digit2 == 'X' {
-                expected_radix = HEXADECIMAL;
+                expected_radix = Radix::Hexadecimal;
+                self.next_char();
             } else if digit2 == 'b' || digit2 == 'B' {
-                expected_radix = BINARY;
-            } else if !digit2.is_digit(OCTAL as u32) {
+                expected_radix = Radix::Binary;
+                self.next_char();
+            } else if !digit2.is_digit(Radix::Octal.value()) {
                 // If it is neither 0x, 0X, 0b, 0B or 0[Octal digit]
                 // then it is an invalid number. Hence, it is an error.
-                return Ok(Token { location: start_loc, token_type: TokenType::IntConstant("0", DECIMAL) });
+                return Ok(Token { location: start_loc, token_type: TokenType::IntConstant("0", Radix::Decimal) });
             }
         }
         // Once we have determined the radix, we iterate through the digits as long
@@ -188,13 +204,12 @@ impl<'a> Lexer<'a> {
         // If we stop at characters that are not valid digits, then we throw an error. We
         // don't support digit grouping yet to keep the lexer simple.
         loop {
-            let loc = self.cur_location.clone();
             let next = self.char_stream.peek();
             if next.is_none() {
                 break;
             }
             let n = next.unwrap().clone();
-            if !n.is_digit(expected_radix as u32) {
+            if !n.is_digit(expected_radix.value()) {
                 break;
             }
             self.next_char();
@@ -213,7 +228,6 @@ impl<'a> Lexer<'a> {
             return Err(LexerError::InvalidIdentifierCharacter { location: start_loc, ch: first_char });
         }
         loop {
-            let cur_loc = self.cur_location;
             let ch = self.char_stream.peek();
             if ch.is_none() {
                 break;
@@ -355,7 +369,7 @@ impl<'a> Iterator for Lexer<'a> {
 mod test {
     use std::collections::HashMap;
 
-    use crate::lexer::{BINARY, DECIMAL, HEXADECIMAL, KEYWORDS, Lexer, LexerError, LexerResult, Location, OCTAL, Token, TokenType};
+    use crate::lexer::{KEYWORDS, Lexer, LexerError, LexerResult, Location, Radix, Token, TokenType};
     use crate::lexer::TokenType::Keyword;
 
     #[test]
@@ -501,10 +515,10 @@ mod test {
         ];
 
         let int_tests = HashMap::from([
-            (10, integers_base10),
-            (16, integers_hex),
-            (8, integers_octal),
-            (2, integers_binary),
+            (Radix::Decimal, integers_base10),
+            (Radix::Hexadecimal, integers_hex),
+            (Radix::Octal, integers_octal),
+            (Radix::Binary, integers_binary),
         ]);
 
 
@@ -532,6 +546,22 @@ mod test {
             ch: '@',
         });
         assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_bad_lexer() {
+        let src = "return 0@1;";
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert!(tokens.is_err());
+    }
+
+    #[test]
+    fn test_bad_number() {
+        let src = "1foo";
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert!(tokens.is_err());
     }
 
     #[test]
