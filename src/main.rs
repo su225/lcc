@@ -6,6 +6,8 @@ use clap::Parser;
 use crate::lexer::{Lexer, LexerError, Token};
 
 mod lexer;
+mod parser;
+mod common;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
@@ -25,7 +27,7 @@ struct Args {
 
     /// Stop compiler at Parsing stage
     /// (Runs Lexer and Parser)
-    #[arg(short = 'P', long = "parser", long, default_value_t = false)]
+    #[arg(short = 'P', long = "parse", long, default_value_t = false)]
     stop_at_parser: bool,
 
     /// Generate assembly code, but stop before emitting .S file

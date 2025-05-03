@@ -1,24 +1,17 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, format, Formatter};
 use std::iter::Peekable;
 use std::str::Chars;
 
 use once_cell::sync::Lazy;
 use thiserror::Error;
+use crate::common::{Location, Radix};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum KeywordIdentifier {
     TypeInt,
     TypeVoid,
     Return,
-}
-
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
-pub enum Radix {
-    Binary,
-    Octal,
-    Decimal,
-    Hexadecimal,
 }
 
 impl Radix {
@@ -44,6 +37,25 @@ impl Display for Radix {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum TokenTag {
+    Keyword,
+    OpenParentheses,
+    CloseParentheses,
+    OpenBrace,
+    CloseBrace,
+    Semicolon,
+    Identifier,
+    IntConstant,
+    OperatorDiv,
+}
+
+impl Display for TokenTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:?}", self))
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub enum TokenType<'a> {
     Keyword(KeywordIdentifier),
     OpenParentheses,
@@ -57,24 +69,19 @@ pub enum TokenType<'a> {
     OperatorDiv,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Location {
-    line: usize,
-    column: usize,
-}
-
-impl Location {
-    fn advance_line(&mut self) {
-        self.line += 1;
-        self.column = 1;
-    }
-
-    fn advance_tab(&mut self) {
-        self.column = ((self.column + 7) / 8) * 8;
-    }
-
-    fn advance(&mut self) {
-        self.column += 1;
+impl<'a> TokenType<'a> {
+    pub fn tag(&self) -> TokenTag {
+        match self {
+            TokenType::Keyword(_) => TokenTag::Keyword,
+            TokenType::OpenParentheses => TokenTag::OpenParentheses,
+            TokenType::CloseParentheses => TokenTag::CloseParentheses,
+            TokenType::OpenBrace => TokenTag::OpenBrace,
+            TokenType::CloseBrace => TokenTag::CloseBrace,
+            TokenType::Semicolon => TokenTag::Semicolon,
+            TokenType::Identifier(_) => TokenTag::Identifier,
+            TokenType::IntConstant(_, _) => TokenTag::IntConstant,
+            TokenType::OperatorDiv => TokenTag::OperatorDiv,
+        }
     }
 }
 
@@ -118,8 +125,8 @@ impl<'a> Display for TokenType<'a> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Token<'a> {
-    token_type: TokenType<'a>,
-    location: Location,
+    pub token_type: TokenType<'a>,
+    pub location: Location,
 }
 
 #[derive(Debug, Eq, PartialEq)]
