@@ -84,8 +84,6 @@ pub enum LexerError {
     InvalidIdentifierCharacter { location: Location, ch: char },
 }
 
-type LexerResult<T> = Result<T, LexerError>;
-
 static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
     HashMap::from([
         ("int", KeywordIdentifier::TypeInt),
@@ -210,6 +208,14 @@ impl<'a> Lexer<'a> {
             }
             let n = next.unwrap().clone();
             if !n.is_digit(expected_radix.value()) {
+                if n.is_alphanumeric() {
+                    // The current character is an alphabet. This means this is a case of an
+                    // invalid identifier. Identifiers are supposed to start with _ or alphabet.
+                    return Err(LexerError::InvalidIdentifierCharacter {
+                        location: start_loc,
+                        ch: first_digit,
+                    })
+                }
                 break;
             }
             self.next_char();
@@ -369,8 +375,10 @@ impl<'a> Iterator for Lexer<'a> {
 mod test {
     use std::collections::HashMap;
 
-    use crate::lexer::{KEYWORDS, Lexer, LexerError, LexerResult, Location, Radix, Token, TokenType};
+    use crate::lexer::{KEYWORDS, Lexer, LexerError, Location, Radix, Token, TokenType};
     use crate::lexer::TokenType::Keyword;
+
+    type LexerResult<T> = Result<T, LexerError>;
 
     #[test]
     fn test_tokenizing_open_and_close_parentheses() {
