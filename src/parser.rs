@@ -7,50 +7,60 @@ use thiserror::Error;
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
 
+#[derive(Debug)]
 pub struct Symbol<'a> {
     name: &'a str,
     location: Location,
 }
 
+#[derive(Debug)]
 pub(crate) enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
 }
 
+#[derive(Debug)]
 pub(crate) struct Expression<'a> {
     location: Location,
     kind: ExpressionKind<'a>,
 }
 
+#[derive(Debug)]
 pub(crate) enum PrimitiveKind {
     Integer,
     UnsignedInteger,
     LongInteger,
 }
 
+#[derive(Debug)]
 pub(crate) enum TypeExpressionKind {
     Primitive(PrimitiveKind),
 }
 
+#[derive(Debug)]
 pub(crate) struct TypeExpression {
     location: Location,
     kind: TypeExpressionKind,
 }
 
+#[derive(Debug)]
 pub(crate) enum StatementKind<'a> {
     Return(Expression<'a>),
 }
 
+#[derive(Debug)]
 pub(crate) struct Statement<'a> {
     location: Location,
     kind: StatementKind<'a>,
 }
 
+#[derive(Debug)]
 pub(crate) struct FunctionDefinition<'a> {
     pub(crate) location: Location,
     pub(crate) name: Symbol<'a>,
     pub(crate) body: Vec<Statement<'a>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct ProgramDefinition<'a> {
     pub(crate) functions: Vec<FunctionDefinition<'a>>,
 }

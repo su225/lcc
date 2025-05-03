@@ -1,9 +1,8 @@
 use std::error::Error;
 use std::fs;
-
-use clap::Parser;
-
+use clap::Parser as ClapParser;
 use crate::lexer::{Lexer, LexerError, Token};
+use crate::parser::Parser;
 
 mod lexer;
 mod parser;
@@ -11,7 +10,7 @@ mod common;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
-#[derive(Parser, Debug)]
+#[derive(ClapParser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     /// Input source code for compilation
@@ -58,7 +57,10 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
         }
         return Ok(());
     }
+    let mut parser = Parser::new(lexer);
+    let ast = parser.parse();
     if args.stop_at_parser {
+        println!("{:#?}", ast);
         return Ok(());
     }
     if args.stop_at_codegen {
