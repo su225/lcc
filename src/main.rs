@@ -59,11 +59,12 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
     }
     let mut parser = Parser::new(lexer);
     let ast = parser.parse();
+    if ast.is_err() {
+        println!("{:#?}", ast);
+        return Err(format!("parser error: {}", ast.err().unwrap()).into());
+    }
     if args.parse {
         println!("{:#?}", ast);
-        if ast.is_err() {
-            return Err(format!("parser error: {}", ast.err().unwrap()).into());
-        }
         return Ok(());
     }
     if args.codegen {
