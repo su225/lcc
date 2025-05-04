@@ -7,60 +7,60 @@ use thiserror::Error;
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Symbol<'a> {
     name: &'a str,
     location: Location,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Expression<'a> {
     location: Location,
     kind: ExpressionKind<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum PrimitiveKind {
     Integer,
     UnsignedInteger,
     LongInteger,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum TypeExpressionKind {
     Primitive(PrimitiveKind),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct TypeExpression {
     location: Location,
     kind: TypeExpressionKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum StatementKind<'a> {
     Return(Expression<'a>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Statement<'a> {
     location: Location,
     kind: StatementKind<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct FunctionDefinition<'a> {
     pub(crate) location: Location,
     pub(crate) name: Symbol<'a>,
     pub(crate) body: Vec<Statement<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct ProgramDefinition<'a> {
     pub(crate) functions: Vec<FunctionDefinition<'a>>,
 }
@@ -84,7 +84,11 @@ pub enum ParserError {
     UnexpectedEnd(TokenTag),
 
     #[error("{location:?}: expected keyword {keyword_identifier:?}")]
-    ExpectedKeyword { location: Location, keyword_identifier: KeywordIdentifier },
+    ExpectedKeyword {
+        location: Location,
+        keyword_identifier: KeywordIdentifier,
+        actual_token: TokenTag,
+    },
 }
 
 impl<'a> Parser<'a> {
@@ -99,8 +103,17 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_program(&mut self) -> Result<ProgramDefinition<'a>, ParserError> {
-        let func_definition = self.parse_function_definition()?;
-        Ok(ProgramDefinition { functions: vec![func_definition] })
+        let mut functions: Vec<FunctionDefinition<'a>> = vec![];
+        loop {
+            if self.token_provider.peek().is_none() {
+                break; // No more tokens and hence we are safe to stop here
+            }
+            // Otherwise parse the next function definition
+            let func_definition = self.parse_function_definition()?;
+            functions.push(func_definition);
+        }
+
+        Ok(ProgramDefinition { functions })
     }
 
     fn parse_function_definition(&mut self) -> Result<FunctionDefinition<'a>, ParserError> {
@@ -147,14 +160,18 @@ impl<'a> Parser<'a> {
 
     fn expect_keyword(&mut self, expected_kwid: KeywordIdentifier) -> Result<Location, ParserError> {
         match self.get_token_with_tag(TokenTag::Keyword)? {
-            Token { location, token_type: TokenType::Keyword(kwid)} => {
+            Token { location, token_type: TokenType::Keyword(kwid) } => {
                 if kwid == expected_kwid {
                     Ok(location)
                 } else {
-                    Err(ParserError::ExpectedKeyword {location, keyword_identifier: expected_kwid })
+                    Err(ParserError::ExpectedKeyword { location, keyword_identifier: expected_kwid, actual_token: TokenTag::Keyword })
                 }
-            },
-            Token { location, .. } => Err(ParserError::ExpectedKeyword { location, keyword_identifier: expected_kwid })
+            }
+            Token { location, token_type } => Err(ParserError::ExpectedKeyword {
+                location,
+                keyword_identifier: expected_kwid,
+                actual_token: token_type.tag(),
+            })
         }
     }
 
@@ -166,7 +183,7 @@ impl<'a> Parser<'a> {
                     TokenType::Keyword(kwd) => Err(ParserError::KeywordUsedAsIdentifier { location, kwd }),
                     _ => Err(ParserError::UnexpectedToken { location, expected_token_tag: TokenTag::Identifier })
                 }
-            },
+            }
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
             None => Err(ParserError::UnexpectedEnd(TokenTag::Identifier)),
         }
@@ -174,7 +191,7 @@ impl<'a> Parser<'a> {
 
     fn parse_type_expression(&mut self) -> Result<TypeExpression, ParserError> {
         let kw_loc = self.expect_keyword(KeywordIdentifier::TypeInt)?;
-        Ok(TypeExpression{
+        Ok(TypeExpression {
             location: kw_loc,
             kind: TypeExpressionKind::Primitive(PrimitiveKind::Integer),
         })
@@ -185,7 +202,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_return_statement(&mut self) -> Result<Statement<'a>, ParserError> {
-        let kloc = self.expect_keyword(KeywordIdentifier::TypeVoid)?;
+        let kloc = self.expect_keyword(KeywordIdentifier::Return)?;
         let return_code_expr = self.parse_expression()?;
         self.expect_semicolon()?;
         Ok(Statement { location: kloc, kind: StatementKind::Return(return_code_expr) })
@@ -222,7 +239,7 @@ impl<'a> Parser<'a> {
                 } else {
                     Err(ParserError::UnexpectedToken { location: token.location, expected_token_tag })
                 }
-            },
+            }
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
             None => Err(ParserError::UnexpectedEnd(expected_token_tag)),
         }
@@ -231,5 +248,84 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod test {
+    use crate::common::Location;
+    use crate::common::Radix::Decimal;
+    use crate::lexer::Lexer;
+    use crate::parser::{Expression, FunctionDefinition, Parser, ProgramDefinition, Statement, Symbol};
+    use crate::parser::ExpressionKind::IntConstant;
+    use crate::parser::StatementKind::Return;
 
+    #[test]
+    fn parse_program_with_tabs() {
+        let src = "int	main	(	void)	{	return	0	;	}";
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert_eq!(Ok(ProgramDefinition {
+            functions: vec![
+                FunctionDefinition {
+                    location: Location {line: 1, column: 1},
+                    name: Symbol {
+                        name: "main",
+                        location: Location {line: 1, column: 8},
+                    },
+                    body: vec![
+                        Statement {
+                            location: Location { line: 1, column: 40 },
+                            kind: Return(Expression {
+                                location: Location { line: 1, column: 48 },
+                                kind: IntConstant("0", Decimal),
+                            }),
+                        },
+                    ],
+                },
+            ],
+        }), parsed);
+    }
+
+    #[test]
+    fn parse_multiple_functions() {
+        let src = r#"
+            int main(void) {
+                return 2;
+            }
+
+            int foo(void) {
+                return 3;
+            }
+        "#;
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert_eq!(Ok(ProgramDefinition {
+            functions: vec![
+                FunctionDefinition {
+                    location: Location { line: 2, column: 13 },
+                    name: Symbol { name: "main", location: Location { line: 2, column: 17 } },
+                    body: vec![
+                        Statement {
+                            location: Location { line: 3, column: 17 },
+                            kind: Return(Expression {
+                                location: Location { line: 3, column: 24 },
+                                kind: IntConstant("2", Decimal),
+                            })
+                        }
+                    ],
+                },
+                FunctionDefinition {
+                    location: Location { line: 6, column: 13 },
+                    name: Symbol { name: "foo", location: Location { line: 6, column: 17 } },
+                    body: vec![
+                        Statement {
+                            location: Location { line: 7, column: 17 },
+                            kind: Return(Expression {
+                                location: Location { line: 7, column: 24 },
+                                kind: IntConstant("3", Decimal),
+                            }),
+                        }
+                    ],
+                }
+            ],
+        }), parsed)
+    }
 }

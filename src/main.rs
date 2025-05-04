@@ -22,17 +22,17 @@ struct Args {
 
     /// Stop compiler at Lexer (useful for debugging)
     #[arg(short = 'L', long = "lex", default_value_t = false)]
-    stop_at_lexer: bool,
+    lex: bool,
 
     /// Stop compiler at Parsing stage
     /// (Runs Lexer and Parser)
     #[arg(short = 'P', long = "parse", long, default_value_t = false)]
-    stop_at_parser: bool,
+    parse: bool,
 
     /// Generate assembly code, but stop before emitting .S file
     /// for the assembler and linker.
     #[arg(short = 'C', long = "codegen", long, default_value_t = false)]
-    stop_at_codegen: bool,
+    codegen: bool,
 
     /// Generate and emit .S file for assembler
     #[arg(short = 'S', long = "emit-assembly", long, default_value_t = true)]
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// the flags, it may stop early in some stage
 fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dyn Error>> {
     let lexer = Lexer::new(&source_code);
-    if args.stop_at_lexer {
+    if args.lex {
         let tokens: Result<Vec<Token>, LexerError> = lexer.collect();
         println!("{:#?}", tokens);
         if tokens.is_err() {
@@ -59,11 +59,14 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
     }
     let mut parser = Parser::new(lexer);
     let ast = parser.parse();
-    if args.stop_at_parser {
+    if args.parse {
         println!("{:#?}", ast);
+        if ast.is_err() {
+            return Err(format!("parser error: {}", ast.err().unwrap()).into());
+        }
         return Ok(());
     }
-    if args.stop_at_codegen {
+    if args.codegen {
         return Ok(());
     }
     Ok(())
