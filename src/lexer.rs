@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use std::fmt::{Display, format, Formatter};
+use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::str::Chars;
 
 use once_cell::sync::Lazy;
 use thiserror::Error;
+
 use crate::common::{Location, Radix};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]

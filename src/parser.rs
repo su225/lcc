@@ -9,7 +9,7 @@ use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenT
 
 #[derive(Debug, PartialEq)]
 pub struct Symbol<'a> {
-    name: &'a str,
+    pub name: &'a str,
     location: Location,
 }
 
@@ -21,7 +21,7 @@ pub(crate) enum ExpressionKind<'a> {
 #[derive(Debug, PartialEq)]
 pub(crate) struct Expression<'a> {
     location: Location,
-    kind: ExpressionKind<'a>,
+    pub(crate) kind: ExpressionKind<'a>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -38,8 +38,8 @@ pub(crate) enum TypeExpressionKind {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct TypeExpression {
-    location: Location,
-    kind: TypeExpressionKind,
+    pub(crate) location: Location,
+    pub(crate) kind: TypeExpressionKind,
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,8 +49,8 @@ pub(crate) enum StatementKind<'a> {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Statement<'a> {
-    location: Location,
-    kind: StatementKind<'a>,
+    pub(crate) location: Location,
+    pub(crate) kind: StatementKind<'a>,
 }
 
 #[derive(Debug, PartialEq)]

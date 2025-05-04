@@ -1,12 +1,15 @@
 use std::error::Error;
 use std::fs;
 use clap::Parser as ClapParser;
+use crate::codegen::CodeGenerator;
 use crate::lexer::{Lexer, LexerError, Token};
 use crate::parser::Parser;
 
 mod lexer;
 mod parser;
 mod common;
+mod codegen;
+mod code_emit;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
@@ -67,7 +70,14 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
         println!("{:#?}", ast);
         return Ok(());
     }
+    let code_gen = CodeGenerator::new(ast.unwrap());
+    let asm_code = code_gen.generate_assembly();
+    if asm_code.is_err() {
+        println!("{:#?}", asm_code);
+        return Err(format!("code generation error: {}", asm_code.err().unwrap()).into());
+    }
     if args.codegen {
+        println!("{:#?}", asm_code);
         return Ok(());
     }
     Ok(())
