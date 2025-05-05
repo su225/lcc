@@ -1,7 +1,6 @@
 use std::{fs, io};
 use std::error::Error;
 use std::fs::OpenOptions;
-use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, ExitStatus};
 
 use clap::Parser as ClapParser;

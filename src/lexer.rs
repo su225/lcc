@@ -48,6 +48,7 @@ pub enum TokenTag {
     Identifier,
     IntConstant,
     OperatorDiv,
+    OperatorUnaryComplement,
 }
 
 impl Display for TokenTag {
@@ -67,6 +68,7 @@ pub enum TokenType<'a> {
     Identifier(&'a str),
     IntConstant(&'a str, Radix),
 
+    OperatorUnaryComplement,
     OperatorDiv,
 }
 
@@ -81,6 +83,8 @@ impl<'a> TokenType<'a> {
             TokenType::Semicolon => TokenTag::Semicolon,
             TokenType::Identifier(_) => TokenTag::Identifier,
             TokenType::IntConstant(_, _) => TokenTag::IntConstant,
+
+            TokenType::OperatorUnaryComplement => TokenTag::OperatorUnaryComplement,
             TokenType::OperatorDiv => TokenTag::OperatorDiv,
         }
     }
@@ -120,6 +124,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::Identifier(x) => f.write_fmt(format_args!("identifier:{}", x)),
             TokenType::IntConstant(x, radix) => f.write_fmt(format_args!("int:[{}, radix:{}]", x, radix)),
             TokenType::OperatorDiv => f.write_str("/"),
+            TokenType::OperatorUnaryComplement => f.write_str("~"),
         }
     }
 }
@@ -297,6 +302,10 @@ impl<'a> Lexer<'a> {
                             let token = self.tokenize_single_char(TokenType::CloseBrace);
                             return Ok(Some(token));
                         }
+                        '~' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorUnaryComplement);
+                            return Ok(Some(token));
+                        }
                         '/' => {
                             let div_loc = self.cur_location;
                             self.next_char();
@@ -450,6 +459,16 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: TokenType::Semicolon, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_complement() {
+        let source = "~";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorUnaryComplement, location: Location { line: 1, column: 1 } },
         ]));
     }
 
