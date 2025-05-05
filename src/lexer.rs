@@ -48,7 +48,9 @@ pub enum TokenTag {
     Identifier,
     IntConstant,
     OperatorDiv,
+    OperatorMinus,
     OperatorUnaryComplement,
+    OperatorUnaryDecrement,
 }
 
 impl Display for TokenTag {
@@ -69,6 +71,8 @@ pub enum TokenType<'a> {
     IntConstant(&'a str, Radix),
 
     OperatorUnaryComplement,
+    OperatorUnaryDecrement,
+    OperatorMinus,
     OperatorDiv,
 }
 
@@ -86,6 +90,8 @@ impl<'a> TokenType<'a> {
 
             TokenType::OperatorUnaryComplement => TokenTag::OperatorUnaryComplement,
             TokenType::OperatorDiv => TokenTag::OperatorDiv,
+            TokenType::OperatorUnaryDecrement => TokenTag::OperatorUnaryDecrement,
+            TokenType::OperatorMinus => TokenTag::OperatorMinus,
         }
     }
 }
@@ -125,6 +131,8 @@ impl<'a> Display for TokenType<'a> {
             TokenType::IntConstant(x, radix) => f.write_fmt(format_args!("int:[{}, radix:{}]", x, radix)),
             TokenType::OperatorDiv => f.write_str("/"),
             TokenType::OperatorUnaryComplement => f.write_str("~"),
+            TokenType::OperatorUnaryDecrement => f.write_str("--"),
+            TokenType::OperatorMinus => f.write_str("-"),
         }
     }
 }
@@ -302,6 +310,24 @@ impl<'a> Lexer<'a> {
                             let token = self.tokenize_single_char(TokenType::CloseBrace);
                             return Ok(Some(token));
                         }
+                        '-' => {
+                            let start_loc = self.cur_location;
+                            self.next_char();
+
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '-' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorUnaryDecrement,
+                                        location: start_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorMinus,
+                                location: start_loc,
+                            }));
+                        }
                         '~' => {
                             let token = self.tokenize_single_char(TokenType::OperatorUnaryComplement);
                             return Ok(Some(token));
@@ -469,6 +495,26 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: TokenType::OperatorUnaryComplement, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_decrement() {
+        let source = "--";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorUnaryDecrement, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_minus_or_negation() {
+        let source = "-";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorMinus, location: Location { line: 1, column: 1 } },
         ]));
     }
 
