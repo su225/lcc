@@ -1,11 +1,15 @@
+use std::{fs, io};
 use std::error::Error;
-use std::fs;
-use std::fs::{OpenOptions, Permissions};
+use std::fs::OpenOptions;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+use std::process::{Command, ExitStatus};
+
 use clap::Parser as ClapParser;
+use thiserror::Error;
+
+use crate::codegen::CodegenError;
 use crate::lexer::{Lexer, LexerError, Token};
-use crate::parser::Parser;
+use crate::parser::{Parser, ParserError};
 
 mod lexer;
 mod parser;
@@ -50,33 +54,44 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(invoke_compiler_driver(&args, source_code)?)
 }
 
+#[derive(Error, Debug)]
+enum CompilerDriverError {
+    #[error("error in lexer: {0}")]
+    LexerError(#[from] LexerError),
+
+    #[error("error in parser: {0}")]
+    ParserError(#[from] ParserError),
+
+    #[error("error while generating code: {0}")]
+    CodeGeneratorError(#[from] CodegenError),
+
+    #[error("error on writing assembly to {0}: {1}")]
+    CodeEmitError(String, #[source] io::Error),
+
+    #[error("error on invoking assembler: {0}")]
+    SystemAssemblerInvocationError(#[source] io::Error),
+
+    #[error("error from system assembler. exit-status={0}")]
+    SystemAssemblerFailedError(ExitStatus),
+}
+
 /// invoke_compiler_driver invokes different compiler stages. Depending on
 /// the flags, it may stop early in some stage
-fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dyn Error>> {
+fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), CompilerDriverError> {
     let lexer = Lexer::new(&source_code);
     if args.lex {
-        let tokens: Result<Vec<Token>, LexerError> = lexer.collect();
+        let tokens = lexer.collect::<Result<Vec<Token>, LexerError>>()
+            .map_err(|e| CompilerDriverError::LexerError(e))?;
         println!("{:#?}", tokens);
-        if tokens.is_err() {
-            return Err(format!("lexer error: {}", tokens.err().unwrap()).into());
-        }
         return Ok(());
     }
     let mut parser = Parser::new(lexer);
-    let ast = parser.parse();
-    if ast.is_err() {
-        println!("{:#?}", ast);
-        return Err(format!("parser error: {}", ast.err().unwrap()).into());
-    }
+    let ast = parser.parse()?;
     if args.parse {
         println!("{:#?}", ast);
         return Ok(());
     }
-    let asm_code = codegen::generate_assembly(ast.unwrap());
-    if asm_code.is_err() {
-        println!("{:#?}", asm_code);
-        return Err(format!("code generation error: {}", asm_code.err().unwrap()).into());
-    }
+    let asm_code = codegen::generate_assembly(ast)?;
     if args.codegen {
         println!("{:#?}", asm_code);
         return Ok(());
@@ -84,24 +99,28 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
     let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
     let output_asm_file = format!("{}.s", output_stem);
     let output_file = &output_stem;
-    let res = OpenOptions::new().create(true).write(true).open(&output_asm_file)
-        .and_then(|f| code_emit::emit(asm_code.unwrap(), f));
-    if res.is_err() {
-        println!("{:?}", res);
-        return Err(format!("error while writing assembly: {}", res.err().unwrap()).into());
-    }
-    invoke_system_assembler(&output_file, &output_asm_file)?;
-    Ok(())
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&output_asm_file)
+        .and_then(|f| code_emit::emit(asm_code, f))
+        .map_err(|e| CompilerDriverError::CodeEmitError(output_asm_file.clone(), e))?;
+
+    invoke_system_assembler(&output_file, &output_asm_file)
+        .and_then(|assembler_status| {
+            if assembler_status.success() {
+                Ok(())
+            } else {
+                Err(CompilerDriverError::SystemAssemblerFailedError(assembler_status))
+            }
+        })
 }
 
-fn invoke_system_assembler(output_file: &str, assembly_file: &str) -> Result<(), Box<dyn Error>> {
-    let status = Command::new("gcc")
+/// invoke_system_assembler invokes the assembler installed in the system for the assembly
+/// code generated. In Mac OS X, this is actually clang.
+fn invoke_system_assembler(output_file: &str, assembly_file: &str) -> Result<ExitStatus, CompilerDriverError> {
+    Command::new("gcc")
         .args(["-o", output_file, assembly_file])
         .status()
-        .expect("failed to execute gcc assembler");
-
-    if !status.success() {
-        return Err(format!("assembler failed with status: {}", status).into());
-    }
-    Ok(())
+        .map_err(|e| CompilerDriverError::SystemAssemblerInvocationError(e))
 }
