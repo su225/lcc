@@ -308,7 +308,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{Expression, ExpressionKind, FunctionDefinition, Parser, ProgramDefinition, Statement, Symbol, UnaryOperator};
+    use crate::parser::{Expression, ExpressionKind, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{IntConstant, Unary};
     use crate::parser::StatementKind::Return;
 
@@ -387,44 +387,87 @@ mod test {
     }
 
     #[test]
-    fn test_parse_expression_constant_int() {
-        let src = "100";
-        let lexer = Lexer::new(src);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse_expression();
-        assert_eq!(parsed, Ok(Expression {
-            location: Location { line: 1, column: 1 },
-            kind:  IntConstant("100", Radix::Decimal),
-        }));
-    }
+    fn test_parse_expressions() {
+        struct ExprTestCase<'a> {
+            name: &'a str,
+            src: &'a str,
+            expected: Result<Expression<'a>, ParserError>,
+        }
 
-    #[test]
-    fn test_parse_expression_unary_complement() {
-        let src = "~0xdeadbeef";
-        let lexer = Lexer::new(src);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse_expression();
-        assert_eq!(parsed, Ok(Expression {
-            location: Location { line: 1, column: 1 },
-            kind:  Unary(UnaryOperator::Complement, Box::new(Expression {
-                location: Location { line: 1, column: 2 },
-                kind: IntConstant("0xdeadbeef", Radix::Hexadecimal),
-            })),
-        }));
-    }
-
-    #[test]
-    fn test_parse_expression_unary_negation() {
-        let src = "-100";
-        let lexer = Lexer::new(src);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse_expression();
-        assert_eq!(parsed, Ok(Expression {
-            location: Location { line: 1, column: 1 },
-            kind:  Unary(UnaryOperator::Negate, Box::new(Expression {
-                location: Location { line: 1, column: 2 },
-                kind: IntConstant("100", Radix::Decimal),
-            })),
-        }));
+        for test_case in [
+            ExprTestCase {
+                name: "constant base-10 integer",
+                src: "100",
+                expected: Ok(Expression {
+                    location: Location { line: 1, column: 1 },
+                    kind:  IntConstant("100", Radix::Decimal),
+                }),
+            },
+            ExprTestCase {
+                name: "complement operator",
+                src: "~0xdeadbeef",
+                expected: Ok(Expression {
+                    location: Location { line: 1, column: 1 },
+                    kind:  Unary(UnaryOperator::Complement, Box::new(Expression {
+                        location: Location { line: 1, column: 2 },
+                        kind: IntConstant("0xdeadbeef", Radix::Hexadecimal),
+                    })),
+                }),
+            },
+            ExprTestCase {
+                name: "negation operator",
+                src: "-100",
+                expected: Ok(Expression {
+                    location: Location { line: 1, column: 1 },
+                    kind:  Unary(UnaryOperator::Negate, Box::new(Expression {
+                        location: Location { line: 1, column: 2 },
+                        kind: IntConstant("100", Radix::Decimal),
+                    })),
+                }),
+            },
+            ExprTestCase {
+                name: "redundant parentheses around int constant",
+                src: "(100)",
+                expected: Ok(Expression {
+                    location: Location { line: 1, column: 2 },
+                    kind: IntConstant("100", Decimal),
+                }),
+            },
+            ExprTestCase {
+                name: "double complement",
+                src: "~~100",
+                expected: Ok(Expression {
+                    location: Location { line: 1, column: 1 },
+                    kind: Unary(UnaryOperator::Complement, Box::new(Expression {
+                        location: Location { line: 1, column: 2 },
+                        kind: Unary(UnaryOperator::Complement, Box::new(Expression {
+                            location: Location { line: 1, column: 3 },
+                            kind: IntConstant("100", Decimal),
+                        }))
+                    })),
+                })
+            },
+            ExprTestCase {
+                name: "double negation",
+                src: "-(-100)",
+                expected: Ok(Expression {
+                    location: Location { line: 1, column: 1 },
+                    kind: Unary(UnaryOperator::Negate, Box::new(Expression {
+                        location: Location { line: 1, column: 3 },
+                        kind: Unary(UnaryOperator::Negate, Box::new(Expression {
+                            location: Location { line: 1, column: 4 },
+                            kind: IntConstant("100", Decimal),
+                        }))
+                    })),
+                })
+            }
+        ].into_iter() {
+            let lexer = Lexer::new(test_case.src);
+            let mut parser = Parser::new(lexer);
+            let actual_parsed = parser.parse_expression();
+            assert_eq!(test_case.expected, actual_parsed, "{}",
+                format!("failed case: {name:?},\n expected: {expected:#?},\n actual: {actual:#?}",
+                name = test_case.name, expected = test_case.expected, actual = actual_parsed));
+        }
     }
 }
