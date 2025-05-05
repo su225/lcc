@@ -1,7 +1,9 @@
 use std::error::Error;
 use std::fs;
+use std::fs::{OpenOptions, Permissions};
+use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
 use clap::Parser as ClapParser;
-use crate::codegen::CodeGenerator;
 use crate::lexer::{Lexer, LexerError, Token};
 use crate::parser::Parser;
 
@@ -70,8 +72,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
         println!("{:#?}", ast);
         return Ok(());
     }
-    let code_gen = CodeGenerator::new(ast.unwrap());
-    let asm_code = code_gen.generate_assembly();
+    let asm_code = codegen::generate_assembly(ast.unwrap());
     if asm_code.is_err() {
         println!("{:#?}", asm_code);
         return Err(format!("code generation error: {}", asm_code.err().unwrap()).into());
@@ -79,6 +80,28 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Box<dy
     if args.codegen {
         println!("{:#?}", asm_code);
         return Ok(());
+    }
+    let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
+    let output_asm_file = format!("{}.s", output_stem);
+    let output_file = &output_stem;
+    let res = OpenOptions::new().create(true).write(true).open(&output_asm_file)
+        .and_then(|f| code_emit::emit(asm_code.unwrap(), f));
+    if res.is_err() {
+        println!("{:?}", res);
+        return Err(format!("error while writing assembly: {}", res.err().unwrap()).into());
+    }
+    invoke_system_assembler(&output_file, &output_asm_file)?;
+    Ok(())
+}
+
+fn invoke_system_assembler(output_file: &str, assembly_file: &str) -> Result<(), Box<dyn Error>> {
+    let status = Command::new("gcc")
+        .args(["-o", output_file, assembly_file])
+        .status()
+        .expect("failed to execute gcc assembler");
+
+    if !status.success() {
+        return Err(format!("assembler failed with status: {}", status).into());
     }
     Ok(())
 }

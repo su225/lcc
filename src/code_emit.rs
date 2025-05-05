@@ -10,8 +10,8 @@ pub fn emit<W: Write>(asm_code: AsmProgram<'_>, mut w: W) -> io::Result<()> {
 }
 
 fn emit_function<W: Write>(f: AsmFunction, w: &mut W) -> io::Result<()> {
-    w.write_fmt(format_args!("    .globl {function_name}", function_name = f.name))?;
-    w.write_fmt(format_args!("{function_name}:", function_name = f.name))?;
+    w.write_fmt(format_args!("    .globl _{function_name}\n", function_name = f.name))?;
+    w.write_fmt(format_args!("_{function_name}:\n", function_name = f.name))?;
     for instr in f.instructions {
         emit_instruction(&instr, w)?;
     }
@@ -24,7 +24,7 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
             let s = src.to_string();
             let d = dst.to_string();
             w.write_fmt(format_args!(
-                "    movl {src_operand}, {dst_operand}",
+                "    movq {src_operand}, {dst_operand}\n",
                 src_operand = s, dst_operand = d))?
         },
         AsmInstruction::Ret => w.write_fmt(format_args!("    ret"))?,

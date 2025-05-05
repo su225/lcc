@@ -5,13 +5,12 @@ use thiserror::Error;
 
 use crate::parser::{Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind};
 
-pub struct CodeGenerator<'a> {
-    program_definition: ProgramDefinition<'a>,
-}
-
 #[derive(Debug)]
 pub enum Register {
-    RAX, RBX, RCX, RDX,
+    RAX,
+    RBX,
+    RCX,
+    RDX,
 }
 
 impl Display for Register {
@@ -63,60 +62,54 @@ pub enum CodegenError {
     IntImmediateParseError(#[from] ParseIntError),
 }
 
-impl<'a> CodeGenerator<'a> {
-    pub fn new(program_definition: ProgramDefinition<'a>) -> CodeGenerator<'a> {
-        CodeGenerator { program_definition }
+pub fn generate_assembly<'a>(p: ProgramDefinition<'a>) -> Result<AsmProgram<'a>, CodegenError> {
+    let mut asm_functions: Vec<AsmFunction<'a>> = vec![];
+    for func in p.functions.iter() {
+        let asm = generate_function_assembly(func)?;
+        asm_functions.push(asm)
     }
+    Ok(AsmProgram { functions: asm_functions })
+}
 
-    pub fn generate_assembly(&self) -> Result<AsmProgram<'a>, CodegenError> {
-        let mut asm_functions: Vec<AsmFunction<'a>> = vec![];
-        for func in self.program_definition.functions.iter() {
-            let asm = self.generate_function_assembly(func)?;
-            asm_functions.push(asm)
-        }
-        Ok(AsmProgram { functions: asm_functions })
+fn generate_function_assembly<'a>(f: &FunctionDefinition<'a>) -> Result<AsmFunction<'a>, CodegenError> {
+    let mut body_statements: Vec<AsmInstruction> = vec![];
+    for stmt in f.body.iter() {
+        let instrs_for_statement = generate_statement_assembly(stmt)?;
+        body_statements.extend(instrs_for_statement);
     }
+    Ok(AsmFunction {
+        name: f.name.name,
+        instructions: body_statements,
+    })
+}
 
-    fn generate_function_assembly(&self, f: &FunctionDefinition<'a>) -> Result<AsmFunction<'a>, CodegenError> {
-        let mut body_statements: Vec<AsmInstruction> = vec![];
-        for stmt in f.body.iter() {
-            let instrs_for_statement = self.generate_statement_assembly(stmt)?;
-            body_statements.extend(instrs_for_statement);
-        }
-        Ok(AsmFunction {
-            name: f.name.name,
-            instructions: body_statements,
-        })
-    }
-
-    fn generate_statement_assembly(&self, s: &Statement<'a>) -> Result<Vec<AsmInstruction>, CodegenError> {
-        match &s.kind {
-            StatementKind::Return(expr) => {
-                let (mut expr_instrs, res_operand) = self.generate_expression_assembly(&expr)?;
-                expr_instrs.push(AsmInstruction::Mov {
-                    src: res_operand,
-                    dst: Operand::Register(Register::RAX),
-                });
-                expr_instrs.push(AsmInstruction::Ret);
-                Ok(expr_instrs)
-            },
+fn generate_statement_assembly(s: &Statement<'_>) -> Result<Vec<AsmInstruction>, CodegenError> {
+    match &s.kind {
+        StatementKind::Return(expr) => {
+            let (mut expr_instrs, res_operand) = generate_expression_assembly(&expr)?;
+            expr_instrs.push(AsmInstruction::Mov {
+                src: res_operand,
+                dst: Operand::Register(Register::RAX),
+            });
+            expr_instrs.push(AsmInstruction::Ret);
+            Ok(expr_instrs)
         }
     }
+}
 
-    fn generate_expression_assembly(&self, e: &Expression<'a>) -> Result<(Vec<AsmInstruction>, Operand), CodegenError> {
-        match e.kind {
-            ExpressionKind::IntConstant(num, radix) => {
-                let n = i64::from_str_radix(num, radix.value())?;
-                Ok((
-                    vec![
-                        AsmInstruction::Mov {
-                            src: Operand::Imm(n),
-                            dst: Operand::Register(Register::RAX),
-                        }
-                    ],
-                    Operand::Register(Register::RAX),
-                ))   
-            },
+fn generate_expression_assembly(e: &Expression<'_>) -> Result<(Vec<AsmInstruction>, Operand), CodegenError> {
+    match e.kind {
+        ExpressionKind::IntConstant(num, radix) => {
+            let n = i64::from_str_radix(num, radix.value())?;
+            Ok((
+                vec![
+                    AsmInstruction::Mov {
+                        src: Operand::Imm(n),
+                        dst: Operand::Register(Register::RAX),
+                    }
+                ],
+                Operand::Register(Register::RAX),
+            ))
         }
     }
 }

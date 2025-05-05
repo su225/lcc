@@ -390,7 +390,7 @@ class TestChapter(unittest.TestCase):
 
         # print stderr (might have warnings we care about even if compilation succeeded)
         # TODO make this controlled by verbosity maybe?
-        print_stderr(compile_result)
+        print(compile_result)
 
         # run the executable
         # TODO cleaner handling if executable doesn't exist? or check that it exists above?
