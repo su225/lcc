@@ -96,7 +96,7 @@ impl<'a> TokenType<'a> {
     }
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 pub enum LexerError {
     #[error("{location:?}: invalid character {ch:?} for identifier")]
     InvalidIdentifierCharacter { location: Location, ch: char },

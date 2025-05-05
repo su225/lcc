@@ -111,5 +111,6 @@ fn generate_expression_assembly(e: &Expression<'_>) -> Result<(Vec<AsmInstructio
                 Operand::Register(Register::RAX),
             ))
         }
+        _ => todo!("implement generating assembly code for other expression types"),
     }
 }

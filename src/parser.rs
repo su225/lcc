@@ -14,8 +14,15 @@ pub struct Symbol<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) enum UnaryOperator {
+    Complement,
+    Negate,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
+    Unary(UnaryOperator, Box<Expression<'a>>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -78,10 +85,10 @@ pub enum ParserError {
     KeywordUsedAsIdentifier { location: Location, kwd: KeywordIdentifier },
 
     #[error("{location:?}: unexpected token")]
-    UnexpectedToken { location: Location, expected_token_tag: TokenTag },
+    UnexpectedToken { location: Location, expected_token_tags: Vec<TokenTag> },
 
-    #[error("unexpected end of file. Expected {0}")]
-    UnexpectedEnd(TokenTag),
+    #[error("unexpected end of file. Expected {:?}", .0)]
+    UnexpectedEnd(Vec<TokenTag>),
 
     #[error("{location:?}: expected keyword {keyword_identifier:?}")]
     ExpectedKeyword {
@@ -181,11 +188,11 @@ impl<'a> Parser<'a> {
                 match token_type {
                     TokenType::Identifier(name) => Ok(Symbol { name, location }),
                     TokenType::Keyword(kwd) => Err(ParserError::KeywordUsedAsIdentifier { location, kwd }),
-                    _ => Err(ParserError::UnexpectedToken { location, expected_token_tag: TokenTag::Identifier })
+                    _ => Err(ParserError::UnexpectedToken { location, expected_token_tags: vec![TokenTag::Identifier] })
                 }
             }
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
-            None => Err(ParserError::UnexpectedEnd(TokenTag::Identifier)),
+            None => Err(ParserError::UnexpectedEnd(vec![TokenTag::Identifier])),
         }
     }
 
@@ -209,7 +216,49 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Result<Expression<'a>, ParserError> {
-        self.parse_int_constant_expression()
+        let tok = self.token_provider.peek();
+        match &tok {
+            Some(Ok(tok)) => {
+                match tok.token_type.tag() {
+                    TokenTag::OpenParentheses => {
+                        self.expect_open_parentheses()?;
+                        let expr = self.parse_expression()?;
+                        self.expect_close_parentheses()?;
+                        Ok(expr)
+                    },
+                    TokenTag::OperatorUnaryComplement => {
+                        let op_loc = tok.location;
+                        self.get_token_with_tag(TokenTag::OperatorUnaryComplement)?;
+                        let expr = self.parse_expression()?;
+                        Ok(Expression {
+                            location: op_loc,
+                            kind: ExpressionKind::Unary(UnaryOperator::Complement, Box::new(expr)),
+                        })
+                    },
+                    TokenTag::OperatorMinus => {
+                        let op_loc = tok.location;
+                        self.get_token_with_tag(TokenTag::OperatorMinus)?;
+                        let expr = self.parse_expression()?;
+                        Ok(Expression {
+                            location: op_loc,
+                            kind: ExpressionKind::Unary(UnaryOperator::Negate, Box::new(expr)),
+                        })
+                    },
+                    _ => {
+                        Err(ParserError::UnexpectedToken {
+                            location: tok.location,
+                            expected_token_tags: vec![
+                                TokenTag::OpenParentheses,
+                                TokenTag::OperatorUnaryComplement,
+                                TokenTag::OperatorMinus,
+                            ],
+                        })
+                    }
+                }
+            },
+            Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
+            None => Err(ParserError::UnexpectedEnd(vec![TokenTag::IntConstant, TokenTag::OpenParentheses])),
+        }
     }
 
     fn parse_int_constant_expression(&mut self) -> Result<Expression<'a>, ParserError> {
@@ -237,11 +286,11 @@ impl<'a> Parser<'a> {
                 if token_tag == expected_token_tag {
                     Ok(token)
                 } else {
-                    Err(ParserError::UnexpectedToken { location: token.location, expected_token_tag })
+                    Err(ParserError::UnexpectedToken { location: token.location, expected_token_tags: vec![expected_token_tag] })
                 }
             }
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
-            None => Err(ParserError::UnexpectedEnd(expected_token_tag)),
+            None => Err(ParserError::UnexpectedEnd(vec![expected_token_tag])),
         }
     }
 }
