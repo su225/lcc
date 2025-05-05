@@ -219,25 +219,33 @@ impl<'a> Parser<'a> {
         let tok = self.token_provider.peek();
         match &tok {
             Some(Ok(tok)) => {
-                match tok.token_type.tag() {
-                    TokenTag::OpenParentheses => {
+                match tok.token_type {
+                    TokenType::IntConstant(val, radix) => {
+                        let loc = tok.location.clone();
+                        self.token_provider.next().unwrap().expect("must be int");
+                        Ok(Expression {
+                            location: loc,
+                            kind: ExpressionKind::IntConstant(val, radix)
+                        })
+                    },
+                    TokenType::OpenParentheses => {
                         self.expect_open_parentheses()?;
                         let expr = self.parse_expression()?;
                         self.expect_close_parentheses()?;
                         Ok(expr)
                     },
-                    TokenTag::OperatorUnaryComplement => {
+                    TokenType::OperatorUnaryComplement => {
                         let op_loc = tok.location;
-                        self.get_token_with_tag(TokenTag::OperatorUnaryComplement)?;
+                        self.expect_token_with_tag(TokenTag::OperatorUnaryComplement)?;
                         let expr = self.parse_expression()?;
                         Ok(Expression {
                             location: op_loc,
                             kind: ExpressionKind::Unary(UnaryOperator::Complement, Box::new(expr)),
                         })
                     },
-                    TokenTag::OperatorMinus => {
+                    TokenType::OperatorMinus => {
                         let op_loc = tok.location;
-                        self.get_token_with_tag(TokenTag::OperatorMinus)?;
+                        self.expect_token_with_tag(TokenTag::OperatorMinus)?;
                         let expr = self.parse_expression()?;
                         Ok(Expression {
                             location: op_loc,
@@ -297,15 +305,15 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::common::Location;
+    use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{Expression, FunctionDefinition, Parser, ProgramDefinition, Statement, Symbol};
-    use crate::parser::ExpressionKind::IntConstant;
+    use crate::parser::{Expression, ExpressionKind, FunctionDefinition, Parser, ProgramDefinition, Statement, Symbol, UnaryOperator};
+    use crate::parser::ExpressionKind::{IntConstant, Unary};
     use crate::parser::StatementKind::Return;
 
     #[test]
-    fn parse_program_with_tabs() {
+    fn test_parse_program_with_tabs() {
         let src = "int	main	(	void)	{	return	0	;	}";
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
@@ -333,7 +341,7 @@ mod test {
     }
 
     #[test]
-    fn parse_multiple_functions() {
+    fn test_parse_multiple_functions() {
         let src = r#"
             int main(void) {
                 return 2;
@@ -376,5 +384,47 @@ mod test {
                 }
             ],
         }), parsed)
+    }
+
+    #[test]
+    fn test_parse_expression_constant_int() {
+        let src = "100";
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse_expression();
+        assert_eq!(parsed, Ok(Expression {
+            location: Location { line: 1, column: 1 },
+            kind:  IntConstant("100", Radix::Decimal),
+        }));
+    }
+
+    #[test]
+    fn test_parse_expression_unary_complement() {
+        let src = "~0xdeadbeef";
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse_expression();
+        assert_eq!(parsed, Ok(Expression {
+            location: Location { line: 1, column: 1 },
+            kind:  Unary(UnaryOperator::Complement, Box::new(Expression {
+                location: Location { line: 1, column: 2 },
+                kind: IntConstant("0xdeadbeef", Radix::Hexadecimal),
+            })),
+        }));
+    }
+
+    #[test]
+    fn test_parse_expression_unary_negation() {
+        let src = "-100";
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse_expression();
+        assert_eq!(parsed, Ok(Expression {
+            location: Location { line: 1, column: 1 },
+            kind:  Unary(UnaryOperator::Negate, Box::new(Expression {
+                location: Location { line: 1, column: 2 },
+                kind: IntConstant("100", Radix::Decimal),
+            })),
+        }));
     }
 }
