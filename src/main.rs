@@ -9,12 +9,14 @@ use thiserror::Error;
 use crate::codegen::CodegenError;
 use crate::lexer::{Lexer, LexerError, Token};
 use crate::parser::{Parser, ParserError};
+use crate::tacky_emit::{TackyEmitter, TackyError};
 
 mod lexer;
 mod parser;
 mod common;
 mod codegen;
 mod code_emit;
+mod tacky_emit;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
@@ -36,6 +38,11 @@ struct Args {
     /// (Runs Lexer and Parser)
     #[arg(short = 'P', long = "parse", long, default_value_t = false)]
     parse: bool,
+
+    /// Tacky is the intermediate representation
+    /// The compiler stops at intermediate-representation generation
+    #[arg(short = 'T', long = "tacky", long, default_value_t = false)]
+    tacky: bool,
 
     /// Generate assembly code, but stop before emitting .S file
     /// for the assembler and linker.
@@ -60,6 +67,9 @@ enum CompilerDriverError {
 
     #[error("error in parser: {0}")]
     ParserError(#[from] ParserError),
+
+    #[error("error in tacky generation: {0}")]
+    TackyGenerationError(#[from] TackyError),
 
     #[error("error while generating code: {0}")]
     CodeGeneratorError(#[from] CodegenError),
@@ -90,7 +100,12 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", ast);
         return Ok(());
     }
-    let asm_code = codegen::generate_assembly(ast)?;
+    let mut tacky_gen = TackyEmitter::new(ast);
+    let tacky = tacky_gen.emit_tacky()?;
+    if args.tacky {
+        return Ok(());
+    }
+    let asm_code = codegen::generate_assembly(tacky)?;
     if args.codegen {
         println!("{:#?}", asm_code);
         return Ok(());
