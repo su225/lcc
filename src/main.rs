@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::codegen::CodegenError;
 use crate::lexer::{Lexer, LexerError, Token};
 use crate::parser::{Parser, ParserError};
-use crate::tacky_emit::{TackyEmitter, TackyError};
+use crate::tacky_emit::{TackyError};
 
 mod lexer;
 mod parser;
@@ -100,8 +100,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", ast);
         return Ok(());
     }
-    let mut tacky_gen = TackyEmitter::new(ast);
-    let tacky = tacky_gen.emit_tacky()?;
+    let tacky = tacky_emit::emit_tacky(&ast)?;
     if args.tacky {
         println!("{:#?}", tacky);
         return Ok(());

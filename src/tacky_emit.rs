@@ -53,11 +53,6 @@ pub(crate) enum TackyError {
     IntImmediateParseError(#[from] ParseIntError),
 }
 
-pub(crate) struct TackyEmitter<'a> {
-    next_int: u64,
-    program: ProgramDefinition<'a>,
-}
-
 const COMPILER_GEN_PREFIX: &'static str = "<t>";
 
 #[derive(Debug, PartialEq, Clone)]
@@ -69,69 +64,71 @@ impl Symbol {
     }
 }
 
-impl<'a> TackyEmitter<'a> {
-    pub fn new(ast: ProgramDefinition<'a>) -> TackyEmitter<'a> {
-        TackyEmitter {
-            next_int: 0,
-            program: ast,
-        }
-    }
+struct TackyContext {
+    next_int: i64,
+}
 
-    pub fn emit_tacky(&mut self) -> Result<Program, TackyError> {
-        let mut f = vec![];
-        for fd in self.program.functions.iter() {
-            let tf = self.emit_tacky_for_function(fd)?;
-            f.push(tf);
-        }
-        Ok(Program { functions: f })
-    }
-
-    fn emit_tacky_for_function(&mut self, f: &FunctionDefinition) -> Result<Function, TackyError> {
-        let mut instructions = vec![];
-        for stmt in f.body.iter() {
-            let instrs = self.emit_tacky_for_statement(stmt)?;
-            instructions.extend(instrs);
-        }
-        Ok(Function {
-            identifier: Symbol(f.name.name.into()),
-            body: instructions,
-        })
-    }
-
-    fn emit_tacky_for_statement(&mut self, s: &Statement) -> Result<Vec<Instruction>, TackyError> {
-        match s.kind {
-            StatementKind::Return(ref expr) => {
-                let (dst, mut expr_instrs) = self.emit_tacky_for_expression(expr)?;
-                expr_instrs.push(Return(dst));
-                Ok(expr_instrs)
-            },
-        }
-    }
-
-    fn emit_tacky_for_expression(&mut self, e: &Expression) -> Result<(Value, Vec<Instruction>), TackyError> {
-        match &e.kind {
-            ExpressionKind::IntConstant(c, radix) => {
-                let n = i64::from_str_radix(c, radix.value())?;
-                Ok((Constant(n), vec![]))
-            }
-            ExpressionKind::Unary(unary_op, src) => {
-                let (src_tacky, mut tacky_instrs) = self.emit_tacky_for_expression(src)?;
-                let dst_tacky_identifier = self.next_temporary_identifier();
-                let dst_tacky = Value::Variable(dst_tacky_identifier.clone());
-                let result_val = Value::Variable(dst_tacky_identifier);
-                tacky_instrs.push(Unary {
-                    operator: UnaryOperator::from(unary_op),
-                    src: src_tacky,
-                    dst: dst_tacky,
-                });
-                Ok((result_val, tacky_instrs))
-            }
-        }
+impl TackyContext {
+    fn new() -> TackyContext {
+        TackyContext { next_int: 0 }
     }
 
     fn next_temporary_identifier(&mut self) -> Symbol {
         let identifier = format!("{}.{}", COMPILER_GEN_PREFIX, self.next_int);
         self.next_int += 1;
         Symbol(identifier)
+    }
+}
+
+pub fn emit_tacky(prog: &ProgramDefinition) -> Result<Program, TackyError> {
+    let mut ctx = TackyContext::new();
+    let mut f = vec![];
+    for fd in prog.functions.iter() {
+        let tf = emit_tacky_for_function(&mut ctx, fd)?;
+        f.push(tf);
+    }
+    Ok(Program { functions: f })
+}
+
+fn emit_tacky_for_function(ctx: &mut TackyContext, f: &FunctionDefinition) -> Result<Function, TackyError> {
+    let mut instructions = vec![];
+    for stmt in f.body.iter() {
+        let instrs = emit_tacky_for_statement(ctx, stmt)?;
+        instructions.extend(instrs);
+    }
+    Ok(Function {
+        identifier: Symbol(f.name.name.into()),
+        body: instructions,
+    })
+}
+
+fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<Instruction>, TackyError> {
+    match s.kind {
+        StatementKind::Return(ref expr) => {
+            let (dst, mut expr_instrs) = emit_tacky_for_expression(ctx, expr)?;
+            expr_instrs.push(Return(dst));
+            Ok(expr_instrs)
+        },
+    }
+}
+
+fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(Value, Vec<Instruction>), TackyError> {
+    match &e.kind {
+        ExpressionKind::IntConstant(c, radix) => {
+            let n = i64::from_str_radix(c, radix.value())?;
+            Ok((Constant(n), vec![]))
+        }
+        ExpressionKind::Unary(unary_op, src) => {
+            let (src_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, src)?;
+            let dst_tacky_identifier = ctx.next_temporary_identifier();
+            let dst_tacky = Value::Variable(dst_tacky_identifier.clone());
+            let result_val = Value::Variable(dst_tacky_identifier);
+            tacky_instrs.push(Unary {
+                operator: UnaryOperator::from(unary_op),
+                src: src_tacky,
+                dst: dst_tacky,
+            });
+            Ok((result_val, tacky_instrs))
+        }
     }
 }
