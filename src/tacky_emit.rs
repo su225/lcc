@@ -117,13 +117,14 @@ impl<'a> TackyEmitter<'a> {
             ExpressionKind::Unary(unary_op, src) => {
                 let (src_tacky, mut tacky_instrs) = self.emit_tacky_for_expression(src)?;
                 let dst_tacky_identifier = self.next_temporary_identifier();
-                let dst_tacky = Value::Variable(dst_tacky_identifier);
+                let dst_tacky = Value::Variable(dst_tacky_identifier.clone());
+                let result_val = Value::Variable(dst_tacky_identifier);
                 tacky_instrs.push(Unary {
                     operator: UnaryOperator::from(unary_op),
                     src: src_tacky,
                     dst: dst_tacky,
                 });
-                Ok((Value::Variable(dst_tacky_identifier.clone()), tacky_instrs))
+                Ok((result_val, tacky_instrs))
             }
         }
     }
