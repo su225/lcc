@@ -9,14 +9,14 @@ use thiserror::Error;
 use crate::codegen::CodegenError;
 use crate::lexer::{Lexer, LexerError, Token};
 use crate::parser::{Parser, ParserError};
-use crate::tacky_emit::{TackyError};
+use crate::tacky::{TackyError};
 
 mod lexer;
 mod parser;
 mod common;
 mod codegen;
-mod code_emit;
-mod tacky_emit;
+mod asmgen;
+mod tacky;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
@@ -100,7 +100,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", ast);
         return Ok(());
     }
-    let tacky = tacky_emit::emit_tacky(&ast)?;
+    let tacky = tacky::emit(&ast)?;
     if args.tacky {
         println!("{:#?}", tacky);
         return Ok(());

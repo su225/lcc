@@ -2,8 +2,8 @@ use std::num::ParseIntError;
 use thiserror::Error;
 
 use crate::parser::{Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind};
-use crate::tacky_emit::Instruction::{Return, Unary};
-use crate::tacky_emit::Value::Constant;
+use crate::tacky::Instruction::{Return, Unary};
+use crate::tacky::Value::Constant;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Program {
@@ -80,7 +80,7 @@ impl TackyContext {
     }
 }
 
-pub fn emit_tacky(prog: &ProgramDefinition) -> Result<Program, TackyError> {
+pub fn emit(prog: &ProgramDefinition) -> Result<Program, TackyError> {
     let mut ctx = TackyContext::new();
     let mut f = vec![];
     for fd in prog.functions.iter() {
