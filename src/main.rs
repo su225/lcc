@@ -105,30 +105,29 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", tacky);
         return Ok(());
     }
-    Ok(())
-    // let asm_code = codegen::generate_assembly(tacky)?;
-    // if args.codegen {
-    //     println!("{:#?}", asm_code);
-    //     return Ok(());
-    // }
-    // let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
-    // let output_asm_file = format!("{}.s", output_stem);
-    // let output_file = &output_stem;
-    // OpenOptions::new()
-    //     .create(true)
-    //     .write(true)
-    //     .open(&output_asm_file)
-    //     .and_then(|f| code_emit::emit(asm_code, f))
-    //     .map_err(|e| CompilerDriverError::CodeEmitError(output_asm_file.clone(), e))?;
-    //
-    // invoke_system_assembler(&output_file, &output_asm_file)
-    //     .and_then(|assembler_status| {
-    //         if assembler_status.success() {
-    //             Ok(())
-    //         } else {
-    //             Err(CompilerDriverError::SystemAssemblerFailedError(assembler_status))
-    //         }
-    //     })
+    let asm_code = codegen::generate_assembly(tacky)?;
+    if args.codegen {
+        println!("{:#?}", asm_code);
+        return Ok(());
+    }
+    let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
+    let output_asm_file = format!("{}.s", output_stem);
+    let output_file = &output_stem;
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&output_asm_file)
+        .and_then(|f| asmgen::emit(asm_code, f))
+        .map_err(|e| CompilerDriverError::CodeEmitError(output_asm_file.clone(), e))?;
+
+    invoke_system_assembler(&output_file, &output_asm_file)
+        .and_then(|assembler_status| {
+            if assembler_status.success() {
+                Ok(())
+            } else {
+                Err(CompilerDriverError::SystemAssemblerFailedError(assembler_status))
+            }
+        })
 }
 
 /// invoke_system_assembler invokes the assembler installed in the system for the assembly
