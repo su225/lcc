@@ -96,6 +96,7 @@ pub enum CodegenError {
 }
 
 struct StackAllocationContext {
+    stack_size: usize,
     cur_offset: StackOffset,
     symbol_offset: HashMap<IRSymbol, StackOffset>,
 }
@@ -103,6 +104,7 @@ struct StackAllocationContext {
 impl StackAllocationContext {
     fn new() -> Self {
         StackAllocationContext {
+            stack_size: 0,
             cur_offset: StackOffset(0),
             symbol_offset: HashMap::new(),
         }
@@ -114,7 +116,9 @@ pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
     for f in p.functions {
         let asm_func = generate_function_assembly(f)?;
         let mut stack_alloc_ctx = StackAllocationContext::new();
-        let stack_alloced = allocate_stack_frame(&mut stack_alloc_ctx, asm_func)?;
+        let mut stack_alloced = allocate_stack_frame(&mut stack_alloc_ctx, asm_func)?;
+        let reqd_stack_size = stack_alloc_ctx.stack_size;
+        stack_alloced.instructions.insert(0, AsmInstruction::AllocateStack(reqd_stack_size));
         asm_functions.push(stack_alloced);
     }
     Ok(AsmProgram { functions: asm_functions })
@@ -210,6 +214,7 @@ fn get_or_allocate_stack(ctx: &mut StackAllocationContext, sym: IRSymbol) -> Sta
     if let Some(&offset) = ctx.symbol_offset.get(&sym) {
         return offset;
     }
+    ctx.stack_size += 8;
     ctx.cur_offset = StackOffset(ctx.cur_offset.0 - 8);
     let new_offset = ctx.cur_offset;
     ctx.symbol_offset.insert(sym, new_offset);
