@@ -59,17 +59,6 @@ pub enum AsmOperand {
     Stack { offset: StackOffset },
 }
 
-impl Display for AsmOperand {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match &self {
-            AsmOperand::Imm(n) => format!("${}", n),
-            AsmOperand::Register(r) => r.to_string(),
-            AsmOperand::Pseudo(_) => todo!("implement for pseudo"),
-            AsmOperand::Stack{..} => todo!("implement for stack"),
-        })
-    }
-}
-
 #[derive(Debug)]
 pub enum AsmInstruction {
     Mov { src: AsmOperand, dst: AsmOperand },
