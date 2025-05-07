@@ -1,4 +1,7 @@
+use std::fmt::Debug;
 use std::num::ParseIntError;
+
+use derive_more::with_trait::Display;
 use thiserror::Error;
 
 use crate::parser::{Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
@@ -55,7 +58,7 @@ pub(crate) enum TackyError {
 
 const COMPILER_GEN_PREFIX: &'static str = "<t>";
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
 pub(crate) struct IRSymbol(String);
 
 impl IRSymbol {

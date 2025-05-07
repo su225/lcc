@@ -9,22 +9,12 @@ use crate::tacky::{Instruction, IRFunction, IRProgram, IRSymbol, IRUnaryOperator
 
 #[derive(Debug, Clone)]
 pub enum Register {
-    AX,
-    BX,
-    CX,
-    DX,
-
-    EAX,
-    EBX,
-    ECX,
-    EDX,
-
-    RAX,
-    RBX,
-    RCX,
-    RDX,
-
+    AX, BX, CX, DX,
+    EAX, EBX, ECX, EDX,
+    RAX, RBX, RCX, RDX,
     R10,
+
+    RSP, RBP
 }
 
 impl Display for Register {
@@ -46,6 +36,8 @@ impl Display for Register {
             Register::RDX => "rdx",
 
             Register::R10 => "r10",
+            Register::RSP => "rsp",
+            Register::RBP => "rbp",
         })
     }
 }
@@ -56,12 +48,15 @@ pub enum AsmUnaryOperator {
     Not,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct StackOffset(isize);
+
 #[derive(Debug, Clone)]
 pub enum AsmOperand {
     Imm(i64),
     Register(Register),
     Pseudo(IRSymbol),
-    Stack { stack_offset: isize },
+    Stack { offset: StackOffset },
 }
 
 impl Display for AsmOperand {
@@ -70,7 +65,7 @@ impl Display for AsmOperand {
             AsmOperand::Imm(n) => format!("${}", n),
             AsmOperand::Register(r) => r.to_string(),
             AsmOperand::Pseudo(_) => todo!("implement for pseudo"),
-            AsmOperand::Stack(_) => todo!("implement for stack"),
+            AsmOperand::Stack{..} => todo!("implement for stack"),
         })
     }
 }
@@ -101,14 +96,14 @@ pub enum CodegenError {
 }
 
 struct StackAllocationContext {
-    cur_offset: isize,
-    symbol_offset: HashMap<IRSymbol, isize>,
+    cur_offset: StackOffset,
+    symbol_offset: HashMap<IRSymbol, StackOffset>,
 }
 
 impl StackAllocationContext {
     fn new() -> Self {
         StackAllocationContext {
-            cur_offset: 0,
+            cur_offset: StackOffset(0),
             symbol_offset: HashMap::new(),
         }
     }
@@ -119,7 +114,7 @@ pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
     for f in p.functions {
         let asm_func = generate_function_assembly(f)?;
         let mut stack_alloc_ctx = StackAllocationContext::new();
-        let stack_alloced = allocate_stack_frame(&stack_alloc_ctx, asm_func)?;
+        let stack_alloced = allocate_stack_frame(&mut stack_alloc_ctx, asm_func)?;
         asm_functions.push(stack_alloced);
     }
     Ok(AsmProgram { functions: asm_functions })
@@ -142,16 +137,16 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
         Instruction::Unary { operator, src, dst } => {
             let asm_dst_operand = from_ir_value(dst);
             Ok(vec![
-                Mov { src: from_ir_value(src), dst: asm_dst_operand },
+                Mov { src: from_ir_value(src), dst: asm_dst_operand.clone() },
                 Unary {
                     op: match operator {
                         IRUnaryOperator::Complement => AsmUnaryOperator::Not,
                         IRUnaryOperator::Negate => AsmUnaryOperator::Neg,
                     },
                     dst: asm_dst_operand,
-                }
+                },
             ])
-        },
+        }
         Instruction::Return(v) => {
             Ok(vec![
                 Mov {
@@ -165,7 +160,60 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
 }
 
 fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
-    todo!("allocate stack location to pseudo registers")
+    let mut res_instrs = Vec::with_capacity(f.instructions.len());
+    for instr in f.instructions {
+        let alloced = match instr {
+            Mov { src, dst } => {
+                match (src, dst) {
+                    (AsmOperand::Pseudo(s), AsmOperand::Pseudo(d)) => vec![
+                        Mov {
+                            src: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, s) },
+                            dst: AsmOperand::Register(Register::R10),
+                        },
+                        Mov {
+                            src: AsmOperand::Register(Register::R10),
+                            dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, d) },
+                        },
+                    ],
+                    (AsmOperand::Pseudo(s), dst_operand) => vec![
+                        Mov {
+                            src: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, s) },
+                            dst: dst_operand,
+                        },
+                    ],
+                    (src_operand, AsmOperand::Pseudo(d)) => vec![
+                        Mov {
+                            src: src_operand,
+                            dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, d) },
+                        }
+                    ],
+                    _ => vec![],
+                }
+            }
+            Unary { op, dst: AsmOperand::Pseudo(sym) } => vec![
+                Unary {
+                    op,
+                    dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, sym) },
+                }
+            ],
+            instr => vec![instr],
+        };
+        res_instrs.extend(alloced);
+    }
+    Ok(AsmFunction {
+        name: f.name,
+        instructions: res_instrs,
+    })
+}
+
+fn get_or_allocate_stack(ctx: &mut StackAllocationContext, sym: IRSymbol) -> StackOffset {
+    if let Some(&offset) = ctx.symbol_offset.get(&sym) {
+        return offset;
+    }
+    ctx.cur_offset = StackOffset(ctx.cur_offset.0 - 8);
+    let new_offset = ctx.cur_offset;
+    ctx.symbol_offset.insert(sym, new_offset);
+    new_offset
 }
 
 fn from_ir_value(v: IRValue) -> AsmOperand {

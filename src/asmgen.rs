@@ -2,7 +2,7 @@ use std::io;
 use std::io::Write;
 use crate::codegen::{AsmFunction, AsmInstruction, AsmProgram};
 
-pub fn emit<W: Write>(asm_code: AsmProgram<'_>, mut w: W) -> io::Result<()> {
+pub fn emit<W: Write>(asm_code: AsmProgram, mut w: W) -> io::Result<()> {
     for f in asm_code.functions.into_iter() {
         emit_function(f, &mut w)?;
     }
@@ -28,6 +28,8 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
                 src_operand = s, dst_operand = d))?
         },
         AsmInstruction::Ret => w.write_fmt(format_args!("    ret"))?,
+        AsmInstruction::Unary { .. } => todo!(),
+        AsmInstruction::AllocateStack(_) => todo!(),
     };
     Ok(())
 }
