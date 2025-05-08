@@ -7,13 +7,25 @@ use thiserror::Error;
 use crate::codegen::AsmInstruction::{Mov, Ret, Unary};
 use crate::tacky::{Instruction, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Register {
-    AX, BX, CX, DX,
-    EAX, EBX, ECX, EDX, R10D,
-    RAX, RBX, RCX, RDX, R10,
+    AX,
+    BX,
+    CX,
+    DX,
+    EAX,
+    EBX,
+    ECX,
+    EDX,
+    R10D,
+    RAX,
+    RBX,
+    RCX,
+    RDX,
+    R10,
 
-    RSP, RBP
+    RSP,
+    RBP,
 }
 
 impl Display for Register {
@@ -42,7 +54,7 @@ impl Display for Register {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AsmUnaryOperator {
     Neg,
     Not,
@@ -57,10 +69,10 @@ impl Display for AsmUnaryOperator {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StackOffset(isize);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AsmOperand {
     Imm(i64),
     Register(Register),
@@ -74,12 +86,12 @@ impl Display for AsmOperand {
             AsmOperand::Imm(n) => format!("${}", n),
             AsmOperand::Register(r) => r.to_string(),
             AsmOperand::Pseudo(p) => format!("<<{}>>", p),
-            AsmOperand::Stack{ offset } => format!("{}(%rbp)", offset.0),
+            AsmOperand::Stack { offset } => format!("{}(%rbp)", offset.0),
         })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
     Mov { src: AsmOperand, dst: AsmOperand },
     Unary { op: AsmUnaryOperator, dst: AsmOperand },
@@ -87,13 +99,13 @@ pub enum AsmInstruction {
     Ret,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct AsmFunction {
     pub name: IRSymbol,
     pub instructions: Vec<AsmInstruction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct AsmProgram {
     pub functions: Vec<AsmFunction>,
 }
@@ -200,7 +212,9 @@ fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Res
                             dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, d) },
                         }
                     ],
-                    _ => vec![],
+                    (src_operand, dst_operand) => vec![
+                        Mov { src: src_operand, dst: dst_operand }
+                    ],
                 }
             }
             Unary { op, dst: AsmOperand::Pseudo(sym) } => vec![
@@ -234,5 +248,72 @@ fn from_ir_value(v: IRValue) -> AsmOperand {
     match v {
         IRValue::Constant(c) => AsmOperand::Imm(c),
         IRValue::Variable(s) => AsmOperand::Pseudo(s),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use indoc::indoc;
+
+    use crate::codegen::{AsmFunction, AsmOperand, AsmProgram, generate_assembly};
+    use crate::codegen::AsmInstruction::{AllocateStack, Mov, Ret};
+    use crate::codegen::Register::EAX;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::tacky::emit;
+
+    #[test]
+    fn test_generate_assembly_for_return_0() {
+        let src = indoc! {r#"
+        int main(void) {
+            return 0;
+        }
+        "#};
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let ast = parser.parse().expect("Parsing should be successful");
+        let ir = emit(&ast).expect("IR generation must be successful");
+        let asm = generate_assembly(ir).expect("Assembly generation must be successful");
+        assert_eq!(asm, AsmProgram {
+            functions: vec![AsmFunction {
+                name: "main".into(),
+                instructions: vec![
+                    AllocateStack(0),
+                    Mov {
+                        src: AsmOperand::Imm(0),
+                        dst: AsmOperand::Register(EAX),
+                    },
+                    Ret,
+                ],
+            }]
+        });
+    }
+    
+    #[test]
+    fn test_generate_assembly_for_multi_digit_constant_return_value() {
+        let src = indoc! {r#"
+        int main(void) {
+            // test case w/ multi-digit constant
+            return 100;
+        }
+        "#};
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let ast = parser.parse().expect("Parsing should be successful");
+        let ir = emit(&ast).expect("IR generation must be successful");
+        let asm = generate_assembly(ir).expect("Assembly generation must be successful");
+        assert_eq!(asm, AsmProgram {
+            functions: vec![AsmFunction {
+                name: "main".into(),
+                instructions: vec![
+                    AllocateStack(0),
+                    Mov {
+                        src: AsmOperand::Imm(100),
+                        dst: AsmOperand::Register(EAX),
+                    },
+                    Ret,
+                ],
+            }],
+        })
     }
 }

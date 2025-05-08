@@ -1,6 +1,7 @@
 use std::{fs, io};
 use std::error::Error;
 use std::fs::OpenOptions;
+use std::io::Write;
 use std::process::{Command, ExitStatus};
 
 use clap::Parser as ClapParser;
@@ -49,8 +50,8 @@ struct Args {
     #[arg(short = 'C', long = "codegen", long, default_value_t = false)]
     codegen: bool,
 
-    /// Generate and emit .S file for assembler
-    #[arg(short = 'S', long = "emit-assembly", long, default_value_t = true)]
+    /// Generate and emit .S file for assembler and stop there
+    #[arg(short = 'S', long = "emit-assembly", long, default_value_t = false)]
     emit_assembly: bool,
 }
 
@@ -113,6 +114,13 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
     let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
     let output_asm_file = format!("{}.s", output_stem);
     let output_file = &output_stem;
+
+    if args.emit_assembly {
+        asmgen::emit(asm_code, io::stdout()).
+            map_err(|e| CompilerDriverError::CodeEmitError("<stdout>".to_string(), e))?;
+        return Ok(());
+    }
+
     OpenOptions::new()
         .create(true)
         .write(true)

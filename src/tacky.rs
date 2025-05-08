@@ -59,7 +59,13 @@ pub(crate) enum TackyError {
 const COMPILER_GEN_PREFIX: &'static str = "<t>";
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
-pub(crate) struct IRSymbol(String);
+pub(crate) struct IRSymbol(pub String);
+
+impl From<&str> for IRSymbol {
+    fn from(value: &str) -> Self {
+        IRSymbol(value.to_string())
+    }
+}
 
 impl IRSymbol {
     pub fn is_generated(&self) -> bool {
