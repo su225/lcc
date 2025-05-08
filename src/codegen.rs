@@ -254,9 +254,11 @@ fn from_ir_value(v: IRValue) -> AsmOperand {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-
-    use crate::codegen::{AsmFunction, AsmOperand, AsmProgram, generate_assembly};
-    use crate::codegen::AsmInstruction::{AllocateStack, Mov, Ret};
+    use AsmOperand::Register;
+    use crate::codegen::{AsmFunction, AsmOperand, AsmProgram, generate_assembly, StackOffset};
+    use crate::codegen::AsmInstruction::{AllocateStack, Mov, Ret, Unary};
+    use crate::codegen::AsmOperand::{Imm, Stack};
+    use crate::codegen::AsmUnaryOperator::Not;
     use crate::codegen::Register::EAX;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
@@ -269,26 +271,22 @@ mod test {
             return 0;
         }
         "#};
-        let lexer = Lexer::new(src);
-        let mut parser = Parser::new(lexer);
-        let ast = parser.parse().expect("Parsing should be successful");
-        let ir = emit(&ast).expect("IR generation must be successful");
-        let asm = generate_assembly(ir).expect("Assembly generation must be successful");
-        assert_eq!(asm, AsmProgram {
+        let expected_asm = AsmProgram {
             functions: vec![AsmFunction {
                 name: "main".into(),
                 instructions: vec![
                     AllocateStack(0),
                     Mov {
                         src: AsmOperand::Imm(0),
-                        dst: AsmOperand::Register(EAX),
+                        dst: Register(EAX),
                     },
                     Ret,
                 ],
             }]
-        });
+        };
+        assert_generated_asm_for_source(src, expected_asm);
     }
-    
+
     #[test]
     fn test_generate_assembly_for_multi_digit_constant_return_value() {
         let src = indoc! {r#"
@@ -297,23 +295,47 @@ mod test {
             return 100;
         }
         "#};
-        let lexer = Lexer::new(src);
-        let mut parser = Parser::new(lexer);
-        let ast = parser.parse().expect("Parsing should be successful");
-        let ir = emit(&ast).expect("IR generation must be successful");
-        let asm = generate_assembly(ir).expect("Assembly generation must be successful");
-        assert_eq!(asm, AsmProgram {
+        let expected_asm = AsmProgram {
             functions: vec![AsmFunction {
                 name: "main".into(),
                 instructions: vec![
                     AllocateStack(0),
-                    Mov {
-                        src: AsmOperand::Imm(100),
-                        dst: AsmOperand::Register(EAX),
-                    },
+                    Mov { src: Imm(100), dst: Register(EAX) },
                     Ret,
                 ],
             }],
-        })
+        };
+        assert_generated_asm_for_source(src, expected_asm);
+    }
+
+    #[test]
+    fn test_generate_assembly_for_bitwise_complement_operator() {
+        let src = indoc! {r#"
+        int main(void) {
+            return ~0;
+        }
+        "#};
+        let expected_asm = AsmProgram {
+            functions: vec![AsmFunction {
+                name: "main".into(),
+                instructions: vec![
+                    AllocateStack(8),
+                    Mov { src: Imm(0), dst: Stack { offset: StackOffset(-8) } },
+                    Unary { op: Not, dst: Stack { offset: StackOffset(-8) } },
+                    Mov { src: Stack { offset: StackOffset(-8) }, dst: Register(EAX) },
+                    Ret,
+                ],
+            }],
+        };
+        assert_generated_asm_for_source(src, expected_asm);
+    }
+
+    fn assert_generated_asm_for_source(source_code: &str, expected_asm: AsmProgram) {
+        let lexer = Lexer::new(source_code);
+        let mut parser = Parser::new(lexer);
+        let ast = parser.parse().expect("Parsing should be successful");
+        let ir = emit(&ast).expect("IR generation must be successful");
+        let actual_asm = generate_assembly(ir).expect("Assembly generation must be successful");
+        assert_eq!(expected_asm, actual_asm, "expected:{:#?}\nactual:{:#?}", expected_asm, actual_asm);
     }
 }
