@@ -48,6 +48,15 @@ pub enum AsmUnaryOperator {
     Not,
 }
 
+impl Display for AsmUnaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match &self {
+            AsmUnaryOperator::Neg => "negl",
+            AsmUnaryOperator::Not => "notl",
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct StackOffset(isize);
 
@@ -57,6 +66,17 @@ pub enum AsmOperand {
     Register(Register),
     Pseudo(IRSymbol),
     Stack { offset: StackOffset },
+}
+
+impl Display for AsmOperand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match &self {
+            AsmOperand::Imm(n) => format!("${}", n),
+            AsmOperand::Register(r) => r.to_string(),
+            AsmOperand::Pseudo(p) => format!("<<{}>>", p),
+            AsmOperand::Stack{ offset } => format!("{}(%rbp)", offset.0),
+        })
+    }
 }
 
 #[derive(Debug)]

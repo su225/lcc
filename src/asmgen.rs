@@ -37,11 +37,11 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
         AsmInstruction::Unary { op, dst } =>
             w.write_fmt(format_args!("    {unary_op} {operand}\n",
                 unary_op = op.to_string(),
-                operand = dst.to_string())),
+                operand = dst.to_string()))?,
 
         AsmInstruction::AllocateStack(stack_size) =>
             w.write_fmt(format_args!("    subq ${stack_size}, %rsp\n",
-                stack_size = stack_size)),
+                stack_size = stack_size))?,
     };
     Ok(())
 }
