@@ -3,7 +3,9 @@
 //! Parsing is used. It is handwritten.
 
 use std::iter::Peekable;
+
 use thiserror::Error;
+
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
 
@@ -17,6 +19,15 @@ pub struct Symbol<'a> {
 pub(crate) enum UnaryOperator {
     Complement,
     Negate,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
 }
 
 #[derive(Debug, PartialEq)]
@@ -308,7 +319,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{Expression, ExpressionKind, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
+    use crate::parser::{Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{IntConstant, Unary};
     use crate::parser::StatementKind::Return;
 

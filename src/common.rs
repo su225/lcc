@@ -4,6 +4,12 @@ pub struct Location {
     pub(crate) column: usize,
 }
 
+impl From<(usize, usize)> for Location {
+    fn from(value: (usize, usize)) -> Self {
+        Location { line: value.0, column: value.1 }
+    }
+}
+
 impl Location {
     pub(crate) fn advance_line(&mut self) {
         self.line += 1;

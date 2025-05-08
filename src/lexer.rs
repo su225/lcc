@@ -51,6 +51,9 @@ pub enum TokenTag {
     OperatorMinus,
     OperatorUnaryComplement,
     OperatorUnaryDecrement,
+    OperatorPlus,
+    OperatorAsterisk,
+    OperatorModulo,
 }
 
 impl Display for TokenTag {
@@ -72,8 +75,11 @@ pub enum TokenType<'a> {
 
     OperatorUnaryComplement,
     OperatorUnaryDecrement,
+    OperatorPlus,
     OperatorMinus,
+    OperatorAsterisk,
     OperatorDiv,
+    OperatorModulo,
 }
 
 impl<'a> TokenType<'a> {
@@ -92,6 +98,9 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorDiv => TokenTag::OperatorDiv,
             TokenType::OperatorUnaryDecrement => TokenTag::OperatorUnaryDecrement,
             TokenType::OperatorMinus => TokenTag::OperatorMinus,
+            TokenType::OperatorPlus => TokenTag::OperatorPlus,
+            TokenType::OperatorAsterisk => TokenTag::OperatorAsterisk,
+            TokenType::OperatorModulo => TokenTag::OperatorModulo,
         }
     }
 }
@@ -133,6 +142,9 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorUnaryComplement => f.write_str("~"),
             TokenType::OperatorUnaryDecrement => f.write_str("--"),
             TokenType::OperatorMinus => f.write_str("-"),
+            TokenType::OperatorPlus => f.write_str("+"),
+            TokenType::OperatorAsterisk => f.write_str("*"),
+            TokenType::OperatorModulo => f.write_str("%"),
         }
     }
 }
@@ -310,6 +322,10 @@ impl<'a> Lexer<'a> {
                             let token = self.tokenize_single_char(TokenType::CloseBrace);
                             return Ok(Some(token));
                         }
+                        '+' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorPlus);
+                            return Ok(Some(token));
+                        }
                         '-' => {
                             let start_loc = self.cur_location;
                             self.next_char();
@@ -327,6 +343,14 @@ impl<'a> Lexer<'a> {
                                 token_type: TokenType::OperatorMinus,
                                 location: start_loc,
                             }));
+                        }
+                        '*' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorAsterisk);
+                            return Ok(Some(token));
+                        }
+                        '%' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorModulo);
+                            return Ok(Some(token));
                         }
                         '~' => {
                             let token = self.tokenize_single_char(TokenType::OperatorUnaryComplement);
@@ -419,7 +443,7 @@ mod test {
     use std::collections::HashMap;
 
     use crate::lexer::{KEYWORDS, Lexer, LexerError, Location, Radix, Token, TokenType};
-    use crate::lexer::TokenType::Keyword;
+    use crate::lexer::TokenType::{CloseParentheses, Identifier, IntConstant, Keyword, OpenParentheses, OperatorAsterisk, OperatorDiv, OperatorMinus, OperatorModulo, OperatorPlus};
 
     type LexerResult<T> = Result<T, LexerError>;
 
@@ -557,6 +581,52 @@ mod test {
                        "lexing keyword identifier {}: expected: {:?}, actual:{:?}",
                        kw, expected_tokens, tokens);
         }
+    }
+
+    #[test]
+    fn test_tokenizing_arithmetic_operators() {
+        let start_loc = Location { line: 1, column: 1 };
+        let arith_operator_tests = vec![
+            ("+", vec![Token { token_type: OperatorPlus, location: start_loc }]),
+            ("-", vec![Token { token_type: OperatorMinus, location: start_loc }]),
+            ("*", vec![Token { token_type: OperatorAsterisk, location: start_loc }]),
+            ("/", vec![Token { token_type: OperatorDiv, location: start_loc }]),
+            ("%", vec![Token { token_type: OperatorModulo, location: start_loc }]),
+        ];
+        for at in arith_operator_tests {
+            let src = at.0;
+            let lexer = Lexer::new(src);
+            let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+            let expected_tokens = Ok(at.1);
+            assert_eq!(tokens, expected_tokens,
+                       "lexing arith operator {}: expected: {:?}, actual:{:?}",
+                       src, expected_tokens, tokens);
+        }
+    }
+
+    #[test]
+    fn test_tokenizing_arithmetic_expression() {
+        let src = "a + b - (c / d) * 2 % 10";
+        let lexer = Lexer::new(src);
+        let expected = Ok(vec![
+            Token { token_type: Identifier("a"), location:  (1, 1).into() },
+            Token { token_type: OperatorPlus, location: (1, 3).into() },
+            Token { token_type: Identifier("b"), location: (1, 5).into() },
+            Token { token_type: OperatorMinus, location: (1, 7).into() },
+            Token { token_type: OpenParentheses, location: (1, 9).into() },
+            Token { token_type: Identifier("c"), location: (1, 10).into() },
+            Token { token_type: OperatorDiv, location: (1, 12).into() },
+            Token { token_type: Identifier("d"), location: (1, 14).into() },
+            Token { token_type: CloseParentheses, location: (1, 15).into() },
+            Token { token_type: OperatorAsterisk, location: (1, 17).into() },
+            Token { token_type: IntConstant("2", Radix::Decimal), location: (1, 19).into() },
+            Token { token_type: OperatorModulo, location: (1, 21).into() },
+            Token { token_type: IntConstant("10", Radix::Decimal), location: (1, 23).into() },
+        ]);
+        let actual: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(actual, expected,
+            "lexing arith expression {}: expected: {:#?}, actual:{:#?}",
+            src, expected, actual);
     }
 
     #[test]

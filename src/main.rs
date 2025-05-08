@@ -10,7 +10,7 @@ use thiserror::Error;
 use crate::codegen::CodegenError;
 use crate::lexer::{Lexer, LexerError, Token};
 use crate::parser::{Parser, ParserError};
-use crate::tacky::{TackyError};
+use crate::tacky::TackyError;
 
 mod lexer;
 mod parser;
