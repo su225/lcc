@@ -10,9 +10,8 @@ use crate::tacky::{Instruction, IRFunction, IRProgram, IRSymbol, IRUnaryOperator
 #[derive(Debug, Clone)]
 pub enum Register {
     AX, BX, CX, DX,
-    EAX, EBX, ECX, EDX,
-    RAX, RBX, RCX, RDX,
-    R10,
+    EAX, EBX, ECX, EDX, R10D,
+    RAX, RBX, RCX, RDX, R10,
 
     RSP, RBP
 }
@@ -34,6 +33,7 @@ impl Display for Register {
             Register::RBX => "rbx",
             Register::RCX => "rcx",
             Register::RDX => "rdx",
+            Register::R10D => "r10d",
 
             Register::R10 => "r10",
             Register::RSP => "rsp",
@@ -164,7 +164,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
             Ok(vec![
                 Mov {
                     src: from_ir_value(v),
-                    dst: AsmOperand::Register(Register::AX),
+                    dst: AsmOperand::Register(Register::EAX),
                 },
                 Ret,
             ])
@@ -181,10 +181,10 @@ fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Res
                     (AsmOperand::Pseudo(s), AsmOperand::Pseudo(d)) => vec![
                         Mov {
                             src: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, s) },
-                            dst: AsmOperand::Register(Register::R10),
+                            dst: AsmOperand::Register(Register::R10D),
                         },
                         Mov {
-                            src: AsmOperand::Register(Register::R10),
+                            src: AsmOperand::Register(Register::R10D),
                             dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, d) },
                         },
                     ],
