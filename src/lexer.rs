@@ -103,6 +103,15 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorModulo => TokenTag::OperatorModulo,
         }
     }
+
+    pub fn is_unary_operator(&self) -> bool {
+        match self {
+            TokenType::OperatorUnaryComplement
+            | TokenType::OperatorUnaryDecrement
+            | TokenType::OperatorMinus => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Clone)]

@@ -3,11 +3,12 @@
 //! Parsing is used. It is handwritten.
 
 use std::iter::Peekable;
-
+use std::string::ParseError;
 use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
+use crate::parser::ParserError::UnexpectedEnd;
 
 #[derive(Debug, PartialEq)]
 pub struct Symbol<'a> {
@@ -35,6 +36,7 @@ pub(crate) enum BinaryOperator {
     Modulo,
 }
 
+#[derive(Debug, PartialEq)]
 pub(crate) struct BinaryOperatorPrecedence(u16);
 
 impl BinaryOperator {
@@ -130,6 +132,12 @@ pub enum ParserError {
 
     #[error("unexpected end of file. Expected {:?}", .0)]
     UnexpectedEnd(Vec<TokenTag>),
+
+    #[error("{location:?}: expected unary operator, but found {actual_token:?}")]
+    ExpectedUnaryOperator {
+        location: Location,
+        actual_token: TokenTag,
+    },
 
     #[error("{location:?}: expected keyword {keyword_identifier:?}")]
     ExpectedKeyword {
@@ -306,7 +314,57 @@ impl<'a> Parser<'a> {
                 }
             },
             Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
-            None => Err(ParserError::UnexpectedEnd(vec![TokenTag::IntConstant, TokenTag::OpenParentheses])),
+            None => Err(UnexpectedEnd(vec![TokenTag::IntConstant, TokenTag::OpenParentheses])),
+        }
+    }
+
+    fn parse_factor(&mut self) -> Result<Expression<'a>, ParserError> {
+        let next_token = self.token_provider.peek()?;
+        match next_token {
+            Ok(Token { token_type, location }) => {
+                match token_type {
+                    TokenType::IntConstant(_, _) => self.parse_int_constant_expression(),
+                    op if op.is_unary_operator() => {
+                        let unary_op = self.parse_unary_operator_token()?;
+                        let factor = self.parse_factor()?;
+                        Ok(Expression {
+                            location: location.clone(),
+                            kind: ExpressionKind::Unary(unary_op, Box::new(factor)),
+                        })
+                    }
+                    TokenType::OpenParentheses => {
+                        self.expect_token_with_tag(TokenTag::OpenParentheses)?;
+                        let expr = self.parse_expression()?;
+                        self.expect_token_with_tag(TokenTag::CloseParentheses)?;
+                        Ok(expr)
+                    }
+                    _ => Err(ParserError::UnexpectedToken {
+                            location: *location.clone(),
+                            expected_token_tags: vec![
+                                TokenTag::IntConstant,
+                                TokenTag::OperatorUnaryComplement,
+                                TokenTag::OperatorUnaryComplement,
+                                TokenTag::OpenParentheses,
+                            ],
+                         })
+                }
+            },
+            Err(e) => Err(ParserError::TokenizationError(e.clone())),
+        }
+    }
+
+    fn parse_unary_operator_token(&mut self) -> Result<UnaryOperator, ParserError> {
+        let op_tok = self.token_provider.next();
+        match op_tok {
+            None => Err(UnexpectedEnd(vec![TokenTag::OperatorUnaryDecrement, TokenTag::OperatorUnaryComplement])),
+            Some(Ok(Token { token_type, location })) => {
+                match token_type {
+                    TokenType::OperatorUnaryComplement => Ok(UnaryOperator::Complement),
+                    TokenType::OperatorMinus => Ok(UnaryOperator::Negate),
+                    tok_type => Err(ParserError::ExpectedUnaryOperator { location, actual_token: tok_type.tag() })
+                }
+            },
+            Some(Err(e)) => Err(ParserError::TokenizationError(e)),
         }
     }
 
