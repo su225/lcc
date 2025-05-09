@@ -22,6 +22,11 @@ pub(crate) enum UnaryOperator {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) enum BinaryOperatorAssociativity {
+    Left, Right
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum BinaryOperator {
     Add,
     Subtract,
@@ -30,10 +35,35 @@ pub(crate) enum BinaryOperator {
     Modulo,
 }
 
+pub(crate) struct BinaryOperatorPrecedence(u16);
+
+impl BinaryOperator {
+    fn associativity(&self) -> BinaryOperatorAssociativity {
+        match self {
+            BinaryOperator::Add => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Subtract => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Multiply => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Divide => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Modulo => BinaryOperatorAssociativity::Left,
+        }
+    }
+
+    fn precedence(&self) -> BinaryOperatorPrecedence {
+        match self {
+            BinaryOperator::Add => BinaryOperatorPrecedence(45),
+            BinaryOperator::Subtract => BinaryOperatorPrecedence(45),
+            BinaryOperator::Multiply => BinaryOperatorPrecedence(50),
+            BinaryOperator::Divide => BinaryOperatorPrecedence(50),
+            BinaryOperator::Modulo => BinaryOperatorPrecedence(50),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
     Unary(UnaryOperator, Box<Expression<'a>>),
+    Binary(UnaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
 }
 
 #[derive(Debug, PartialEq)]
