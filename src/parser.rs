@@ -421,13 +421,15 @@ impl<'a> Parser<'a> {
                 }
             }
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
-            None => Err(ParserError::UnexpectedEnd(vec![expected_token_tag])),
+            None => Err(UnexpectedEnd(vec![expected_token_tag])),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
+    use indoc::indoc;
+
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
@@ -507,6 +509,40 @@ mod test {
                 }
             ],
         }), parsed)
+    }
+
+    #[test]
+    fn test_parse_return_with_binary_operator_expression() {
+        let src = indoc! {r#"
+        int main(void) {
+            return 1 + 2;
+        }
+        "#};
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse();
+        let expected = Ok(ProgramDefinition {
+            functions: vec![
+                FunctionDefinition {
+                    location: (1, 1).into(),
+                    name: Symbol { name: "main", location: (1, 5).into() },
+                    body: vec![
+                        Statement {
+                            location: (2, 5).into(),
+                            kind: Return(Expression {
+                                location: (2, 12).into(),
+                                kind: Binary(
+                                    BinaryOperator::Add,
+                                    Box::new(Expression { location: (2, 12).into(), kind: IntConstant("1", Decimal) }),
+                                    Box::new(Expression { location: (2, 16).into(), kind: IntConstant("2", Decimal) }),
+                                ),
+                            }),
+                        },
+                    ],
+                },
+            ],
+        });
+        assert_eq!(expected, actual, "expected:\n{:#?}\nactual:\n{:#?}\n", expected, actual);
     }
 
     struct ExprTestCase<'a> {
