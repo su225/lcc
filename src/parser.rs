@@ -3,12 +3,13 @@
 //! Parsing is used. It is handwritten.
 
 use std::iter::Peekable;
-use std::string::ParseError;
+
+use derive_more::with_trait::Add;
 use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
-use crate::parser::ParserError::UnexpectedEnd;
+use crate::parser::ParserError::{ExpectedBinaryOperator, UnexpectedEnd};
 
 #[derive(Debug, PartialEq)]
 pub struct Symbol<'a> {
@@ -36,10 +37,11 @@ pub(crate) enum BinaryOperator {
     Modulo,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add)]
 pub(crate) struct BinaryOperatorPrecedence(u16);
 
 impl BinaryOperator {
+    #[inline]
     fn associativity(&self) -> BinaryOperatorAssociativity {
         match self {
             BinaryOperator::Add => BinaryOperatorAssociativity::Left,
@@ -50,6 +52,7 @@ impl BinaryOperator {
         }
     }
 
+    #[inline]
     fn precedence(&self) -> BinaryOperatorPrecedence {
         match self {
             BinaryOperator::Add => BinaryOperatorPrecedence(45),
@@ -65,7 +68,7 @@ impl BinaryOperator {
 pub(crate) enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
     Unary(UnaryOperator, Box<Expression<'a>>),
-    Binary(UnaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
+    Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -135,6 +138,12 @@ pub enum ParserError {
 
     #[error("{location:?}: expected unary operator, but found {actual_token:?}")]
     ExpectedUnaryOperator {
+        location: Location,
+        actual_token: TokenTag,
+    },
+
+    #[error("{location:?}: expected binary operator, but found {actual_token:?}")]
+    ExpectedBinaryOperator {
         location: Location,
         actual_token: TokenTag,
     },
@@ -267,68 +276,64 @@ impl<'a> Parser<'a> {
     fn parse_expression(&mut self) -> Result<Expression<'a>, ParserError> {
         let tok = self.token_provider.peek();
         match &tok {
-            Some(Ok(tok)) => {
-                match tok.token_type {
-                    TokenType::IntConstant(val, radix) => {
-                        let loc = tok.location.clone();
-                        self.token_provider.next().unwrap().expect("must be int");
-                        Ok(Expression {
-                            location: loc,
-                            kind: ExpressionKind::IntConstant(val, radix)
-                        })
-                    },
-                    TokenType::OpenParentheses => {
-                        self.expect_open_parentheses()?;
-                        let expr = self.parse_expression()?;
-                        self.expect_close_parentheses()?;
-                        Ok(expr)
-                    },
-                    TokenType::OperatorUnaryComplement => {
-                        let op_loc = tok.location;
-                        self.expect_token_with_tag(TokenTag::OperatorUnaryComplement)?;
-                        let expr = self.parse_expression()?;
-                        Ok(Expression {
-                            location: op_loc,
-                            kind: ExpressionKind::Unary(UnaryOperator::Complement, Box::new(expr)),
-                        })
-                    },
-                    TokenType::OperatorMinus => {
-                        let op_loc = tok.location;
-                        self.expect_token_with_tag(TokenTag::OperatorMinus)?;
-                        let expr = self.parse_expression()?;
-                        Ok(Expression {
-                            location: op_loc,
-                            kind: ExpressionKind::Unary(UnaryOperator::Negate, Box::new(expr)),
-                        })
-                    },
-                    _ => {
-                        Err(ParserError::UnexpectedToken {
-                            location: tok.location,
-                            expected_token_tags: vec![
-                                TokenTag::OpenParentheses,
-                                TokenTag::OperatorUnaryComplement,
-                                TokenTag::OperatorMinus,
-                            ],
-                        })
-                    }
-                }
-            },
+            Some(Ok(_)) => self.parse_expression_with_precedence(BinaryOperatorPrecedence(0)),
             Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
             None => Err(UnexpectedEnd(vec![TokenTag::IntConstant, TokenTag::OpenParentheses])),
         }
     }
 
+    fn parse_expression_with_precedence(&mut self, min_precedence: BinaryOperatorPrecedence) -> Result<Expression<'a>, ParserError> {
+        let mut result = self.parse_factor()?;
+        while let Some(next_token) = self.token_provider.peek() {
+            match &next_token {
+                Ok(token) if token.token_type.is_binary_operator() => {
+                    let binary_op = self.peek_binary_operator_token()?;
+                    let binary_op_precedence = binary_op.precedence();
+                    let binary_op_associativity = binary_op.associativity();
+                    if binary_op_precedence < min_precedence {
+                        break;
+                    }
+                    // Only if we pass the token precedence test, we can advance
+                    // the pointer further to parse the next expression
+                    self.token_provider.next();
+
+                    let next_min_precedence = match binary_op_associativity {
+                        BinaryOperatorAssociativity::Left => binary_op_precedence + BinaryOperatorPrecedence(1),
+                        BinaryOperatorAssociativity::Right => binary_op_precedence,
+                    };
+                    let rhs = self.parse_expression_with_precedence(next_min_precedence)?;
+                    result = Expression {
+                        location: result.location,
+                        kind: ExpressionKind::Binary(binary_op, Box::new(result), Box::new(rhs)),
+                    }
+                },
+                Ok(_) => {
+                    // It is not an error to see something else.
+                    // Think of something like "10 + 20;" Here semicolon
+                    // is a token which is not a binary operator. In this
+                    // case, we should not treat it as an error.
+                    break;
+                }
+                Err(e) => {
+                    return Err(ParserError::TokenizationError(e.clone()));
+                }
+            };
+        }
+        Ok(result)
+    }
+
     fn parse_factor(&mut self) -> Result<Expression<'a>, ParserError> {
-        let next_token = self.token_provider.peek()?;
-        match next_token {
-            Ok(Token { token_type, location }) => {
+        let next_token = self.token_provider.peek();
+        match &next_token {
+            Some(Ok(Token { token_type, location })) => {
                 match token_type {
                     TokenType::IntConstant(_, _) => self.parse_int_constant_expression(),
                     op if op.is_unary_operator() => {
+                        let tok_location = location.clone();
                         let unary_op = self.parse_unary_operator_token()?;
                         let factor = self.parse_factor()?;
                         Ok(Expression {
-                            location: location.clone(),
+                            location: tok_location,
                             kind: ExpressionKind::Unary(unary_op, Box::new(factor)),
                         })
                     }
@@ -339,7 +344,7 @@ impl<'a> Parser<'a> {
                         Ok(expr)
                     }
                     _ => Err(ParserError::UnexpectedToken {
-                            location: *location.clone(),
+                            location: location.clone(),
                             expected_token_tags: vec![
                                 TokenTag::IntConstant,
                                 TokenTag::OperatorUnaryComplement,
@@ -349,7 +354,8 @@ impl<'a> Parser<'a> {
                          })
                 }
             },
-            Err(e) => Err(ParserError::TokenizationError(e.clone())),
+            Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
+            None => Err(UnexpectedEnd(vec![TokenTag::IntConstant])),
         }
     }
 
@@ -365,6 +371,24 @@ impl<'a> Parser<'a> {
                 }
             },
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
+        }
+    }
+
+    fn peek_binary_operator_token(&mut self) -> Result<BinaryOperator, ParserError> {
+        let op_tok = self.token_provider.peek();
+        match &op_tok {
+            None => Err(UnexpectedEnd(vec![TokenTag::OperatorPlus])),
+            Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
+            Some(Ok(Token { token_type, location })) => {
+                match token_type {
+                    TokenType::OperatorPlus => Ok(BinaryOperator::Add),
+                    TokenType::OperatorMinus => Ok(BinaryOperator::Subtract),
+                    TokenType::OperatorAsterisk => Ok(BinaryOperator::Multiply),
+                    TokenType::OperatorDiv => Ok(BinaryOperator::Divide),
+                    TokenType::OperatorModulo => Ok(BinaryOperator::Modulo),
+                    tok_type => Err(ExpectedBinaryOperator { location: location.clone(), actual_token: tok_type.tag() })
+                }
+            }
         }
     }
 
@@ -407,8 +431,8 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
-    use crate::parser::ExpressionKind::{IntConstant, Unary};
+    use crate::parser::{BinaryOperator, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
+    use crate::parser::ExpressionKind::{Binary, IntConstant, Unary};
     use crate::parser::StatementKind::Return;
 
     #[test]
@@ -485,88 +509,490 @@ mod test {
         }), parsed)
     }
 
-    #[test]
-    fn test_parse_expressions() {
-        struct ExprTestCase<'a> {
-            name: &'a str,
-            src: &'a str,
-            expected: Result<Expression<'a>, ParserError>,
-        }
+    struct ExprTestCase<'a> {
+        src: &'a str,
+        expected: Result<Expression<'a>, ParserError>,
+    }
 
-        for test_case in [
-            ExprTestCase {
-                name: "constant base-10 integer",
-                src: "100",
-                expected: Ok(Expression {
-                    location: Location { line: 1, column: 1 },
-                    kind:  IntConstant("100", Radix::Decimal),
+    #[test]
+    fn test_parse_expression_constant_base_10_integer() {
+        let src = "100";
+        let expected = Ok(Expression {
+            location: Location { line: 1, column: 1 },
+            kind: IntConstant("100", Decimal),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_expression_complement_operator() {
+        let src = "~0xdeadbeef";
+        let expected = Ok(Expression {
+            location: Location { line: 1, column: 1 },
+            kind: Unary(UnaryOperator::Complement, Box::new(Expression {
+                location: Location { line: 1, column: 2 },
+                kind: IntConstant("0xdeadbeef", Radix::Hexadecimal),
+            })),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_expression_negation_operator() {
+        let src = "-100";
+        let expected = Ok(Expression {
+            location: Location { line: 1, column: 1 },
+            kind: Unary(UnaryOperator::Negate, Box::new(Expression {
+                location: Location { line: 1, column: 2 },
+                kind: IntConstant("100", Decimal),
+            })),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_expression_redundant_parentheses_around_int_constant() {
+        let src = "(100)";
+        let expected = Ok(Expression {
+            location: Location { line: 1, column: 2 },
+            kind: IntConstant("100", Decimal),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_expression_double_complement() {
+        let src = "~~100";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Unary(UnaryOperator::Complement, Box::new(Expression {
+                location: Location { line: 1, column: 2 },
+                kind: Unary(UnaryOperator::Complement, Box::new(Expression {
+                    location: Location { line: 1, column: 3 },
+                    kind: IntConstant("100", Decimal),
+                }))
+            })),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_expression_double_negation() {
+        let src = "-(-100)";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Unary(
+                UnaryOperator::Negate,
+                Box::new(Expression {
+                    location: (1, 3).into(),
+                    kind: Unary(
+                        UnaryOperator::Negate,
+                        Box::new(Expression {
+                            location: (1, 4).into(),
+                            kind: IntConstant("100", Decimal),
+                        }),
+                    ),
                 }),
-            },
-            ExprTestCase {
-                name: "complement operator",
-                src: "~0xdeadbeef",
-                expected: Ok(Expression {
-                    location: Location { line: 1, column: 1 },
-                    kind:  Unary(UnaryOperator::Complement, Box::new(Expression {
-                        location: Location { line: 1, column: 2 },
-                        kind: IntConstant("0xdeadbeef", Radix::Hexadecimal),
-                    })),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_simple_addition() {
+        let src = "10 + 20";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Add,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: IntConstant("10", Decimal),
                 }),
-            },
-            ExprTestCase {
-                name: "negation operator",
-                src: "-100",
-                expected: Ok(Expression {
-                    location: Location { line: 1, column: 1 },
-                    kind:  Unary(UnaryOperator::Negate, Box::new(Expression {
-                        location: Location { line: 1, column: 2 },
-                        kind: IntConstant("100", Radix::Decimal),
-                    })),
+                Box::new(Expression {
+                    location: (1, 6).into(),
+                    kind: IntConstant("20", Decimal),
                 }),
-            },
-            ExprTestCase {
-                name: "redundant parentheses around int constant",
-                src: "(100)",
-                expected: Ok(Expression {
-                    location: Location { line: 1, column: 2 },
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_simple_subtraction() {
+        let src = "30 - 15";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Subtract,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: IntConstant("30", Decimal),
+                }),
+                Box::new(Expression {
+                    location: (1, 6).into(),
+                    kind: IntConstant("15", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_simple_multiplication() {
+        let src = "4 * 5";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Multiply,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: IntConstant("4", Decimal),
+                }),
+                Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: IntConstant("5", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_simple_division() {
+        let src = "100 / 25";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Divide,
+                Box::new(Expression {
+                    location: (1, 1).into(),
                     kind: IntConstant("100", Decimal),
                 }),
-            },
-            ExprTestCase {
-                name: "double complement",
-                src: "~~100",
-                expected: Ok(Expression {
-                    location: Location { line: 1, column: 1 },
-                    kind: Unary(UnaryOperator::Complement, Box::new(Expression {
-                        location: Location { line: 1, column: 2 },
-                        kind: Unary(UnaryOperator::Complement, Box::new(Expression {
-                            location: Location { line: 1, column: 3 },
-                            kind: IntConstant("100", Decimal),
-                        }))
-                    })),
-                })
-            },
-            ExprTestCase {
-                name: "double negation",
-                src: "-(-100)",
-                expected: Ok(Expression {
-                    location: Location { line: 1, column: 1 },
-                    kind: Unary(UnaryOperator::Negate, Box::new(Expression {
-                        location: Location { line: 1, column: 3 },
-                        kind: Unary(UnaryOperator::Negate, Box::new(Expression {
-                            location: Location { line: 1, column: 4 },
-                            kind: IntConstant("100", Decimal),
-                        }))
-                    })),
-                })
-            }
-        ].into_iter() {
-            let lexer = Lexer::new(test_case.src);
-            let mut parser = Parser::new(lexer);
-            let actual_parsed = parser.parse_expression();
-            assert_eq!(test_case.expected, actual_parsed, "{}",
-                format!("failed case: {name:?},\n expected: {expected:#?},\n actual: {actual:#?}",
-                name = test_case.name, expected = test_case.expected, actual = actual_parsed));
-        }
+                Box::new(Expression {
+                    location: (1, 7).into(),
+                    kind: IntConstant("25", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_addition_left_associative() {
+        let src = "1+2+3";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Add,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: Binary(
+                        BinaryOperator::Add,
+                        Box::new(Expression {
+                            location: (1, 1).into(),
+                            kind: IntConstant("1", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 3).into(),
+                            kind: IntConstant("2", Decimal),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: IntConstant("3", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_subtraction_left_associative() {
+        let src = "5-3-1";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Subtract,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: Binary(
+                        BinaryOperator::Subtract,
+                        Box::new(Expression {
+                            location: (1, 1).into(),
+                            kind: IntConstant("5", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 3).into(),
+                            kind: IntConstant("3", Decimal),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: IntConstant("1", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_multiplication_left_associative() {
+        let src = "2*3*4";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Multiply,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: Binary(
+                        BinaryOperator::Multiply,
+                        Box::new(Expression {
+                            location: (1, 1).into(),
+                            kind: IntConstant("2", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 3).into(),
+                            kind: IntConstant("3", Decimal),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: IntConstant("4", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_division_left_associative() {
+        let src = "20/5/2";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Divide,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: Binary(
+                        BinaryOperator::Divide,
+                        Box::new(Expression {
+                            location: (1, 1).into(),
+                            kind: IntConstant("20", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 4).into(),
+                            kind: IntConstant("5", Decimal),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 6).into(),
+                    kind: IntConstant("2", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_modulo_left_associative() {
+        let src = "10%4%2";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Modulo,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: Binary(
+                        BinaryOperator::Modulo,
+                        Box::new(Expression {
+                            location: (1, 1).into(),
+                            kind: IntConstant("10", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 4).into(),
+                            kind: IntConstant("4", Decimal),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 6).into(),
+                    kind: IntConstant("2", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_multiplication_higher_precedence_than_addition() {
+        let src = "2+3*4";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Add,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: IntConstant("2", Decimal),
+                }),
+                Box::new(Expression {
+                    location: (1, 3).into(),
+                    kind: Binary(
+                        BinaryOperator::Multiply,
+                        Box::new(Expression {
+                            location: (1, 3).into(),
+                            kind: IntConstant("3", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 5).into(),
+                            kind: IntConstant("4", Decimal),
+                        }),
+                    ),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_division_higher_precedence_than_subtraction() {
+        let src = "20-6/2";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Subtract,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: IntConstant("20", Decimal),
+                }),
+                Box::new(Expression {
+                    location: (1, 4).into(),
+                    kind: Binary(
+                        BinaryOperator::Divide,
+                        Box::new(Expression {
+                            location: (1, 4).into(),
+                            kind: IntConstant("6", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 6).into(),
+                            kind: IntConstant("2", Decimal),
+                        }),
+                    ),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_modulo_higher_precedence_than_addition() {
+        let src = "9+8%5";
+        let expected = Ok(Expression {
+            location: (1, 1).into(),
+            kind: Binary(
+                BinaryOperator::Add,
+                Box::new(Expression {
+                    location: (1, 1).into(),
+                    kind: IntConstant("9", Decimal),
+                }),
+                Box::new(Expression {
+                    location: (1, 3).into(),
+                    kind: Binary(
+                        BinaryOperator::Modulo,
+                        Box::new(Expression {
+                            location: (1, 3).into(),
+                            kind: IntConstant("8", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 5).into(),
+                            kind: IntConstant("5", Decimal),
+                        }),
+                    ),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+
+    #[test]
+    fn test_parse_expression_parentheses_override_precedence() {
+        let src = "(2+3)*4";
+        let expected = Ok(Expression {
+            location: (1, 2).into(),
+            kind: Binary(
+                BinaryOperator::Multiply,
+                Box::new(Expression {
+                    location: (1, 2).into(),
+                    kind: Binary(
+                        BinaryOperator::Add,
+                        Box::new(Expression {
+                            location: (1, 2).into(),
+                            kind: IntConstant("2", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 4).into(),
+                            kind: IntConstant("3", Decimal),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 7).into(),
+                    kind: IntConstant("4", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_nested_parentheses() {
+        let src = "(10-(2+3))*2";
+        let expected = Ok(Expression {
+            location: (1, 2).into(),
+            kind: Binary(
+                BinaryOperator::Multiply,
+                Box::new(Expression {
+                    location: (1, 2).into(),
+                    kind: Binary(
+                        BinaryOperator::Subtract,
+                        Box::new(Expression {
+                            location: (1, 2).into(),
+                            kind: IntConstant("10", Decimal),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 6).into(),
+                            kind: Binary(
+                                BinaryOperator::Add,
+                                Box::new(Expression {
+                                    location: (1, 6).into(),
+                                    kind: IntConstant("2", Decimal),
+                                }),
+                                Box::new(Expression {
+                                    location: (1, 8).into(),
+                                    kind: IntConstant("3", Decimal),
+                                }),
+                            ),
+                        }),
+                    ),
+                }),
+                Box::new(Expression {
+                    location: (1, 12).into(),
+                    kind: IntConstant("2", Decimal),
+                }),
+            ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    fn run_parse_expression_test_case(test_case: ExprTestCase) {
+        let lexer = Lexer::new(test_case.src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_expression();
+        assert_eq!(test_case.expected, actual);
     }
 }

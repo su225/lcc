@@ -4,7 +4,15 @@ use std::num::ParseIntError;
 use derive_more::with_trait::Display;
 use thiserror::Error;
 
-use crate::parser::{Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
+use crate::parser::{
+    Expression,
+    ExpressionKind,
+    FunctionDefinition,
+    ProgramDefinition,
+    Statement,
+    StatementKind,
+    UnaryOperator,
+};
 use crate::tacky::Instruction::{Return, Unary};
 use crate::tacky::IRValue::Constant;
 
@@ -139,5 +147,6 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             });
             Ok((result_val, tacky_instrs))
         }
+        ExpressionKind::Binary(_, _, _) => todo!(),
     }
 }

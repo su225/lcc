@@ -112,6 +112,17 @@ impl<'a> TokenType<'a> {
             _ => false,
         }
     }
+
+    pub fn is_binary_operator(&self) -> bool {
+        match self {
+            TokenType::OperatorPlus
+            | TokenType::OperatorMinus
+            | TokenType::OperatorAsterisk
+            | TokenType::OperatorDiv
+            | TokenType::OperatorModulo => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Clone)]
