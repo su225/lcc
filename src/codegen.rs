@@ -172,6 +172,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                 },
             ])
         }
+        Instruction::Binary { operator, src1, src2, dst } => todo!(),
         Instruction::Return(v) => {
             Ok(vec![
                 Mov {

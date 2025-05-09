@@ -4,16 +4,8 @@ use std::num::ParseIntError;
 use derive_more::with_trait::Display;
 use thiserror::Error;
 
-use crate::parser::{
-    Expression,
-    ExpressionKind,
-    FunctionDefinition,
-    ProgramDefinition,
-    Statement,
-    StatementKind,
-    UnaryOperator,
-};
-use crate::tacky::Instruction::{Return, Unary};
+use crate::parser::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
+use crate::tacky::Instruction::{Binary, Return, Unary};
 use crate::tacky::IRValue::Constant;
 
 #[derive(Debug, PartialEq)]
@@ -43,6 +35,27 @@ impl From<&UnaryOperator> for IRUnaryOperator {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) enum IRBinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+}
+
+impl From<&BinaryOperator> for IRBinaryOperator {
+    fn from(value: &BinaryOperator) -> Self {
+        match value {
+            BinaryOperator::Add => IRBinaryOperator::Add,
+            BinaryOperator::Subtract => IRBinaryOperator::Subtract,
+            BinaryOperator::Multiply => IRBinaryOperator::Multiply,
+            BinaryOperator::Divide => IRBinaryOperator::Divide,
+            BinaryOperator::Modulo => IRBinaryOperator::Modulo,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum IRValue {
     Constant(i64),
     Variable(IRSymbol),
@@ -53,6 +66,12 @@ pub(crate) enum Instruction {
     Unary {
         operator: IRUnaryOperator,
         src: IRValue,
+        dst: IRValue,
+    },
+    Binary {
+        operator: IRBinaryOperator,
+        src1: IRValue,
+        src2: IRValue,
         dst: IRValue,
     },
     Return(IRValue),
@@ -147,6 +166,20 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             });
             Ok((result_val, tacky_instrs))
         }
-        ExpressionKind::Binary(_, _, _) => todo!(),
+        ExpressionKind::Binary(binary_op, op1, op2) => {
+            let (src1_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, op1)?;
+            let (src2_tacky, src2_tacky_instrs) = emit_tacky_for_expression(ctx, op2)?;
+            let dst_tacky_identifier = ctx.next_temporary_identifier();
+            let dst_tacky = IRValue::Variable(dst_tacky_identifier.clone());
+            let result = IRValue::Variable(dst_tacky_identifier);
+            tacky_instrs.extend(src2_tacky_instrs);
+            tacky_instrs.push(Binary {
+                operator: IRBinaryOperator::from(binary_op),
+                src1: src1_tacky,
+                src2: src2_tacky,
+                dst: dst_tacky,
+            });
+            Ok((result, tacky_instrs))
+        },
     }
 }
