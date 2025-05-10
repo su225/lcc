@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::parser::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
 use crate::tacky::Instruction::{Binary, Return, Unary};
-use crate::tacky::IRValue::Constant;
+use crate::tacky::IRValue::Constant32;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct IRProgram {
@@ -57,7 +57,7 @@ impl From<&BinaryOperator> for IRBinaryOperator {
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum IRValue {
-    Constant(i64),
+    Constant32(i32),
     Variable(IRSymbol),
 }
 
@@ -151,8 +151,8 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
 fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(IRValue, Vec<Instruction>), TackyError> {
     match &e.kind {
         ExpressionKind::IntConstant(c, radix) => {
-            let n = i64::from_str_radix(c, radix.value())?;
-            Ok((Constant(n), vec![]))
+            let n = i32::from_str_radix(c, radix.value())?;
+            Ok((Constant32(n), vec![]))
         }
         ExpressionKind::Unary(unary_op, src) => {
             let (src_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, src)?;

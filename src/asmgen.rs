@@ -19,29 +19,27 @@ fn emit_function<W: Write>(f: AsmFunction, w: &mut W) -> io::Result<()> {
     Ok(())
 }
 
+macro_rules! emit_instruction {
+    ($w:expr, $($arg:tt)*) => {
+        writeln!($w, "    {}", format!($($arg)*))
+    };
+}
+
 fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<()> {
     match instr {
-        AsmInstruction::Mov { src, dst } => {
-            let s = src.to_string();
-            let d = dst.to_string();
-            w.write_fmt(format_args!("    movl {src_operand}, {dst_operand}\n",
-                src_operand = s,
-                dst_operand = d))?
-        },
-
+        AsmInstruction::Mov32 { src, dst } => emit_instruction!(w, "movl {src} {dst}")?,
         AsmInstruction::Ret => {
             emit_function_epilogue(w)?;
-            w.write_fmt(format_args!("    ret\n"))?
+            emit_instruction!(w, "ret")?
         },
-
-        AsmInstruction::Unary { op, dst } =>
-            w.write_fmt(format_args!("    {unary_op} {operand}\n",
-                unary_op = op.to_string(),
-                operand = dst.to_string()))?,
-
-        AsmInstruction::AllocateStack(stack_size) =>
-            w.write_fmt(format_args!("    subq ${stack_size}, %rsp\n",
-                stack_size = stack_size))?,
+        AsmInstruction::Not32 { op } => emit_instruction!(w, "notl {op}")?,
+        AsmInstruction::Neg32 { op } => emit_instruction!(w, "negl {op}")?,
+        AsmInstruction::AllocateStack(stack_size) => emit_instruction!(w, "subq %{stack_size}, %rsp")?,
+        AsmInstruction::Add32 { src, dst } => emit_instruction!(w, "addl {src}, {dst}")?,
+        AsmInstruction::Sub32 { src, dst } => emit_instruction!(w, "subl {src}, {dst}")?,
+        AsmInstruction::IMul32 { src, dst } => emit_instruction!(w, "imull {src}, {dst}")?,
+        AsmInstruction::IDiv32 { divisor } => emit_instruction!(w, "idivl {divisor}")?,
+        AsmInstruction::Cdq => emit_instruction!(w, "cdq")?,
     };
     Ok(())
 }

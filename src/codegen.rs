@@ -4,25 +4,19 @@ use std::num::ParseIntError;
 
 use thiserror::Error;
 
-use crate::codegen::AsmInstruction::{Mov, Ret, Unary};
-use crate::tacky::{Instruction, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
+use AsmOperand::{Pseudo, Stack};
+
+use crate::codegen::AsmInstruction::*;
+use crate::codegen::AsmOperand::*;
+use crate::codegen::Register::*;
+use crate::tacky::{Instruction, IRBinaryOperator, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Register {
-    AX,
-    BX,
-    CX,
-    DX,
     EAX,
-    EBX,
-    ECX,
     EDX,
     R10D,
-    RAX,
-    RBX,
-    RCX,
-    RDX,
-    R10,
+    R11D,
 
     RSP,
     RBP,
@@ -31,40 +25,13 @@ pub enum Register {
 impl Display for Register {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "%{}", match &self {
-            Register::AX => "ax",
-            Register::BX => "bx",
-            Register::CX => "cx",
-            Register::DX => "dx",
+            EAX => "eax",
+            EDX => "edx",
+            R10D => "r10d",
+            R11D => "r11d",
 
-            Register::EAX => "eax",
-            Register::EBX => "ebx",
-            Register::ECX => "ecx",
-            Register::EDX => "edx",
-
-            Register::RAX => "rax",
-            Register::RBX => "rbx",
-            Register::RCX => "rcx",
-            Register::RDX => "rdx",
-            Register::R10D => "r10d",
-
-            Register::R10 => "r10",
-            Register::RSP => "rsp",
-            Register::RBP => "rbp",
-        })
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum AsmUnaryOperator {
-    Neg,
-    Not,
-}
-
-impl Display for AsmUnaryOperator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match &self {
-            AsmUnaryOperator::Neg => "negl",
-            AsmUnaryOperator::Not => "notl",
+            RSP => "rsp",
+            RBP => "rbp",
         })
     }
 }
@@ -74,8 +41,8 @@ pub struct StackOffset(isize);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsmOperand {
-    Imm(i64),
-    Register(Register),
+    Imm32(i32),
+    Reg(Register),
     Pseudo(IRSymbol),
     Stack { offset: StackOffset },
 }
@@ -83,19 +50,25 @@ pub enum AsmOperand {
 impl Display for AsmOperand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match &self {
-            AsmOperand::Imm(n) => format!("${}", n),
-            AsmOperand::Register(r) => r.to_string(),
-            AsmOperand::Pseudo(p) => format!("<<{}>>", p),
-            AsmOperand::Stack { offset } => format!("{}(%rbp)", offset.0),
+            Imm32(n) => format!("${}", n),
+            Reg(r) => r.to_string(),
+            Pseudo(p) => format!("<<{}>>", p),
+            Stack { offset } => format!("{}(%rbp)", offset.0),
         })
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
-    Mov { src: AsmOperand, dst: AsmOperand },
-    Unary { op: AsmUnaryOperator, dst: AsmOperand },
     AllocateStack(usize),
+    Mov32 { src: AsmOperand, dst: AsmOperand },
+    Neg32 { op: AsmOperand },
+    Not32 { op: AsmOperand },
+    Add32 { src: AsmOperand, dst: AsmOperand },
+    Sub32 { src: AsmOperand, dst: AsmOperand },
+    IMul32 { src: AsmOperand, dst: AsmOperand },
+    IDiv32 { divisor: AsmOperand },
+    Cdq, // Sign extend %eax to 64-bit into %edx
     Ret,
 }
 
@@ -139,7 +112,7 @@ pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
         let mut stack_alloc_ctx = StackAllocationContext::new();
         let mut stack_alloced = allocate_stack_frame(&mut stack_alloc_ctx, asm_func)?;
         let reqd_stack_size = stack_alloc_ctx.stack_size;
-        stack_alloced.instructions.insert(0, AsmInstruction::AllocateStack(reqd_stack_size));
+        stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size)); // not-efficient
         asm_functions.push(stack_alloced);
     }
     Ok(AsmProgram { functions: asm_functions })
@@ -162,75 +135,94 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
         Instruction::Unary { operator, src, dst } => {
             let asm_dst_operand = from_ir_value(dst);
             Ok(vec![
-                Mov { src: from_ir_value(src), dst: asm_dst_operand.clone() },
-                Unary {
-                    op: match operator {
-                        IRUnaryOperator::Complement => AsmUnaryOperator::Not,
-                        IRUnaryOperator::Negate => AsmUnaryOperator::Neg,
-                    },
-                    dst: asm_dst_operand,
+                Mov32 { src: from_ir_value(src), dst: asm_dst_operand.clone() },
+                match operator {
+                    IRUnaryOperator::Complement => Not32 { op: asm_dst_operand },
+                    IRUnaryOperator::Negate => Neg32 { op: asm_dst_operand },
                 },
             ])
         }
-        Instruction::Binary { operator, src1, src2, dst } => todo!(),
+        Instruction::Binary { operator, src1, src2, dst } => {
+            let asm_dst_operand = from_ir_value(dst);
+            let asm_src1_operand = from_ir_value(src1);
+            let asm_src2_operand = from_ir_value(src2);
+            match operator {
+                IRBinaryOperator::Add => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    Add32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::Subtract => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    Sub32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::Multiply => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    IMul32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::Divide => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: Reg(EAX) },
+                    Cdq, // Sign extend EAX to EDX as IDivl expects 64-bit dividend
+                    IDiv32 { divisor: asm_src2_operand },
+                    Mov32 { src: Reg(EAX), dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::Modulo => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: Reg(EAX) },
+                    Cdq,
+                    IDiv32 { divisor: asm_src2_operand },
+                    Mov32 { src: Reg(EDX), dst: asm_dst_operand },
+                ]),
+            }
+        }
         Instruction::Return(v) => {
             Ok(vec![
-                Mov {
-                    src: from_ir_value(v),
-                    dst: AsmOperand::Register(Register::EAX),
-                },
+                Mov32 { src: from_ir_value(v), dst: Reg(EAX) },
                 Ret,
             ])
         }
     }
 }
 
-fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
-    let mut res_instrs = Vec::with_capacity(f.instructions.len());
-    for instr in f.instructions {
-        let alloced = match instr {
-            Mov { src, dst } => {
-                match (src, dst) {
-                    (AsmOperand::Pseudo(s), AsmOperand::Pseudo(d)) => vec![
-                        Mov {
-                            src: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, s) },
-                            dst: AsmOperand::Register(Register::R10D),
-                        },
-                        Mov {
-                            src: AsmOperand::Register(Register::R10D),
-                            dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, d) },
-                        },
-                    ],
-                    (AsmOperand::Pseudo(s), dst_operand) => vec![
-                        Mov {
-                            src: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, s) },
-                            dst: dst_operand,
-                        },
-                    ],
-                    (src_operand, AsmOperand::Pseudo(d)) => vec![
-                        Mov {
-                            src: src_operand,
-                            dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, d) },
-                        }
-                    ],
-                    (src_operand, dst_operand) => vec![
-                        Mov { src: src_operand, dst: dst_operand }
-                    ],
-                }
-            }
-            Unary { op, dst: AsmOperand::Pseudo(sym) } => vec![
-                Unary {
-                    op,
-                    dst: AsmOperand::Stack { offset: get_or_allocate_stack(ctx, sym) },
-                }
+macro_rules! fixup_binop_mem_to_mem {
+    ($instruction:ident, $ctx:expr, $src:expr, $dst:expr) => {
+        match ($src, $dst) {
+            (Pseudo(s), Pseudo(d)) => vec![
+                Mov32 { src: Stack { offset: get_or_allocate_stack($ctx, s) }, dst: Reg(R10D) },
+                $instruction { src: Reg(R10D), dst: Stack { offset: get_or_allocate_stack($ctx, d) } },
             ],
-            instr => vec![instr],
-        };
-        res_instrs.extend(alloced);
+            (Pseudo(s), dst) => vec![
+                $instruction { src: Stack { offset: get_or_allocate_stack($ctx, s) }, dst },
+            ],
+            (src, Pseudo(d)) => vec![
+                $instruction { src, dst: Stack { offset: get_or_allocate_stack($ctx, d) } },
+            ],
+            (src, dst) => vec![$instruction { src, dst }],
+        }
     }
+}
+
+fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
+    let processed_instrs = f.instructions.into_iter().flat_map(|instr| {
+        match instr {
+            Mov32 { src, dst } => fixup_binop_mem_to_mem!(Mov32, ctx, src, dst),
+            Not32 { op: Pseudo(s) } => vec![Not32 { op: Stack { offset: get_or_allocate_stack(ctx, s) } }],
+            Neg32 { op: Pseudo(s) } => vec![Neg32 { op: Stack { offset: get_or_allocate_stack(ctx, s) } }],
+            Add32 { src, dst } => fixup_binop_mem_to_mem!(Add32, ctx, src, dst),
+            Sub32 { src, dst } => fixup_binop_mem_to_mem!(Sub32, ctx, src, dst),
+            IMul32 { src, dst: dst_operand@Stack{..} } => vec![
+                Mov32 { src: dst_operand.clone(), dst: Reg(R11D) },
+                IMul32 { src, dst: Reg(R11D) },
+                Mov32 { src: Reg(R11D), dst: dst_operand },
+            ],
+            IDiv32 { divisor: const_op @Imm32(_) } => vec![
+                Mov32 { src: const_op, dst: Reg(R10D) },
+                IDiv32 { divisor: Reg(R10D) },
+            ],
+            instr => vec![instr]
+        }
+    }).collect();
     Ok(AsmFunction {
         name: f.name,
-        instructions: res_instrs,
+        instructions: processed_instrs,
     })
 }
 
@@ -247,19 +239,20 @@ fn get_or_allocate_stack(ctx: &mut StackAllocationContext, sym: IRSymbol) -> Sta
 
 fn from_ir_value(v: IRValue) -> AsmOperand {
     match v {
-        IRValue::Constant(c) => AsmOperand::Imm(c),
-        IRValue::Variable(s) => AsmOperand::Pseudo(s),
+        IRValue::Constant32(c) => Imm32(c),
+        IRValue::Variable(s) => Pseudo(s),
     }
 }
 
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-    use AsmOperand::Register;
+
+    use AsmOperand::Reg;
+
     use crate::codegen::{AsmFunction, AsmOperand, AsmProgram, generate_assembly, StackOffset};
-    use crate::codegen::AsmInstruction::{AllocateStack, Mov, Ret, Unary};
-    use crate::codegen::AsmOperand::{Imm, Stack};
-    use crate::codegen::AsmUnaryOperator::Not;
+    use crate::codegen::AsmInstruction::{AllocateStack, Mov32, Not32, Ret};
+    use crate::codegen::AsmOperand::{Imm32, Stack};
     use crate::codegen::Register::EAX;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
@@ -277,9 +270,9 @@ mod test {
                 name: "main".into(),
                 instructions: vec![
                     AllocateStack(0),
-                    Mov {
-                        src: AsmOperand::Imm(0),
-                        dst: Register(EAX),
+                    Mov32 {
+                        src: AsmOperand::Imm32(0),
+                        dst: Reg(EAX),
                     },
                     Ret,
                 ],
@@ -301,7 +294,7 @@ mod test {
                 name: "main".into(),
                 instructions: vec![
                     AllocateStack(0),
-                    Mov { src: Imm(100), dst: Register(EAX) },
+                    Mov32 { src: Imm32(100), dst: Reg(EAX) },
                     Ret,
                 ],
             }],
@@ -321,9 +314,9 @@ mod test {
                 name: "main".into(),
                 instructions: vec![
                     AllocateStack(8),
-                    Mov { src: Imm(0), dst: Stack { offset: StackOffset(-8) } },
-                    Unary { op: Not, dst: Stack { offset: StackOffset(-8) } },
-                    Mov { src: Stack { offset: StackOffset(-8) }, dst: Register(EAX) },
+                    Mov32 { src: Imm32(0), dst: Stack { offset: StackOffset(-8) } },
+                    Not32 { op: Stack { offset: StackOffset(-8) } },
+                    Mov32 { src: Stack { offset: StackOffset(-8) }, dst: Reg(EAX) },
                     Ret,
                 ],
             }],
