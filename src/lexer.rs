@@ -54,6 +54,11 @@ pub enum TokenTag {
     OperatorPlus,
     OperatorAsterisk,
     OperatorModulo,
+    OperatorLeftShift,
+    OperatorRightShift,
+    OperatorBitwiseAnd,
+    OperatorBitwiseOr,
+    OperatorBitwiseXor,
 }
 
 impl Display for TokenTag {
@@ -80,6 +85,11 @@ pub enum TokenType<'a> {
     OperatorAsterisk,
     OperatorDiv,
     OperatorModulo,
+    OperatorLeftShift,
+    OperatorRightShift,
+    OperatorBitwiseAnd,
+    OperatorBitwiseOr,
+    OperatorBitwiseXor,
 }
 
 impl<'a> TokenType<'a> {
@@ -101,6 +111,12 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorPlus => TokenTag::OperatorPlus,
             TokenType::OperatorAsterisk => TokenTag::OperatorAsterisk,
             TokenType::OperatorModulo => TokenTag::OperatorModulo,
+
+            TokenType::OperatorLeftShift => TokenTag::OperatorLeftShift,
+            TokenType::OperatorRightShift => TokenTag::OperatorRightShift,
+            TokenType::OperatorBitwiseAnd => TokenTag::OperatorBitwiseAnd,
+            TokenType::OperatorBitwiseOr => TokenTag::OperatorBitwiseOr,
+            TokenType::OperatorBitwiseXor => TokenTag::OperatorBitwiseXor,
         }
     }
 
@@ -129,6 +145,12 @@ impl<'a> TokenType<'a> {
 pub enum LexerError {
     #[error("{location:?}: invalid character {ch:?} for identifier")]
     InvalidIdentifierCharacter { location: Location, ch: char },
+
+    #[error("{location:?}: unexpected character {ch:?}")]
+    UnexpectedCharacter { location: Location, ch: char },
+
+    #[error("unexpected end of stream")]
+    UnexpectedEndOfStream
 }
 
 static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
@@ -165,6 +187,11 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorPlus => f.write_str("+"),
             TokenType::OperatorAsterisk => f.write_str("*"),
             TokenType::OperatorModulo => f.write_str("%"),
+            TokenType::OperatorLeftShift => f.write_str("<<"),
+            TokenType::OperatorRightShift => f.write_str(">>"),
+            TokenType::OperatorBitwiseAnd => f.write_str("&"),
+            TokenType::OperatorBitwiseOr => f.write_str("|"),
+            TokenType::OperatorBitwiseXor => f.write_str("^"),
         }
     }
 }
@@ -397,6 +424,50 @@ impl<'a> Lexer<'a> {
                                 location: div_loc,
                             }))
                         }
+                        '&' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorBitwiseAnd);
+                            return Ok(Some(token));
+                        }
+                        '|' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorBitwiseOr);
+                            return Ok(Some(token));
+                        }
+                        '^' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorBitwiseXor);
+                            return Ok(Some(token));
+                        }
+                        '<' => {
+                            let loc = self.cur_location;
+                            self.next_char();
+                            
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '<' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorLeftShift,
+                                        location: loc,
+                                    }));
+                                }
+                                return Err(LexerError::UnexpectedCharacter {location: loc, ch: nxt})
+                            }
+                            return Err(LexerError::UnexpectedEndOfStream)
+                        }
+                        '>' => {
+                            let loc = self.cur_location;
+                            self.next_char();
+
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '>' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorRightShift,
+                                        location: loc,
+                                    }))
+                                }
+                                return Err(LexerError::UnexpectedCharacter {location: loc, ch: nxt})
+                            }
+                            return Err(LexerError::UnexpectedEndOfStream)
+                        }
                         '0'..='9' => {
                             let token = self.tokenize_integer_constant()?;
                             return Ok(Some(token));
@@ -559,6 +630,56 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: TokenType::OperatorMinus, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_left_shift() {
+        let source = "<<";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorLeftShift, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_right_shift() {
+        let source = ">>";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRightShift, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_bitwise_and() {
+        let source = "&";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorBitwiseAnd, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_bitwise_or() {
+        let source = "|";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorBitwiseOr, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_bitwise_xor() {
+        let source = "^";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorBitwiseXor, location: Location { line: 1, column: 1 } },
         ]));
     }
 
