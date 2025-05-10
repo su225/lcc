@@ -40,6 +40,12 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
         AsmInstruction::IMul32 { src, dst } => emit_instruction!(w, "imull {src}, {dst}")?,
         AsmInstruction::IDiv32 { divisor } => emit_instruction!(w, "idivl {divisor}")?,
         AsmInstruction::Cdq => emit_instruction!(w, "cdq")?,
+
+        AsmInstruction::And32 { src, dst } => emit_instruction!(w, "andl {src}, {dst}")?,
+        AsmInstruction::Or32 { src, dst } => emit_instruction!(w, "orl {src}, {dst}")?,
+        AsmInstruction::Xor32 { src, dst } => emit_instruction!(w, "xorl {src}, {dst}")?,
+        AsmInstruction::Shl32 { src, dst } => emit_instruction!(w, "shll {src}, {dst}")?,
+        AsmInstruction::Shr32 { src, dst } => emit_instruction!(w, "shrl {src}, {dst}")?,
     };
     Ok(())
 }

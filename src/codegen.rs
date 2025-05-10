@@ -68,6 +68,11 @@ pub enum AsmInstruction {
     Sub32 { src: AsmOperand, dst: AsmOperand },
     IMul32 { src: AsmOperand, dst: AsmOperand },
     IDiv32 { divisor: AsmOperand },
+    And32 { src: AsmOperand, dst: AsmOperand },
+    Or32 { src: AsmOperand, dst: AsmOperand },
+    Xor32 { src: AsmOperand, dst: AsmOperand },
+    Shl32 { src: AsmOperand, dst: AsmOperand },
+    Shr32 { src: AsmOperand, dst: AsmOperand },
     Cdq, // Sign extend %eax to 64-bit into %edx
     Ret,
 }
@@ -155,7 +160,26 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                     IDiv32 { divisor: asm_src2_operand },
                     Mov32 { src: Reg(EDX), dst: asm_dst_operand },
                 ]),
-                _ => todo!(),
+                IRBinaryOperator::BitwiseAnd => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    And32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::BitwiseOr => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    Or32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::BitwiseXor => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    Xor32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::LeftShift => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    Shl32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
+                IRBinaryOperator::RightShift => Ok(vec![
+                    Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
+                    Shr32 { src: asm_src2_operand, dst: asm_dst_operand },
+                ]),
             }
         }
         Instruction::Return(v) => {
@@ -231,6 +255,11 @@ fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> R
             Sub32 { src, dst } => fixup_binary_expr!(Sub32, ctx, src, dst),
             IMul32 { src, dst } => fixup_imul32(ctx, src, dst),
             IDiv32 { divisor } => fixup_idiv32(ctx, divisor),
+            Shl32 { src, dst } => fixup_binary_expr!(Shl32, ctx, src, dst),
+            Shr32 { src, dst } => fixup_binary_expr!(Shr32, ctx, src, dst),
+            And32 { src, dst } => fixup_binary_expr!(And32, ctx, src, dst),
+            Or32 { src, dst } => fixup_binary_expr!(Or32, ctx, src, dst),
+            Xor32 { src, dst } => fixup_binary_expr!(Xor32, ctx, src, dst),
             instr => vec![instr]
         }
     }).collect();
