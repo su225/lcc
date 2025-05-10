@@ -39,6 +39,12 @@ pub(crate) enum BinaryOperator {
     Multiply,
     Divide,
     Modulo,
+
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    LeftShift,
+    RightShift,
 }
 
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
@@ -54,12 +60,22 @@ impl BinaryOperator {
             BinaryOperator::Multiply => BinaryOperatorAssociativity::Left,
             BinaryOperator::Divide => BinaryOperatorAssociativity::Left,
             BinaryOperator::Modulo => BinaryOperatorAssociativity::Left,
+            BinaryOperator::BitwiseAnd => BinaryOperatorAssociativity::Left,
+            BinaryOperator::BitwiseOr => BinaryOperatorAssociativity::Left,
+            BinaryOperator::BitwiseXor => BinaryOperatorAssociativity::Left,
+            BinaryOperator::LeftShift => BinaryOperatorAssociativity::Left,
+            BinaryOperator::RightShift => BinaryOperatorAssociativity::Left,
         }
     }
 
     #[inline]
     fn precedence(&self) -> BinaryOperatorPrecedence {
         match self {
+            BinaryOperator::BitwiseOr => BinaryOperatorPrecedence(25),
+            BinaryOperator::BitwiseXor => BinaryOperatorPrecedence(30),
+            BinaryOperator::BitwiseAnd => BinaryOperatorPrecedence(35),
+            BinaryOperator::LeftShift => BinaryOperatorPrecedence(40),
+            BinaryOperator::RightShift => BinaryOperatorPrecedence(40),
             BinaryOperator::Add => BinaryOperatorPrecedence(45),
             BinaryOperator::Subtract => BinaryOperatorPrecedence(45),
             BinaryOperator::Multiply => BinaryOperatorPrecedence(50),
@@ -400,6 +416,11 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorAsterisk => Ok(BinaryOperator::Multiply),
                     TokenType::OperatorDiv => Ok(BinaryOperator::Divide),
                     TokenType::OperatorModulo => Ok(BinaryOperator::Modulo),
+                    TokenType::OperatorLeftShift => Ok(BinaryOperator::LeftShift),
+                    TokenType::OperatorRightShift => Ok(BinaryOperator::RightShift),
+                    TokenType::OperatorBitwiseOr => Ok(BinaryOperator::BitwiseOr),
+                    TokenType::OperatorBitwiseXor => Ok(BinaryOperator::BitwiseXor),
+                    TokenType::OperatorBitwiseAnd => Ok(BinaryOperator::BitwiseAnd),
                     tok_type => Err(ExpectedBinaryOperator { location: location.clone(), actual_token: tok_type.tag() })
                 }
             }
@@ -1062,6 +1083,16 @@ mod test {
     #[case("operation_with_complement_operator", "4+~3")]
     #[case("addition_with_negated_operand", "4+(-3)")]
     #[case("multiplication_with_unary_operands", "~4*-3")]
+    #[case("simple_bitwise_and", "10 & 20")]
+    #[case("simple_bitwise_or", "10 | 20")]
+    #[case("simple_bitwise_xor", "10 ^ 20")]
+    #[case("simple_left_shift", "1 << 2")]
+    #[case("simple_right_shift", "100 >> 2")]
+    #[case("bitwise_and_is_left_associative", "10 & 20 & 30")]
+    #[case("bitwise_or_is_left_associative", "10 | 20 | 30")]
+    #[case("bitwise_xor_is_left_associative", "10 ^ 20 ^ 30")]
+    #[case("left_shift_is_left_associative", "1<<2<<3")]
+    #[case("right_shift_is_left_associative", "200>>1>>1")]
     fn should_parse_expression_correctly(#[case] description: &str, #[case] src: &str) {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);

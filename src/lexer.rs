@@ -135,7 +135,12 @@ impl<'a> TokenType<'a> {
             | TokenType::OperatorMinus
             | TokenType::OperatorAsterisk
             | TokenType::OperatorDiv
-            | TokenType::OperatorModulo => true,
+            | TokenType::OperatorModulo
+            | TokenType::OperatorLeftShift
+            | TokenType::OperatorRightShift
+            | TokenType::OperatorBitwiseAnd
+            | TokenType::OperatorBitwiseOr
+            | TokenType::OperatorBitwiseXor => true,
             _ => false,
         }
     }

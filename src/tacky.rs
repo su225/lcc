@@ -51,6 +51,7 @@ impl From<&BinaryOperator> for IRBinaryOperator {
             BinaryOperator::Multiply => IRBinaryOperator::Multiply,
             BinaryOperator::Divide => IRBinaryOperator::Divide,
             BinaryOperator::Modulo => IRBinaryOperator::Modulo,
+            _ => todo!()
         }
     }
 }

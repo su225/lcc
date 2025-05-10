@@ -1,0 +1,26 @@
+---
+source: src/parser.rs
+description: parsing expression
+expression: actual.unwrap()
+info: 100 >> 2
+---
+location:
+  line: 1
+  column: 1
+kind:
+  binary:
+    - right_shift
+    - location:
+        line: 1
+        column: 1
+      kind:
+        int_constant:
+          - "100"
+          - decimal
+    - location:
+        line: 1
+        column: 8
+      kind:
+        int_constant:
+          - "2"
+          - decimal

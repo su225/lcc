@@ -1,0 +1,39 @@
+---
+source: src/parser.rs
+description: parsing expression
+expression: actual.unwrap()
+info: 10 | 20 | 30
+---
+location:
+  line: 1
+  column: 1
+kind:
+  binary:
+    - bitwise_or
+    - location:
+        line: 1
+        column: 1
+      kind:
+        binary:
+          - bitwise_or
+          - location:
+              line: 1
+              column: 1
+            kind:
+              int_constant:
+                - "10"
+                - decimal
+          - location:
+              line: 1
+              column: 6
+            kind:
+              int_constant:
+                - "20"
+                - decimal
+    - location:
+        line: 1
+        column: 11
+      kind:
+        int_constant:
+          - "30"
+          - decimal
