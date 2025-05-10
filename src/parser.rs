@@ -6,29 +6,33 @@ use std::iter::Peekable;
 
 use derive_more::with_trait::Add;
 use thiserror::Error;
-
+use serde::Serialize;
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
 use crate::parser::ParserError::{ExpectedBinaryOperator, UnexpectedEnd};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Symbol<'a> {
     pub name: &'a str,
     location: Location,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum UnaryOperator {
     Complement,
     Negate,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum BinaryOperatorAssociativity {
     Left, Right
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum BinaryOperator {
     Add,
     Subtract,
@@ -37,7 +41,8 @@ pub(crate) enum BinaryOperator {
     Modulo,
 }
 
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct BinaryOperatorPrecedence(u16);
 
 impl BinaryOperator {
@@ -64,56 +69,65 @@ impl BinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
     Unary(UnaryOperator, Box<Expression<'a>>),
     Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct Expression<'a> {
     location: Location,
     pub(crate) kind: ExpressionKind<'a>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum PrimitiveKind {
     Integer,
     UnsignedInteger,
     LongInteger,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum TypeExpressionKind {
     Primitive(PrimitiveKind),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct TypeExpression {
     pub(crate) location: Location,
     pub(crate) kind: TypeExpressionKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum StatementKind<'a> {
     Return(Expression<'a>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct Statement<'a> {
     pub(crate) location: Location,
     pub(crate) kind: StatementKind<'a>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct FunctionDefinition<'a> {
     pub(crate) location: Location,
     pub(crate) name: Symbol<'a>,
     pub(crate) body: Vec<Statement<'a>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct ProgramDefinition<'a> {
     pub(crate) functions: Vec<FunctionDefinition<'a>>,
 }
@@ -429,7 +443,8 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-
+    use insta::{assert_yaml_snapshot, with_settings};
+    use rstest::rstest;
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
@@ -1023,6 +1038,30 @@ mod test {
             ),
         });
         run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[rstest]
+    #[case("simple_addition", "1+2")]
+    #[case("simple_subtraction", "1-20")]
+    #[case("simple_multiplication", "10*20")]
+    #[case("simple_division", "2/4")]
+    #[case("simple_remainder", "3%2")]
+    #[case("unary_complement", "~10")]
+    #[case("unary_negation", "-10")]
+    fn should_parse_expression_correctly(#[case] description: &str, #[case] src: &str) {
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_expression();
+        assert!(actual.is_ok());
+
+        with_settings!({
+            sort_maps => true,
+            prepend_module_to_snapshot => false,
+            description => "parsing expression",
+            info => &src,
+        }, {
+            assert_yaml_snapshot!(format!("parse_expression_{description}"), actual.unwrap());
+        });
     }
 
     fn run_parse_expression_test_case(test_case: ExprTestCase) {

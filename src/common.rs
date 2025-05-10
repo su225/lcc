@@ -1,4 +1,7 @@
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+use serde::Serialize;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Location {
     pub(crate) line: usize,
     pub(crate) column: usize,
@@ -25,7 +28,8 @@ impl Location {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Radix {
     Binary,
     Octal,
