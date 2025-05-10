@@ -141,7 +141,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
 /// code generated. In Mac OS X, this is actually clang.
 fn invoke_system_assembler(output_file: &str, assembly_file: &str) -> Result<ExitStatus, CompilerDriverError> {
     Command::new("gcc")
-        .args(["-o", output_file, assembly_file])
+        .args(["-m64", "-o", output_file, assembly_file])
         .status()
         .map_err(|e| CompilerDriverError::SystemAssemblerInvocationError(e))
 }

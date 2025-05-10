@@ -89,22 +89,6 @@ pub enum CodegenError {
     IntImmediateParseError(#[from] ParseIntError),
 }
 
-struct StackAllocationContext {
-    stack_size: usize,
-    cur_offset: StackOffset,
-    symbol_offset: HashMap<IRSymbol, StackOffset>,
-}
-
-impl StackAllocationContext {
-    fn new() -> Self {
-        StackAllocationContext {
-            stack_size: 0,
-            cur_offset: StackOffset(0),
-            symbol_offset: HashMap::new(),
-        }
-    }
-}
-
 pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
     let mut asm_functions = Vec::with_capacity(p.functions.len());
     for f in p.functions {
@@ -186,17 +170,44 @@ macro_rules! fixup_binop_mem_to_mem {
     ($instruction:ident, $ctx:expr, $src:expr, $dst:expr) => {
         match ($src, $dst) {
             (Pseudo(s), Pseudo(d)) => vec![
-                Mov32 { src: Stack { offset: get_or_allocate_stack($ctx, s) }, dst: Reg(R10D) },
-                $instruction { src: Reg(R10D), dst: Stack { offset: get_or_allocate_stack($ctx, d) } },
+                Mov32 { src: Stack { offset: $ctx.get_or_allocate_stack(s) }, dst: Reg(R10D) },
+                $instruction { src: Reg(R10D), dst: Stack { offset: $ctx.get_or_allocate_stack(d) } },
             ],
             (Pseudo(s), dst) => vec![
-                $instruction { src: Stack { offset: get_or_allocate_stack($ctx, s) }, dst },
+                $instruction { src: Stack { offset: $ctx.get_or_allocate_stack(s) }, dst },
             ],
             (src, Pseudo(d)) => vec![
-                $instruction { src, dst: Stack { offset: get_or_allocate_stack($ctx, d) } },
+                $instruction { src, dst: Stack { offset: $ctx.get_or_allocate_stack(d) } },
             ],
             (src, dst) => vec![$instruction { src, dst }],
         }
+    }
+}
+
+struct StackAllocationContext {
+    stack_size: usize,
+    cur_offset: StackOffset,
+    symbol_offset: HashMap<IRSymbol, StackOffset>,
+}
+
+impl StackAllocationContext {
+    fn new() -> Self {
+        StackAllocationContext {
+            stack_size: 0,
+            cur_offset: StackOffset(0),
+            symbol_offset: HashMap::new(),
+        }
+    }
+
+    fn get_or_allocate_stack(&mut self, sym: IRSymbol) -> StackOffset {
+        if let Some(&offset) = self.symbol_offset.get(&sym) {
+            return offset;
+        }
+        self.stack_size += 8;
+        self.cur_offset = StackOffset(self.cur_offset.0 - 8);
+        let new_offset = self.cur_offset;
+        self.symbol_offset.insert(sym, new_offset);
+        new_offset
     }
 }
 
@@ -204,19 +215,12 @@ fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Res
     let processed_instrs = f.instructions.into_iter().flat_map(|instr| {
         match instr {
             Mov32 { src, dst } => fixup_binop_mem_to_mem!(Mov32, ctx, src, dst),
-            Not32 { op: Pseudo(s) } => vec![Not32 { op: Stack { offset: get_or_allocate_stack(ctx, s) } }],
-            Neg32 { op: Pseudo(s) } => vec![Neg32 { op: Stack { offset: get_or_allocate_stack(ctx, s) } }],
+            Not32 { op: Pseudo(s) } => vec![Not32 { op: Stack { offset: ctx.get_or_allocate_stack(s) } }],
+            Neg32 { op: Pseudo(s) } => vec![Neg32 { op: Stack { offset: ctx.get_or_allocate_stack(s) } }],
             Add32 { src, dst } => fixup_binop_mem_to_mem!(Add32, ctx, src, dst),
             Sub32 { src, dst } => fixup_binop_mem_to_mem!(Sub32, ctx, src, dst),
-            IMul32 { src, dst: dst_operand@Stack{..} } => vec![
-                Mov32 { src: dst_operand.clone(), dst: Reg(R11D) },
-                IMul32 { src, dst: Reg(R11D) },
-                Mov32 { src: Reg(R11D), dst: dst_operand },
-            ],
-            IDiv32 { divisor: const_op @Imm32(_) } => vec![
-                Mov32 { src: const_op, dst: Reg(R10D) },
-                IDiv32 { divisor: Reg(R10D) },
-            ],
+            IMul32 { src, dst } => fixup_imul32(ctx, src, dst),
+            IDiv32 { divisor } => fixup_idiv32(ctx, divisor),
             instr => vec![instr]
         }
     }).collect();
@@ -226,15 +230,37 @@ fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Res
     })
 }
 
-fn get_or_allocate_stack(ctx: &mut StackAllocationContext, sym: IRSymbol) -> StackOffset {
-    if let Some(&offset) = ctx.symbol_offset.get(&sym) {
-        return offset;
+fn fixup_imul32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Vec<AsmInstruction> {
+    let fix_up_pseudo = fixup_binop_mem_to_mem!(IMul32, ctx, src, dst);
+    fix_up_pseudo.into_iter().flat_map(|instr| {
+        // If the destination of imul32 is a memory location
+        // then it has to be fixed up again regardless of the
+        // source operand. Hence, we use R11D as the scratch
+        // register for it
+        match instr {
+            IMul32 { src, dst: dst_operand @ Stack { .. } } => vec![
+                Mov32 { src: dst_operand.clone(), dst: Reg(R11D) },
+                IMul32 { src, dst: Reg(R11D) },
+                Mov32 { src: Reg(R11D), dst: dst_operand },
+            ],
+            instr => vec![instr],
+        }
+    }).collect()
+}
+
+fn fixup_idiv32(ctx: &mut StackAllocationContext, divisor: AsmOperand) -> Vec<AsmInstruction> {
+    match divisor {
+        constant_op @ Imm32(_) => vec![
+            Mov32 { src: constant_op, dst: Reg(R10D) },
+            IDiv32 { divisor: Reg(R10D) },
+        ],
+        Pseudo(s) => vec![
+            IDiv32 { divisor: Stack { offset: ctx.get_or_allocate_stack(s) } }
+        ],
+        divisor => vec![
+            IDiv32 { divisor }
+        ]
     }
-    ctx.stack_size += 8;
-    ctx.cur_offset = StackOffset(ctx.cur_offset.0 - 8);
-    let new_offset = ctx.cur_offset;
-    ctx.symbol_offset.insert(sym, new_offset);
-    new_offset
 }
 
 fn from_ir_value(v: IRValue) -> AsmOperand {

@@ -27,14 +27,14 @@ macro_rules! emit_instruction {
 
 fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<()> {
     match instr {
-        AsmInstruction::Mov32 { src, dst } => emit_instruction!(w, "movl {src} {dst}")?,
+        AsmInstruction::Mov32 { src, dst } => emit_instruction!(w, "movl {src}, {dst}")?,
         AsmInstruction::Ret => {
             emit_function_epilogue(w)?;
             emit_instruction!(w, "ret")?
         },
         AsmInstruction::Not32 { op } => emit_instruction!(w, "notl {op}")?,
         AsmInstruction::Neg32 { op } => emit_instruction!(w, "negl {op}")?,
-        AsmInstruction::AllocateStack(stack_size) => emit_instruction!(w, "subq %{stack_size}, %rsp")?,
+        AsmInstruction::AllocateStack(stack_size) => emit_instruction!(w, "subq ${stack_size}, %rsp")?,
         AsmInstruction::Add32 { src, dst } => emit_instruction!(w, "addl {src}, {dst}")?,
         AsmInstruction::Sub32 { src, dst } => emit_instruction!(w, "subl {src}, {dst}")?,
         AsmInstruction::IMul32 { src, dst } => emit_instruction!(w, "imull {src}, {dst}")?,
@@ -45,13 +45,13 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
 }
 
 fn emit_function_prologue<W: Write>(w: &mut W) -> io::Result<()> {
-    w.write_fmt(format_args!("    pushq %rbp\n"))?;
-    w.write_fmt(format_args!("    movq %rsp, %rbp\n"))?;
+    emit_instruction!(w, "pushq %rbp")?;
+    emit_instruction!(w, "movq  %rsp, %rbp")?;
     Ok(())
 }
 
 fn emit_function_epilogue<W: Write>(w: &mut W) -> io::Result<()> {
-    w.write_fmt(format_args!("    movq %rbp, %rsp\n"))?;
-    w.write_fmt(format_args!("    popq %rbp\n"))?;
+    emit_instruction!(w, "movq %rbp, %rsp")?;
+    emit_instruction!(w, "popq %rbp")?;
     Ok(())
 }
