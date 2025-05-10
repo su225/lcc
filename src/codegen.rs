@@ -155,6 +155,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                     IDiv32 { divisor: asm_src2_operand },
                     Mov32 { src: Reg(EDX), dst: asm_dst_operand },
                 ]),
+                _ => todo!(),
             }
         }
         Instruction::Return(v) => {

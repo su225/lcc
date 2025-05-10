@@ -41,6 +41,11 @@ pub(crate) enum IRBinaryOperator {
     Multiply,
     Divide,
     Modulo,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    LeftShift,
+    RightShift,
 }
 
 impl From<&BinaryOperator> for IRBinaryOperator {
@@ -51,7 +56,12 @@ impl From<&BinaryOperator> for IRBinaryOperator {
             BinaryOperator::Multiply => IRBinaryOperator::Multiply,
             BinaryOperator::Divide => IRBinaryOperator::Divide,
             BinaryOperator::Modulo => IRBinaryOperator::Modulo,
-            _ => todo!()
+
+            BinaryOperator::BitwiseAnd => IRBinaryOperator::BitwiseAnd,
+            BinaryOperator::BitwiseOr => IRBinaryOperator::BitwiseOr,
+            BinaryOperator::BitwiseXor => IRBinaryOperator::BitwiseXor,
+            BinaryOperator::LeftShift => IRBinaryOperator::LeftShift,
+            BinaryOperator::RightShift => IRBinaryOperator::RightShift,
         }
     }
 }
