@@ -1,0 +1,32 @@
+---
+source: src/parser.rs
+description: parsing expression
+expression: actual.unwrap()
+info: 4+~3
+---
+location:
+  line: 1
+  column: 1
+kind:
+  binary:
+    - add
+    - location:
+        line: 1
+        column: 1
+      kind:
+        int_constant:
+          - "4"
+          - decimal
+    - location:
+        line: 1
+        column: 3
+      kind:
+        unary:
+          - complement
+          - location:
+              line: 1
+              column: 4
+            kind:
+              int_constant:
+                - "3"
+                - decimal

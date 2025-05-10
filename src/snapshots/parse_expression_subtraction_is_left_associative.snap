@@ -1,0 +1,39 @@
+---
+source: src/parser.rs
+description: parsing expression
+expression: actual.unwrap()
+info: 1-2-3
+---
+location:
+  line: 1
+  column: 1
+kind:
+  binary:
+    - subtract
+    - location:
+        line: 1
+        column: 1
+      kind:
+        binary:
+          - subtract
+          - location:
+              line: 1
+              column: 1
+            kind:
+              int_constant:
+                - "1"
+                - decimal
+          - location:
+              line: 1
+              column: 3
+            kind:
+              int_constant:
+                - "2"
+                - decimal
+    - location:
+        line: 1
+        column: 5
+      kind:
+        int_constant:
+          - "3"
+          - decimal

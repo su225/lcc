@@ -1,0 +1,52 @@
+---
+source: src/parser.rs
+description: parsing expression
+expression: actual.unwrap()
+info: (10-(2+3))*2
+---
+location:
+  line: 1
+  column: 2
+kind:
+  binary:
+    - multiply
+    - location:
+        line: 1
+        column: 2
+      kind:
+        binary:
+          - subtract
+          - location:
+              line: 1
+              column: 2
+            kind:
+              int_constant:
+                - "10"
+                - decimal
+          - location:
+              line: 1
+              column: 6
+            kind:
+              binary:
+                - add
+                - location:
+                    line: 1
+                    column: 6
+                  kind:
+                    int_constant:
+                      - "2"
+                      - decimal
+                - location:
+                    line: 1
+                    column: 8
+                  kind:
+                    int_constant:
+                      - "3"
+                      - decimal
+    - location:
+        line: 1
+        column: 12
+      kind:
+        int_constant:
+          - "2"
+          - decimal

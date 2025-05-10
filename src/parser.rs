@@ -1048,6 +1048,20 @@ mod test {
     #[case("simple_remainder", "3%2")]
     #[case("unary_complement", "~10")]
     #[case("unary_negation", "-10")]
+    #[case("double_complement", "~~10")]
+    #[case("addition_is_left_associative", "1+2+3")]
+    #[case("subtraction_is_left_associative", "1-2-3")]
+    #[case("multiplication_is_left_associative", "2*3*4")]
+    #[case("division_is_left_associative", "10/2/3")]
+    #[case("modulo_is_left_associative", "10 % 2 % 3")]
+    #[case("multiplication_has_higher_precedence_than_addition", "4+2*3+8")]
+    #[case("division_has_higher_precedence_than_addition", "10+4/2+3")]
+    #[case("parentheses_override_precedence", "(2+4)*5")]
+    #[case("multiple_nested_parentheses", "(10-(2+3))*2")]
+    #[case("unary_negate_binary_operator_expression", "-(4+3)")]
+    #[case("operation_with_complement_operator", "4+~3")]
+    #[case("addition_with_negated_operand", "4+(-3)")]
+    #[case("multiplication_with_unary_operands", "~4*-3")]
     fn should_parse_expression_correctly(#[case] description: &str, #[case] src: &str) {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);

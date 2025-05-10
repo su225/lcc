@@ -1,0 +1,39 @@
+---
+source: src/parser.rs
+description: parsing expression
+expression: actual.unwrap()
+info: (2+4)*5
+---
+location:
+  line: 1
+  column: 2
+kind:
+  binary:
+    - multiply
+    - location:
+        line: 1
+        column: 2
+      kind:
+        binary:
+          - add
+          - location:
+              line: 1
+              column: 2
+            kind:
+              int_constant:
+                - "2"
+                - decimal
+          - location:
+              line: 1
+              column: 4
+            kind:
+              int_constant:
+                - "4"
+                - decimal
+    - location:
+        line: 1
+        column: 7
+      kind:
+        int_constant:
+          - "5"
+          - decimal
