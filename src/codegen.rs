@@ -94,7 +94,7 @@ pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
     for f in p.functions {
         let asm_func = generate_function_assembly(f)?;
         let mut stack_alloc_ctx = StackAllocationContext::new();
-        let mut stack_alloced = allocate_stack_frame(&mut stack_alloc_ctx, asm_func)?;
+        let mut stack_alloced = fixup_asm_instructions(&mut stack_alloc_ctx, asm_func)?;
         let reqd_stack_size = stack_alloc_ctx.stack_size;
         stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size)); // not-efficient
         asm_functions.push(stack_alloced);
@@ -166,7 +166,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
     }
 }
 
-macro_rules! fixup_binop_mem_to_mem {
+macro_rules! fixup_binary_expr {
     ($instruction:ident, $ctx:expr, $src:expr, $dst:expr) => {
         match ($src, $dst) {
             (Pseudo(s), Pseudo(d)) => vec![
@@ -180,6 +180,15 @@ macro_rules! fixup_binop_mem_to_mem {
                 $instruction { src, dst: Stack { offset: $ctx.get_or_allocate_stack(d) } },
             ],
             (src, dst) => vec![$instruction { src, dst }],
+        }
+    }
+}
+
+macro_rules! fixup_unary_expr {
+    ($instruction:ident, $ctx:expr, $operand:expr) => {
+        match $operand {
+            Pseudo(s) => vec![$instruction { op: Stack { offset: $ctx.get_or_allocate_stack(s) } }],
+            op => vec![$instruction { op }],
         }
     }
 }
@@ -211,14 +220,14 @@ impl StackAllocationContext {
     }
 }
 
-fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
+fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
     let processed_instrs = f.instructions.into_iter().flat_map(|instr| {
         match instr {
-            Mov32 { src, dst } => fixup_binop_mem_to_mem!(Mov32, ctx, src, dst),
-            Not32 { op: Pseudo(s) } => vec![Not32 { op: Stack { offset: ctx.get_or_allocate_stack(s) } }],
-            Neg32 { op: Pseudo(s) } => vec![Neg32 { op: Stack { offset: ctx.get_or_allocate_stack(s) } }],
-            Add32 { src, dst } => fixup_binop_mem_to_mem!(Add32, ctx, src, dst),
-            Sub32 { src, dst } => fixup_binop_mem_to_mem!(Sub32, ctx, src, dst),
+            Mov32 { src, dst } => fixup_binary_expr!(Mov32, ctx, src, dst),
+            Not32 { op } => fixup_unary_expr!(Not32, ctx, op),
+            Neg32 { op } => fixup_unary_expr!(Neg32, ctx, op),
+            Add32 { src, dst } => fixup_binary_expr!(Add32, ctx, src, dst),
+            Sub32 { src, dst } => fixup_binary_expr!(Sub32, ctx, src, dst),
             IMul32 { src, dst } => fixup_imul32(ctx, src, dst),
             IDiv32 { divisor } => fixup_idiv32(ctx, divisor),
             instr => vec![instr]
@@ -231,7 +240,7 @@ fn allocate_stack_frame(ctx: &mut StackAllocationContext, f: AsmFunction) -> Res
 }
 
 fn fixup_imul32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Vec<AsmInstruction> {
-    let fix_up_pseudo = fixup_binop_mem_to_mem!(IMul32, ctx, src, dst);
+    let fix_up_pseudo = fixup_binary_expr!(IMul32, ctx, src, dst);
     fix_up_pseudo.into_iter().flat_map(|instr| {
         // If the destination of imul32 is a memory location
         // then it has to be fixed up again regardless of the
@@ -296,10 +305,7 @@ mod test {
                 name: "main".into(),
                 instructions: vec![
                     AllocateStack(0),
-                    Mov32 {
-                        src: AsmOperand::Imm32(0),
-                        dst: Reg(EAX),
-                    },
+                    Mov32 { src: Imm32(0), dst: Reg(EAX) },
                     Ret,
                 ],
             }]
