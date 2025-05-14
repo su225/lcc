@@ -1103,10 +1103,10 @@ mod test {
             sort_maps => true,
             prepend_module_to_snapshot => false,
             description => "parsing expression",
-            snapshot_path => "snapshots/parsing",
+            snapshot_path => "snapshots/parsing/expressions",
             info => &src,
         }, {
-            assert_yaml_snapshot!(format!("expr_{description}"), actual.unwrap());
+            assert_yaml_snapshot!(format!("{description}"), actual.unwrap());
         });
     }
 
