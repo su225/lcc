@@ -48,6 +48,8 @@ pub enum AsmInstruction {
     And32 { src: AsmOperand, dst: AsmOperand },
     Or32 { src: AsmOperand, dst: AsmOperand },
     Xor32 { src: AsmOperand, dst: AsmOperand },
+    Sal32 { src: AsmOperand, dst: AsmOperand },
+    Sar32 { src: AsmOperand, dst: AsmOperand },
     Shl32 { src: AsmOperand, dst: AsmOperand },
     Shr32 { src: AsmOperand, dst: AsmOperand },
     SignExtendTo64, // Sign extend %eax to 64-bit into %edx
@@ -151,11 +153,11 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                 ]),
                 IRBinaryOperator::LeftShift => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
-                    Shl32 { src: asm_src2_operand, dst: asm_dst_operand },
+                    Sal32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
                 IRBinaryOperator::RightShift => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
-                    Shr32 { src: asm_src2_operand, dst: asm_dst_operand },
+                    Sar32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
             }
         }
@@ -234,12 +236,12 @@ fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> R
             Sub32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Sub32, ctx, src, dst)),
             IMul32 { src, dst } => processed_instrs.extend(fixup_imul32(ctx, src, dst)),
             IDiv32 { divisor } => processed_instrs.extend(fixup_idiv32(ctx, divisor)),
-            Shl32 { src, dst } => {
-                let fixed_up = fixup_shl32(ctx, src, dst)?;
+            Sal32 { src, dst } => {
+                let fixed_up = fixup_sal32(ctx, src, dst)?;
                 processed_instrs.extend(fixed_up);
             },
-            Shr32 { src, dst } => {
-                let fixed_up = fixup_shr32(ctx, src, dst)?;
+            Sar32 { src, dst } => {
+                let fixed_up = fixup_sar32(ctx, src, dst)?;
                 processed_instrs.extend(fixed_up);
             },
             And32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(And32, ctx, src, dst)),
@@ -287,22 +289,22 @@ fn fixup_idiv32(ctx: &mut StackAllocationContext, divisor: AsmOperand) -> Vec<As
     }
 }
 
-fn fixup_shl32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
-    let fix_up_pseudo = fixup_binary_expr!(Shl32, ctx, src, dst);
+fn fixup_sal32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
+    let fix_up_pseudo = fixup_binary_expr!(Sal32, ctx, src, dst);
     let mut processed = vec![];
     for instr in fix_up_pseudo {
         processed.extend(match instr {
             // todo: remove hardcoding later. We need to check for the
             //       width and insert down/upcasting at the IR-level so that
             //       we can lower to proper ASM types.
-            Shl32 { src: Imm32(n), dst } =>
+            Sal32 { src: Imm32(n), dst } =>
                 if n < 0 {
                     vec![
                         Mov32 { src: dst.clone(), dst: Reg(R11D) },
                         Mov32 { src: Imm32(-n), dst: Reg(EAX) },
                         Mov8 { src: Reg(AL), dst: Reg(CL) },
                         Mov32 { src: Reg(R11D), dst: dst.clone() },
-                        Shl32 { src: Reg(CL), dst: dst.clone() },
+                        Sal32 { src: Reg(CL), dst: dst.clone() },
                         Neg32 { op: dst.clone() },
                     ]
                 } else {
@@ -311,16 +313,16 @@ fn fixup_shl32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
                         Mov32 { src: Imm32(n), dst: Reg(EAX) },
                         Mov8 { src: Reg(AL), dst: Reg(CL) },
                         Mov32 { src: Reg(R11D), dst: dst.clone() },
-                        Shl32 { src: Reg(CL), dst: dst.clone() },
+                        Sal32 { src: Reg(CL), dst: dst.clone() },
                     ]
                 },
-            Shl32 { src: Reg(r), dst } if r == R10D => vec![
+            Sal32 { src: Reg(r), dst } if r == R10D => vec![
                 Mov8 { src: Reg(R10B), dst: Reg(CL) },
-                Shl32 { src: Reg(CL), dst: dst.clone() },
+                Sal32 { src: Reg(CL), dst: dst.clone() },
             ],
-            Shl32 { src: stack@Stack{..}, dst } => vec![
+            Sal32 { src: stack@Stack{..}, dst } => vec![
                 Mov8 { src: stack, dst: Reg(CL) },
-                Shl32 { src: Reg(CL), dst: dst.clone() },
+                Sal32 { src: Reg(CL), dst: dst.clone() },
             ],
             instr => vec![instr],
         });
@@ -328,22 +330,22 @@ fn fixup_shl32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
     Ok(processed)
 }
 
-fn fixup_shr32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
-    let fix_up_pseudo = fixup_binary_expr!(Shr32, ctx, src, dst);
+fn fixup_sar32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
+    let fix_up_pseudo = fixup_binary_expr!(Sar32, ctx, src, dst);
     let mut processed = vec![];
     for instr in fix_up_pseudo {
         processed.extend(match instr {
             // todo: remove hardcoding later. We need to check for the
             //       width and insert down/upcasting at the IR-level so that
             //       we can lower to proper ASM types.
-            Shr32 { src: Imm32(n), dst } =>
+            Sar32 { src: Imm32(n), dst } =>
                 if n < 0 {
                     vec![
                         Mov32 { src: dst.clone(), dst: Reg(R11D) },
                         Mov32 { src: Imm32(-n), dst: Reg(EAX) },
                         Mov8 { src: Reg(AL), dst: Reg(CL) },
                         Mov32 { src: Reg(R11D), dst: dst.clone() },
-                        Shr32 { src: Reg(CL), dst: dst.clone() },
+                        Sar32 { src: Reg(CL), dst: dst.clone() },
                         Neg32 { op: dst.clone() },
                     ]
                 } else {
@@ -352,16 +354,16 @@ fn fixup_shr32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
                         Mov32 { src: Imm32(n), dst: Reg(EAX) },
                         Mov8 { src: Reg(AL), dst: Reg(CL) },
                         Mov32 { src: Reg(R11D), dst: dst.clone() },
-                        Shr32 { src: Reg(CL), dst: dst.clone() },
+                        Sar32 { src: Reg(CL), dst: dst.clone() },
                     ]
                 },
-            Shr32 { src: Reg(r), dst } if r == R10D => vec![
+            Sar32 { src: Reg(r), dst } if r == R10D => vec![
                 Mov8 { src: Reg(R10B), dst: Reg(CL) },
-                Shr32 { src: Reg(CL), dst: dst.clone() },
+                Sar32 { src: Reg(CL), dst: dst.clone() },
             ],
-            Shr32 { src: stack@Stack{..}, dst } => vec![
+            Sar32 { src: stack@Stack{..}, dst } => vec![
                 Mov8 { src: stack, dst: Reg(CL) },
-                Shr32 { src: Reg(CL), dst },
+                Sar32 { src: Reg(CL), dst },
             ],
             instr => vec![instr],
         });

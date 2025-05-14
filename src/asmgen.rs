@@ -47,6 +47,8 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
         AsmInstruction::Xor32 { src, dst } => emit_instruction!(w, "xorl {src}, {dst}")?,
         AsmInstruction::Shl32 { src, dst } => emit_instruction!(w, "shll {src}, {dst}")?,
         AsmInstruction::Shr32 { src, dst } => emit_instruction!(w, "shrl {src}, {dst}")?,
+        AsmInstruction::Sal32 { src, dst } => emit_instruction!(w, "sall {src}, {dst}")?,
+        AsmInstruction::Sar32 { src, dst } => emit_instruction!(w, "sarl {src}, {dst}")?,
     };
     Ok(())
 }
