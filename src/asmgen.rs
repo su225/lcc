@@ -27,6 +27,7 @@ macro_rules! emit_instruction {
 
 fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<()> {
     match instr {
+        AsmInstruction::Mov8 { src, dst } => emit_instruction!(w, "movb {src}, {dst}")?,
         AsmInstruction::Mov32 { src, dst } => emit_instruction!(w, "movl {src}, {dst}")?,
         AsmInstruction::Ret => {
             emit_function_epilogue(w)?;

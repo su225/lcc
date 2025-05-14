@@ -8,33 +8,9 @@ use AsmOperand::{Pseudo, Stack};
 
 use crate::codegen::AsmInstruction::*;
 use crate::codegen::AsmOperand::*;
-use crate::codegen::Register::*;
+use crate::register::Register;
+use crate::register::Register::*;
 use crate::tacky::{Instruction, IRBinaryOperator, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Register {
-    EAX,
-    EDX,
-    R10D,
-    R11D,
-
-    RSP,
-    RBP,
-}
-
-impl Display for Register {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "%{}", match &self {
-            EAX => "eax",
-            EDX => "edx",
-            R10D => "r10d",
-            R11D => "r11d",
-
-            RSP => "rsp",
-            RBP => "rbp",
-        })
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StackOffset(isize);
@@ -61,6 +37,7 @@ impl Display for AsmOperand {
 #[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
     AllocateStack(usize),
+    Mov8 { src: AsmOperand, dst: AsmOperand },
     Mov32 { src: AsmOperand, dst: AsmOperand },
     Neg32 { op: AsmOperand },
     Not32 { op: AsmOperand },
@@ -246,23 +223,31 @@ impl StackAllocationContext {
 }
 
 fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
-    let processed_instrs = f.instructions.into_iter().flat_map(|instr| {
+    let mut processed_instrs = vec![];
+    for instr in f.instructions {
         match instr {
-            Mov32 { src, dst } => fixup_binary_expr!(Mov32, ctx, src, dst),
-            Not32 { op } => fixup_unary_expr!(Not32, ctx, op),
-            Neg32 { op } => fixup_unary_expr!(Neg32, ctx, op),
-            Add32 { src, dst } => fixup_binary_expr!(Add32, ctx, src, dst),
-            Sub32 { src, dst } => fixup_binary_expr!(Sub32, ctx, src, dst),
-            IMul32 { src, dst } => fixup_imul32(ctx, src, dst),
-            IDiv32 { divisor } => fixup_idiv32(ctx, divisor),
-            Shl32 { src, dst } => fixup_binary_expr!(Shl32, ctx, src, dst),
-            Shr32 { src, dst } => fixup_binary_expr!(Shr32, ctx, src, dst),
-            And32 { src, dst } => fixup_binary_expr!(And32, ctx, src, dst),
-            Or32 { src, dst } => fixup_binary_expr!(Or32, ctx, src, dst),
-            Xor32 { src, dst } => fixup_binary_expr!(Xor32, ctx, src, dst),
-            instr => vec![instr]
+            Mov8 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Mov8, ctx, src, dst)),
+            Mov32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Mov32, ctx, src, dst)),
+            Not32 { op } => processed_instrs.extend(fixup_unary_expr!(Not32, ctx, op)),
+            Neg32 { op } => processed_instrs.extend(fixup_unary_expr!(Neg32, ctx, op)),
+            Add32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Add32, ctx, src, dst)),
+            Sub32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Sub32, ctx, src, dst)),
+            IMul32 { src, dst } => processed_instrs.extend(fixup_imul32(ctx, src, dst)),
+            IDiv32 { divisor } => processed_instrs.extend(fixup_idiv32(ctx, divisor)),
+            Shl32 { src, dst } => {
+                let fixed_up = fixup_shl32(ctx, src, dst)?;
+                processed_instrs.extend(fixed_up);
+            },
+            Shr32 { src, dst } => {
+                let fixed_up = fixup_shr32(ctx, src, dst)?;
+                processed_instrs.extend(fixed_up);
+            },
+            And32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(And32, ctx, src, dst)),
+            Or32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Or32, ctx, src, dst)),
+            Xor32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Xor32, ctx, src, dst)),
+            instr => processed_instrs.push(instr),
         }
-    }).collect();
+    }
     Ok(AsmFunction {
         name: f.name,
         instructions: processed_instrs,
@@ -300,6 +285,50 @@ fn fixup_idiv32(ctx: &mut StackAllocationContext, divisor: AsmOperand) -> Vec<As
             IDiv32 { divisor }
         ]
     }
+}
+
+fn fixup_shl32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
+    let fix_up_pseudo = fixup_binary_expr!(Shl32, ctx, src, dst);
+    let mut processed = vec![];
+    for instr in fix_up_pseudo {
+        processed.extend(match instr {
+            // todo: remove hardcoding later. We need to check for the
+            //       width and insert down/upcasting at the IR-level so that
+            //       we can lower to proper ASM types.
+            Shl32 { src: Reg(r), dst } if r == R10D => vec![
+                Mov8 { src: Reg(R10B), dst: Reg(CL) },
+                Shl32 { src: Reg(CL), dst },
+            ],
+            Shl32 { src: stack@Stack{..}, dst } => vec![
+                Mov8 { src: stack, dst: Reg(CL) },
+                Shl32 { src: Reg(CL), dst },
+            ],
+            instr => vec![instr],
+        });
+    }
+    Ok(processed)
+}
+
+fn fixup_shr32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
+    let fix_up_pseudo = fixup_binary_expr!(Shr32, ctx, src, dst);
+    let mut processed = vec![];
+    for instr in fix_up_pseudo {
+        processed.extend(match instr {
+            // todo: remove hardcoding later. We need to check for the
+            //       width and insert down/upcasting at the IR-level so that
+            //       we can lower to proper ASM types.
+            Shr32 { src: Reg(r), dst } if r == R10D => vec![
+                Mov8 { src: Reg(R10B), dst: Reg(CL) },
+                Shr32 { src: Reg(CL), dst },
+            ],
+            Shr32 { src: stack@Stack{..}, dst } => vec![
+                Mov8 { src: stack, dst: Reg(CL) },
+                Shr32 { src: Reg(CL), dst },
+            ],
+            instr => vec![instr],
+        });
+    }
+    Ok(processed)
 }
 
 fn from_ir_value(v: IRValue) -> AsmOperand {

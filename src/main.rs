@@ -17,6 +17,7 @@ mod common;
 mod codegen;
 mod asmgen;
 mod tacky;
+mod register;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time
