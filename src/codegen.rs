@@ -50,7 +50,7 @@ pub enum AsmInstruction {
     Xor32 { src: AsmOperand, dst: AsmOperand },
     Shl32 { src: AsmOperand, dst: AsmOperand },
     Shr32 { src: AsmOperand, dst: AsmOperand },
-    Cdq, // Sign extend %eax to 64-bit into %edx
+    SignExtendTo64, // Sign extend %eax to 64-bit into %edx
     Ret,
 }
 
@@ -127,13 +127,13 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                 ]),
                 IRBinaryOperator::Divide => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: Reg(EAX) },
-                    Cdq, // Sign extend EAX to EDX as IDivl expects 64-bit dividend
+                    SignExtendTo64, // Sign extend EAX to EDX as IDivl expects 64-bit dividend
                     IDiv32 { divisor: asm_src2_operand },
                     Mov32 { src: Reg(EAX), dst: asm_dst_operand },
                 ]),
                 IRBinaryOperator::Modulo => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: Reg(EAX) },
-                    Cdq,
+                    SignExtendTo64,
                     IDiv32 { divisor: asm_src2_operand },
                     Mov32 { src: Reg(EDX), dst: asm_dst_operand },
                 ]),
@@ -295,13 +295,32 @@ fn fixup_shl32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
             // todo: remove hardcoding later. We need to check for the
             //       width and insert down/upcasting at the IR-level so that
             //       we can lower to proper ASM types.
+            Shl32 { src: Imm32(n), dst } =>
+                if n < 0 {
+                    vec![
+                        Mov32 { src: dst.clone(), dst: Reg(R11D) },
+                        Mov32 { src: Imm32(-n), dst: Reg(EAX) },
+                        Mov8 { src: Reg(AL), dst: Reg(CL) },
+                        Mov32 { src: Reg(R11D), dst: dst.clone() },
+                        Shl32 { src: Reg(CL), dst: dst.clone() },
+                        Neg32 { op: dst.clone() },
+                    ]
+                } else {
+                    vec![
+                        Mov32 { src: dst.clone(), dst: Reg(R11D) },
+                        Mov32 { src: Imm32(n), dst: Reg(EAX) },
+                        Mov8 { src: Reg(AL), dst: Reg(CL) },
+                        Mov32 { src: Reg(R11D), dst: dst.clone() },
+                        Shl32 { src: Reg(CL), dst: dst.clone() },
+                    ]
+                },
             Shl32 { src: Reg(r), dst } if r == R10D => vec![
                 Mov8 { src: Reg(R10B), dst: Reg(CL) },
-                Shl32 { src: Reg(CL), dst },
+                Shl32 { src: Reg(CL), dst: dst.clone() },
             ],
             Shl32 { src: stack@Stack{..}, dst } => vec![
                 Mov8 { src: stack, dst: Reg(CL) },
-                Shl32 { src: Reg(CL), dst },
+                Shl32 { src: Reg(CL), dst: dst.clone() },
             ],
             instr => vec![instr],
         });
@@ -317,9 +336,28 @@ fn fixup_shr32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
             // todo: remove hardcoding later. We need to check for the
             //       width and insert down/upcasting at the IR-level so that
             //       we can lower to proper ASM types.
+            Shr32 { src: Imm32(n), dst } =>
+                if n < 0 {
+                    vec![
+                        Mov32 { src: dst.clone(), dst: Reg(R11D) },
+                        Mov32 { src: Imm32(-n), dst: Reg(EAX) },
+                        Mov8 { src: Reg(AL), dst: Reg(CL) },
+                        Mov32 { src: Reg(R11D), dst: dst.clone() },
+                        Shr32 { src: Reg(CL), dst: dst.clone() },
+                        Neg32 { op: dst.clone() },
+                    ]
+                } else {
+                    vec![
+                        Mov32 { src: dst.clone(), dst: Reg(R11D) },
+                        Mov32 { src: Imm32(n), dst: Reg(EAX) },
+                        Mov8 { src: Reg(AL), dst: Reg(CL) },
+                        Mov32 { src: Reg(R11D), dst: dst.clone() },
+                        Shr32 { src: Reg(CL), dst: dst.clone() },
+                    ]
+                },
             Shr32 { src: Reg(r), dst } if r == R10D => vec![
                 Mov8 { src: Reg(R10B), dst: Reg(CL) },
-                Shr32 { src: Reg(CL), dst },
+                Shr32 { src: Reg(CL), dst: dst.clone() },
             ],
             Shr32 { src: stack@Stack{..}, dst } => vec![
                 Mov8 { src: stack, dst: Reg(CL) },

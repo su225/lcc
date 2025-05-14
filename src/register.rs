@@ -7,13 +7,13 @@ pub enum Register {
 
     RSP, RBP,
 
-    R10B, CL,
+    R10B, AL, CL,
 }
 
 impl Register {
     fn width_bits(&self) -> usize {
         match self {
-            R10B | CL => 8,
+            R10B | AL | CL => 8,
             EAX | EDX | R10D | R11D => 32,
             RSP | RBP => 64,
         }
@@ -33,6 +33,7 @@ impl Display for Register {
 
             R10B => "r10b",
             CL => "cl",
+            AL => "al",
         })
     }
 }
