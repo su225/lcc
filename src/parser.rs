@@ -23,6 +23,7 @@ pub struct Symbol<'a> {
 pub(crate) enum UnaryOperator {
     Complement,
     Negate,
+    Not,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -45,6 +46,15 @@ pub(crate) enum BinaryOperator {
     BitwiseXor,
     LeftShift,
     RightShift,
+
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
@@ -65,22 +75,40 @@ impl BinaryOperator {
             BinaryOperator::BitwiseXor => BinaryOperatorAssociativity::Left,
             BinaryOperator::LeftShift => BinaryOperatorAssociativity::Left,
             BinaryOperator::RightShift => BinaryOperatorAssociativity::Left,
+            BinaryOperator::And => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Or => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Equal => BinaryOperatorAssociativity::Left,
+            BinaryOperator::NotEqual => BinaryOperatorAssociativity::Left,
+            BinaryOperator::LessThan => BinaryOperatorAssociativity::Left,
+            BinaryOperator::LessThanOrEqual => BinaryOperatorAssociativity::Left,
+            BinaryOperator::GreaterThan => BinaryOperatorAssociativity::Left,
+            BinaryOperator::GreaterThanOrEqual => BinaryOperatorAssociativity::Left,
         }
     }
 
     #[inline]
     fn precedence(&self) -> BinaryOperatorPrecedence {
         match self {
-            BinaryOperator::BitwiseOr => BinaryOperatorPrecedence(25),
-            BinaryOperator::BitwiseXor => BinaryOperatorPrecedence(30),
-            BinaryOperator::BitwiseAnd => BinaryOperatorPrecedence(35),
-            BinaryOperator::LeftShift => BinaryOperatorPrecedence(40),
-            BinaryOperator::RightShift => BinaryOperatorPrecedence(40),
-            BinaryOperator::Add => BinaryOperatorPrecedence(45),
-            BinaryOperator::Subtract => BinaryOperatorPrecedence(45),
-            BinaryOperator::Multiply => BinaryOperatorPrecedence(50),
-            BinaryOperator::Divide => BinaryOperatorPrecedence(50),
-            BinaryOperator::Modulo => BinaryOperatorPrecedence(50),
+            BinaryOperator::Multiply
+            | BinaryOperator::Divide
+            | BinaryOperator::Modulo => BinaryOperatorPrecedence(50),
+
+            BinaryOperator::Add | BinaryOperator::Subtract => BinaryOperatorPrecedence(45),
+            BinaryOperator::LeftShift | BinaryOperator::RightShift => BinaryOperatorPrecedence(42),
+
+            BinaryOperator::LessThan
+            | BinaryOperator::LessThanOrEqual
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterThanOrEqual => BinaryOperatorPrecedence(40),
+
+            BinaryOperator::Equal | BinaryOperator::NotEqual => BinaryOperatorPrecedence(38),
+
+            BinaryOperator::BitwiseAnd => BinaryOperatorPrecedence(36),
+            BinaryOperator::BitwiseXor => BinaryOperatorPrecedence(34),
+            BinaryOperator::BitwiseOr => BinaryOperatorPrecedence(32),
+
+            BinaryOperator::And => BinaryOperatorPrecedence(30),
+            BinaryOperator::Or => BinaryOperatorPrecedence(28),
         }
     }
 }
@@ -397,6 +425,7 @@ impl<'a> Parser<'a> {
                 match token_type {
                     TokenType::OperatorUnaryComplement => Ok(UnaryOperator::Complement),
                     TokenType::OperatorMinus => Ok(UnaryOperator::Negate),
+                    TokenType::OperatorUnaryLogicalNot => Ok(UnaryOperator::Not),
                     tok_type => Err(ParserError::ExpectedUnaryOperator { location, actual_token: tok_type.tag() })
                 }
             },
@@ -421,6 +450,14 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorBitwiseOr => Ok(BinaryOperator::BitwiseOr),
                     TokenType::OperatorBitwiseXor => Ok(BinaryOperator::BitwiseXor),
                     TokenType::OperatorBitwiseAnd => Ok(BinaryOperator::BitwiseAnd),
+                    TokenType::OperatorLogicalOr => Ok(BinaryOperator::Or),
+                    TokenType::OperatorLogicalAnd => Ok(BinaryOperator::And),
+                    TokenType::OperatorRelationalEqual => Ok(BinaryOperator::Equal),
+                    TokenType::OperatorRelationalNotEqual => Ok(BinaryOperator::NotEqual),
+                    TokenType::OperatorRelationalGreaterThan => Ok(BinaryOperator::GreaterThan),
+                    TokenType::OperatorRelationalGreaterThanEqualTo => Ok(BinaryOperator::GreaterThanOrEqual),
+                    TokenType::OperatorRelationalLessThan => Ok(BinaryOperator::LessThan),
+                    TokenType::OperatorRelationalLessThanEqualTo => Ok(BinaryOperator::LessThanOrEqual),
                     tok_type => Err(ExpectedBinaryOperator { location: location.clone(), actual_token: tok_type.tag() })
                 }
             }
@@ -1093,6 +1130,25 @@ mod test {
     #[case("bitwise_xor_is_left_associative", "10 ^ 20 ^ 30")]
     #[case("left_shift_is_left_associative", "1<<2<<3")]
     #[case("right_shift_is_left_associative", "200>>1>>1")]
+    #[case("logical_and", "10 && 20")]
+    #[case("logical_or", "1 || 0")]
+    #[case("logical_not", "!a")]
+    #[case("greater_than", "10 > 5")]
+    #[case("less_than", "3 < 4")]
+    #[case("greater_equal", "7 >= 7")]
+    #[case("less_equal", "2 <= 3")]
+    #[case("equal", "5 == 5")]
+    #[case("not_equal", "5 != 6")]
+    #[case("precedence_cmp_and", "1 < 2 && 3 > 2")]      // (<, >) evaluated before &&
+    #[case("precedence_cmp_or", "1 == 1 || 0 != 1")]     // (==, !=) before ||
+    #[case("precedence_and_or", "1 && 0 || 1")]          // && before ||
+    #[case("assoc_equal", "1 == 1 == true")]             // left to right: (1 == 1) == true
+    #[case("assoc_not_equal", "1 != 2 != true")]         // left to right: (1 != 2) != true
+    #[case("assoc_less_chain", "1 < 2 < 3")]             // (1 < 2) < 3
+    #[case("assoc_greater_chain", "5 > 4 > 3")]          // (5 > 4) > 3
+    #[case("assoc_le_ge_chain", "3 <= 3 >= 2")]          // (3 <= 3) >= 2
+    #[case("assoc_logical_and", "1 && 1 && 0")]          // (1 && 1) && 0
+    #[case("assoc_logical_or", "0 || 1 || 1")]           // (0 || 1) || 1
     fn should_parse_expression_correctly(#[case] description: &str, #[case] src: &str) {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);

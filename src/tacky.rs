@@ -30,6 +30,7 @@ impl From<&UnaryOperator> for IRUnaryOperator {
         match value {
             UnaryOperator::Complement => IRUnaryOperator::Complement,
             UnaryOperator::Negate => IRUnaryOperator::Negate,
+            UnaryOperator::Not => todo!(),
         }
     }
 }
@@ -62,6 +63,8 @@ impl From<&BinaryOperator> for IRBinaryOperator {
             BinaryOperator::BitwiseXor => IRBinaryOperator::BitwiseXor,
             BinaryOperator::LeftShift => IRBinaryOperator::LeftShift,
             BinaryOperator::RightShift => IRBinaryOperator::RightShift,
+
+            _ => todo!(),
         }
     }
 }
