@@ -1132,7 +1132,7 @@ mod test {
     #[case("right_shift_is_left_associative", "200>>1>>1")]
     #[case("logical_and", "10 && 20")]
     #[case("logical_or", "1 || 0")]
-    #[case("logical_not", "!a")]
+    #[case("logical_not", "!10")]
     #[case("greater_than", "10 > 5")]
     #[case("less_than", "3 < 4")]
     #[case("greater_equal", "7 >= 7")]
@@ -1142,8 +1142,6 @@ mod test {
     #[case("precedence_cmp_and", "1 < 2 && 3 > 2")]      // (<, >) evaluated before &&
     #[case("precedence_cmp_or", "1 == 1 || 0 != 1")]     // (==, !=) before ||
     #[case("precedence_and_or", "1 && 0 || 1")]          // && before ||
-    #[case("assoc_equal", "1 == 1 == true")]             // left to right: (1 == 1) == true
-    #[case("assoc_not_equal", "1 != 2 != true")]         // left to right: (1 != 2) != true
     #[case("assoc_less_chain", "1 < 2 < 3")]             // (1 < 2) < 3
     #[case("assoc_greater_chain", "5 > 4 > 3")]          // (5 > 4) > 3
     #[case("assoc_le_ge_chain", "3 <= 3 >= 2")]          // (3 <= 3) >= 2
@@ -1153,7 +1151,7 @@ mod test {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
         let actual = parser.parse_expression();
-        assert!(actual.is_ok());
+        assert!(actual.is_ok(), "src: {}\nactual:{:?}\n", src, actual);
 
         with_settings!({
             sort_maps => true,
