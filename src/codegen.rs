@@ -107,6 +107,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                 match operator {
                     IRUnaryOperator::Complement => Not32 { op: asm_dst_operand },
                     IRUnaryOperator::Negate => Neg32 { op: asm_dst_operand },
+                    _ => todo!(),
                 },
             ])
         }
@@ -159,6 +160,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Sar32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
+                _ => todo!(),
             }
         }
         Instruction::Return(v) => {
@@ -167,6 +169,7 @@ fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>,
                 Ret,
             ])
         }
+        _ => todo!(),
     }
 }
 

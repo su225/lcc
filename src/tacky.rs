@@ -23,6 +23,7 @@ pub(crate) struct IRFunction {
 pub(crate) enum IRUnaryOperator {
     Complement,
     Negate,
+    Not,
 }
 
 impl From<&UnaryOperator> for IRUnaryOperator {
@@ -47,6 +48,12 @@ pub(crate) enum IRBinaryOperator {
     BitwiseXor,
     LeftShift,
     RightShift,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqul,
 }
 
 impl From<&BinaryOperator> for IRBinaryOperator {
@@ -89,6 +96,11 @@ pub(crate) enum Instruction {
         dst: IRValue,
     },
     Return(IRValue),
+    Copy { src: IRValue, dst: IRValue },
+    Jump { target: IRSymbol },
+    JumpIfZero { condition: IRValue, target: IRSymbol },
+    JumpIfNotZero { condition: IRValue, target: IRSymbol },
+    Label(IRSymbol),
 }
 
 #[derive(Error, PartialEq, Debug)]
