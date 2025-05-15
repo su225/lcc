@@ -59,6 +59,15 @@ pub enum TokenTag {
     OperatorBitwiseAnd,
     OperatorBitwiseOr,
     OperatorBitwiseXor,
+    OperatorUnaryLogicalNot,
+    OperatorLogicalAnd,
+    OperatorLogicalOr,
+    OperatorRelationalEqual,
+    OperatorRelationalNotEqual,
+    OperatorRelationalLessThan,
+    OperatorRelationalLessThanEqualTo,
+    OperatorRelationalGreaterThan,
+    OperatorRelationalGreaterThanEqualTo,
 }
 
 impl Display for TokenTag {
@@ -90,6 +99,16 @@ pub enum TokenType<'a> {
     OperatorBitwiseAnd,
     OperatorBitwiseOr,
     OperatorBitwiseXor,
+
+    OperatorUnaryLogicalNot,
+    OperatorLogicalAnd,
+    OperatorLogicalOr,
+    OperatorRelationalEqual,
+    OperatorRelationalNotEqual,
+    OperatorRelationalLessThan,
+    OperatorRelationalLessThanEqualTo,
+    OperatorRelationalGreaterThan,
+    OperatorRelationalGreaterThanEqualTo,
 }
 
 impl<'a> TokenType<'a> {
@@ -117,6 +136,16 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorBitwiseAnd => TokenTag::OperatorBitwiseAnd,
             TokenType::OperatorBitwiseOr => TokenTag::OperatorBitwiseOr,
             TokenType::OperatorBitwiseXor => TokenTag::OperatorBitwiseXor,
+
+            TokenType::OperatorUnaryLogicalNot => TokenTag::OperatorUnaryLogicalNot,
+            TokenType::OperatorLogicalAnd => TokenTag::OperatorLogicalAnd,
+            TokenType::OperatorLogicalOr => TokenTag::OperatorLogicalOr,
+            TokenType::OperatorRelationalEqual => TokenTag::OperatorRelationalEqual,
+            TokenType::OperatorRelationalNotEqual => TokenTag::OperatorRelationalNotEqual,
+            TokenType::OperatorRelationalLessThan => TokenTag::OperatorRelationalLessThan,
+            TokenType::OperatorRelationalLessThanEqualTo => TokenTag::OperatorRelationalLessThanEqualTo,
+            TokenType::OperatorRelationalGreaterThan => TokenTag::OperatorRelationalGreaterThan,
+            TokenType::OperatorRelationalGreaterThanEqualTo => TokenTag::OperatorRelationalGreaterThanEqualTo,
         }
     }
 
@@ -124,7 +153,8 @@ impl<'a> TokenType<'a> {
         match self {
             TokenType::OperatorUnaryComplement
             | TokenType::OperatorUnaryDecrement
-            | TokenType::OperatorMinus => true,
+            | TokenType::OperatorMinus
+            | TokenType::OperatorUnaryLogicalNot => true,
             _ => false,
         }
     }
@@ -140,7 +170,15 @@ impl<'a> TokenType<'a> {
             | TokenType::OperatorRightShift
             | TokenType::OperatorBitwiseAnd
             | TokenType::OperatorBitwiseOr
-            | TokenType::OperatorBitwiseXor => true,
+            | TokenType::OperatorBitwiseXor
+            | TokenType::OperatorRelationalEqual
+            | TokenType::OperatorRelationalNotEqual
+            | TokenType::OperatorRelationalGreaterThan
+            | TokenType::OperatorRelationalGreaterThanEqualTo
+            | TokenType::OperatorRelationalLessThan
+            | TokenType::OperatorRelationalLessThanEqualTo
+            | TokenType::OperatorLogicalAnd
+            | TokenType::OperatorLogicalOr => true,
             _ => false,
         }
     }
@@ -197,6 +235,15 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorBitwiseAnd => f.write_str("&"),
             TokenType::OperatorBitwiseOr => f.write_str("|"),
             TokenType::OperatorBitwiseXor => f.write_str("^"),
+            TokenType::OperatorUnaryLogicalNot => f.write_str("!"),
+            TokenType::OperatorLogicalAnd => f.write_str("&&"),
+            TokenType::OperatorLogicalOr => f.write_str("||"),
+            TokenType::OperatorRelationalEqual => f.write_str("=="),
+            TokenType::OperatorRelationalNotEqual => f.write_str("!="),
+            TokenType::OperatorRelationalLessThan => f.write_str("<"),
+            TokenType::OperatorRelationalLessThanEqualTo => f.write_str("<="),
+            TokenType::OperatorRelationalGreaterThan => f.write_str(">"),
+            TokenType::OperatorRelationalGreaterThanEqualTo => f.write_str(">="),
         }
     }
 }
@@ -404,6 +451,23 @@ impl<'a> Lexer<'a> {
                             let token = self.tokenize_single_char(TokenType::OperatorModulo);
                             return Ok(Some(token));
                         }
+                        '!' => {
+                            let loc = self.cur_location;
+                            self.next_char();
+                            return match &self.char_stream.peek() {
+                                Some('=') => {
+                                    self.next_char();
+                                    Ok(Some(Token {
+                                        token_type: TokenType::OperatorRelationalNotEqual,
+                                        location: loc,
+                                    }))
+                                },
+                                None | Some(_) => Ok(Some(Token {
+                                    token_type: TokenType::OperatorUnaryLogicalNot,
+                                    location: loc,
+                                })),
+                            }
+                        }
                         '~' => {
                             let token = self.tokenize_single_char(TokenType::OperatorUnaryComplement);
                             return Ok(Some(token));
@@ -430,12 +494,38 @@ impl<'a> Lexer<'a> {
                             }))
                         }
                         '&' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorBitwiseAnd);
-                            return Ok(Some(token));
+                            let op_loc = self.cur_location;
+                            self.next_char();
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '&' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorLogicalAnd,
+                                        location: op_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorBitwiseAnd,
+                                location: op_loc,
+                            }))
                         }
                         '|' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorBitwiseOr);
-                            return Ok(Some(token));
+                            let op_loc = self.cur_location;
+                            self.next_char();
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '|' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorLogicalOr,
+                                        location: op_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorBitwiseOr,
+                                location: op_loc,
+                            }))
                         }
                         '^' => {
                             let token = self.tokenize_single_char(TokenType::OperatorBitwiseXor);
@@ -444,34 +534,67 @@ impl<'a> Lexer<'a> {
                         '<' => {
                             let loc = self.cur_location;
                             self.next_char();
-                            
                             if let Some(&nxt) = self.char_stream.peek() {
-                                if nxt == '<' {
-                                    self.next_char();
-                                    return Ok(Some(Token {
-                                        token_type: TokenType::OperatorLeftShift,
-                                        location: loc,
-                                    }));
+                                match nxt {
+                                    '<' => {
+                                        self.next_char();
+                                        return Ok(Some(Token {
+                                            token_type: TokenType::OperatorLeftShift,
+                                            location: loc,
+                                        }));
+                                    }
+                                    '=' => {
+                                        self.next_char();
+                                        return Ok(Some(Token {
+                                            token_type: TokenType::OperatorRelationalLessThanEqualTo,
+                                            location: loc,
+                                        }))
+                                    }
+                                    _ => {},
                                 }
-                                return Err(LexerError::UnexpectedCharacter {location: loc, ch: nxt})
                             }
-                            return Err(LexerError::UnexpectedEndOfStream)
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorRelationalLessThan,
+                                location: loc,
+                            }));
                         }
                         '>' => {
                             let loc = self.cur_location;
                             self.next_char();
-
-                            if let Some(&nxt) = self.char_stream.peek() {
-                                if nxt == '>' {
+                            return match &self.char_stream.peek() {
+                                Some('>') => {
                                     self.next_char();
-                                    return Ok(Some(Token {
+                                    Ok(Some(Token {
                                         token_type: TokenType::OperatorRightShift,
                                         location: loc,
                                     }))
-                                }
-                                return Err(LexerError::UnexpectedCharacter {location: loc, ch: nxt})
+                                },
+                                Some('=') => {
+                                    self.next_char();
+                                    Ok(Some(Token {
+                                        token_type: TokenType::OperatorRelationalGreaterThanEqualTo,
+                                        location: loc,
+                                    }))
+                                },
+                                None | Some(_) => Ok(Some(Token {
+                                    token_type: TokenType::OperatorRelationalGreaterThan,
+                                    location: loc,
+                                })),
                             }
-                            return Err(LexerError::UnexpectedEndOfStream)
+                        }
+                        '=' => {
+                            let loc = self.cur_location;
+                            self.next_char();
+                            return match &self.char_stream.peek() {
+                                Some('=') => {
+                                    self.next_char();
+                                    Ok(Some(Token {
+                                        token_type: TokenType::OperatorRelationalEqual,
+                                        location: loc,
+                                    }))
+                                }
+                                _ => Err(LexerError::UnexpectedCharacter { location: loc, ch: '=' })
+                            }
                         }
                         '0'..='9' => {
                             let token = self.tokenize_integer_constant()?;
@@ -685,6 +808,96 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: TokenType::OperatorBitwiseXor, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_logical_not() {
+        let source = "!";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorUnaryLogicalNot, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_logical_or() {
+        let source = "||";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorLogicalOr, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_logical_and() {
+        let source = "&&";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorLogicalAnd, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_relational_equal() {
+        let source = "==";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRelationalEqual, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_relational_not_equal() {
+        let source = "!=";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRelationalNotEqual, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_relational_less_than() {
+        let source = "<";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRelationalLessThan, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_relational_less_than_or_equal_to() {
+        let source = "<=";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRelationalLessThanEqualTo, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_relational_greater_than() {
+        let source = ">";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRelationalGreaterThan, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_relational_greater_than_or_equal_to() {
+        let source = ">=";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: TokenType::OperatorRelationalGreaterThanEqualTo, location: (1, 1).into() },
         ]));
     }
 
