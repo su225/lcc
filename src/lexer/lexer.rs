@@ -659,9 +659,10 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
-    use crate::lexer::{KEYWORDS, Lexer, LexerError, Location, Radix, Token, TokenType};
+    use rstest::rstest;
+    use crate::common::{Location, Radix};
+    use crate::lexer::{Lexer, LexerError, Token, TokenType};
+    use crate::lexer::lexer::KEYWORDS;
     use crate::lexer::TokenType::*;
 
     type LexerResult<T> = Result<T, LexerError>;
@@ -901,31 +902,27 @@ mod test {
         ]));
     }
 
-    #[test]
-    fn test_tokenizing_valid_identifiers() {
-        let identifiers = vec![
-            "abcde",
-            "abcde123",
-            "hello_world_123",
-            "helloWorld123",
-            "_abcde",
-            "_123",
-            "_123_456",
-            "café",
-            "αριθμός",
-            "число",
-            "数字",
-        ];
-        for src in identifiers.into_iter() {
-            let lexer = Lexer::new(src);
-            let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
-            let expected_tokens: LexerResult<Vec<Token>> = Ok(vec![
-                Token { token_type: Identifier(src), location: Location { line: 1, column: 1 } },
-            ]);
-            assert_eq!(tokens, expected_tokens,
-                       "lexing identifier {}: expected: {:?}, actual:{:?}",
-                       src, expected_tokens, tokens);
-        }
+    #[rstest]
+    #[case("abcde")]
+    #[case("abcde123")]
+    #[case("hello_world_123")]
+    #[case("helloWorld123")]
+    #[case("_abcde")]
+    #[case("_123")]
+    #[case("_123_456")]
+    #[case("café")]
+    #[case("αριθμός")]
+    #[case("число")]
+    #[case("数字")]
+    fn test_tokenizing_valid_identifiers(#[case] src: &str) {
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        let expected_tokens: LexerResult<Vec<Token>> = Ok(vec![
+            Token { token_type: Identifier(src), location: Location { line: 1, column: 1 } },
+        ]);
+        assert_eq!(tokens, expected_tokens,
+                   "lexing identifier {}: expected: {:?}, actual:{:?}",
+                   src, expected_tokens, tokens);
     }
 
     #[test]
@@ -988,62 +985,42 @@ mod test {
             src, expected, actual);
     }
 
-    #[test]
-    fn test_tokenizing_valid_integers() {
-        let integers_base10 = vec![
-            "1",
-            "0",
-            "2",
-            "3",
-            "44",
-            "55",
-            "66",
-            "777",
-            "888",
-            "9189",
-            "189087931798698368761873",
-            "0\t\t",
-            "0  ",
-            "0\n",
-        ];
+    #[rstest]
+    #[case::decimal("1", Radix::Decimal)]
+    #[case::decimal("0", Radix::Decimal)]
+    #[case::decimal("2", Radix::Decimal)]
+    #[case::decimal("3", Radix::Decimal)]
+    #[case::decimal("44", Radix::Decimal)]
+    #[case::decimal("55", Radix::Decimal)]
+    #[case::decimal("66", Radix::Decimal)]
+    #[case::decimal("777", Radix::Decimal)]
+    #[case::decimal("888", Radix::Decimal)]
+    #[case::decimal("9189", Radix::Decimal)]
+    #[case::decimal("189087931798698368761873", Radix::Decimal)]
+    #[case::decimal("0\t\t", Radix::Decimal)]
+    #[case::decimal("0  ", Radix::Decimal)]
+    #[case::decimal("0\n", Radix::Decimal)]
 
-        let integers_hex = vec!["0xdeadbeef",
-                                "0Xcafebabe",
-                                "0XDEADBEEF",
-                                "0xCAFEbabe",
-        ];
+    #[case::hex("0xdeadbeef", Radix::Hexadecimal)]
+    #[case::hex("0Xcafebabe", Radix::Hexadecimal)]
+    #[case::hex("0XDEADBEEF", Radix::Hexadecimal)]
+    #[case::hex("0xCAFEbabe", Radix::Hexadecimal)]
 
-        let integers_octal = vec![
-            "000",
-            "01234567",
-            "012300",
-        ];
+    #[case::octal("000", Radix::Octal)]
+    #[case::octal("01234567", Radix::Octal)]
+    #[case::octal("012300", Radix::Octal)]
 
-        let integers_binary = vec![
-            "0b01010010010",
-            "0b001001001",
-        ];
-
-        let int_tests = HashMap::from([
-            (Radix::Decimal, integers_base10),
-            (Radix::Hexadecimal, integers_hex),
-            (Radix::Octal, integers_octal),
-            (Radix::Binary, integers_binary),
+    #[case::binary("0b01010010010", Radix::Binary)]
+    #[case::binary("0b001001001", Radix::Binary)]
+    fn test_tokenizing_valid_integers(#[case] src: &str, #[case] base: Radix) {
+        let lexer = Lexer::new(src);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        let expected_tokens = Ok(vec![
+            Token { token_type: IntConstant(src.trim(), base), location: Location { line: 1, column: 1 } },
         ]);
-
-
-        for (base, srcs) in int_tests.into_iter() {
-            for src in srcs.into_iter() {
-                let lexer = Lexer::new(src);
-                let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
-                let expected_tokens = Ok(vec![
-                    Token { token_type: TokenType::IntConstant(src.trim(), base), location: Location { line: 1, column: 1 } },
-                ]);
-                assert_eq!(tokens, expected_tokens,
-                           "lexing identifier {}: expected: {:?}, actual:{:?}",
-                           src, expected_tokens, tokens);
-            }
-        }
+        assert_eq!(tokens, expected_tokens,
+                   "lexing identifier {}: expected: {:?}, actual:{:?}",
+                   src, expected_tokens, tokens);
     }
 
     #[test]
