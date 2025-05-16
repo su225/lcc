@@ -53,7 +53,7 @@ pub(crate) enum IRBinaryOperator {
     LessThan,
     LessOrEqual,
     GreaterThan,
-    GreaterOrEqul,
+    GreaterOrEqual,
 }
 
 impl From<&BinaryOperator> for IRBinaryOperator {
