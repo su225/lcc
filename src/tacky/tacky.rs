@@ -1,125 +1,24 @@
 use std::fmt::Debug;
-use std::num::ParseIntError;
 
 use derive_more::with_trait::Display;
-use thiserror::Error;
-use crate::parser::types::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
-use crate::tacky::Instruction::{Binary, Return, Unary};
-use crate::tacky::IRValue::Constant32;
-
-#[derive(Debug, PartialEq)]
-pub struct IRProgram {
-    pub functions: Vec<IRFunction>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct IRFunction {
-    pub identifier: IRSymbol,
-    pub body: Vec<Instruction>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IRUnaryOperator {
-    Complement,
-    Negate,
-    Not,
-}
-
-impl From<&UnaryOperator> for IRUnaryOperator {
-    fn from(value: &UnaryOperator) -> Self {
-        match value {
-            UnaryOperator::Complement => IRUnaryOperator::Complement,
-            UnaryOperator::Negate => IRUnaryOperator::Negate,
-            UnaryOperator::Not => todo!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IRBinaryOperator {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
-    BitwiseAnd,
-    BitwiseOr,
-    BitwiseXor,
-    LeftShift,
-    RightShift,
-    Equal,
-    NotEqual,
-    LessThan,
-    LessOrEqual,
-    GreaterThan,
-    GreaterOrEqual,
-}
-
-impl From<&BinaryOperator> for IRBinaryOperator {
-    fn from(value: &BinaryOperator) -> Self {
-        match value {
-            BinaryOperator::Add => IRBinaryOperator::Add,
-            BinaryOperator::Subtract => IRBinaryOperator::Subtract,
-            BinaryOperator::Multiply => IRBinaryOperator::Multiply,
-            BinaryOperator::Divide => IRBinaryOperator::Divide,
-            BinaryOperator::Modulo => IRBinaryOperator::Modulo,
-
-            BinaryOperator::BitwiseAnd => IRBinaryOperator::BitwiseAnd,
-            BinaryOperator::BitwiseOr => IRBinaryOperator::BitwiseOr,
-            BinaryOperator::BitwiseXor => IRBinaryOperator::BitwiseXor,
-            BinaryOperator::LeftShift => IRBinaryOperator::LeftShift,
-            BinaryOperator::RightShift => IRBinaryOperator::RightShift,
-
-            _ => todo!(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IRValue {
-    Constant32(i32),
-    Variable(IRSymbol),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Instruction {
-    Unary {
-        operator: IRUnaryOperator,
-        src: IRValue,
-        dst: IRValue,
-    },
-    Binary {
-        operator: IRBinaryOperator,
-        src1: IRValue,
-        src2: IRValue,
-        dst: IRValue,
-    },
-    Return(IRValue),
-    Copy { src: IRValue, dst: IRValue },
-    Jump { target: IRSymbol },
-    JumpIfZero { condition: IRValue, target: IRSymbol },
-    JumpIfNotZero { condition: IRValue, target: IRSymbol },
-    Label(IRSymbol),
-}
-
-#[derive(Error, PartialEq, Debug)]
-pub enum TackyError {
-    #[error(transparent)]
-    IntImmediateParseError(#[from] ParseIntError),
-}
+use crate::parser::types::*;
+use crate::tacky::errors::TackyError;
+use crate::tacky::types::{TackyInstruction, TackyBinaryOperator, TackyProgram, TackyUnaryOperator, TackyValue, TackyFunction};
+use crate::tacky::types::TackyInstruction::{Binary, Return, Unary};
+use crate::tacky::types::TackyValue::Constant32;
 
 const COMPILER_GEN_PREFIX: &'static str = "<t>";
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
-pub struct IRSymbol(pub String);
+pub struct TackySymbol(pub String);
 
-impl From<&str> for IRSymbol {
+impl From<&str> for TackySymbol {
     fn from(value: &str) -> Self {
-        IRSymbol(value.to_string())
+        TackySymbol(value.to_string())
     }
 }
 
-impl IRSymbol {
+impl TackySymbol {
     pub fn is_generated(&self) -> bool {
         self.0.starts_with(COMPILER_GEN_PREFIX)
     }
@@ -134,36 +33,36 @@ impl TackyContext {
         TackyContext { next_int: 0 }
     }
 
-    fn next_temporary_identifier(&mut self) -> IRSymbol {
+    fn next_temporary_identifier(&mut self) -> TackySymbol {
         let identifier = format!("{}.{}", COMPILER_GEN_PREFIX, self.next_int);
         self.next_int += 1;
-        IRSymbol(identifier)
+        TackySymbol(identifier)
     }
 }
 
-pub fn emit(prog: &ProgramDefinition) -> Result<IRProgram, TackyError> {
+pub fn emit(prog: &ProgramDefinition) -> Result<TackyProgram, TackyError> {
     let mut ctx = TackyContext::new();
     let mut f = vec![];
     for fd in prog.functions.iter() {
         let tf = emit_tacky_for_function(&mut ctx, fd)?;
         f.push(tf);
     }
-    Ok(IRProgram { functions: f })
+    Ok(TackyProgram { functions: f })
 }
 
-fn emit_tacky_for_function(ctx: &mut TackyContext, f: &FunctionDefinition) -> Result<IRFunction, TackyError> {
+fn emit_tacky_for_function(ctx: &mut TackyContext, f: &FunctionDefinition) -> Result<TackyFunction, TackyError> {
     let mut instructions = vec![];
     for stmt in f.body.iter() {
         let instrs = emit_tacky_for_statement(ctx, stmt)?;
         instructions.extend(instrs);
     }
-    Ok(IRFunction {
-        identifier: IRSymbol(f.name.name.into()),
+    Ok(TackyFunction {
+        identifier: TackySymbol(f.name.name.into()),
         body: instructions,
     })
 }
 
-fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<Instruction>, TackyError> {
+fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<TackyInstruction>, TackyError> {
     match s.kind {
         StatementKind::Return(ref expr) => {
             let (dst, mut expr_instrs) = emit_tacky_for_expression(ctx, expr)?;
@@ -173,7 +72,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
     }
 }
 
-fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(IRValue, Vec<Instruction>), TackyError> {
+fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(TackyValue, Vec<TackyInstruction>), TackyError> {
     match &e.kind {
         ExpressionKind::IntConstant(c, radix) => {
             let n = i32::from_str_radix(c, radix.value())?;
@@ -182,10 +81,10 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
         ExpressionKind::Unary(unary_op, src) => {
             let (src_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, src)?;
             let dst_tacky_identifier = ctx.next_temporary_identifier();
-            let dst_tacky = IRValue::Variable(dst_tacky_identifier.clone());
-            let result_val = IRValue::Variable(dst_tacky_identifier);
+            let dst_tacky = TackyValue::Variable(dst_tacky_identifier.clone());
+            let result_val = TackyValue::Variable(dst_tacky_identifier);
             tacky_instrs.push(Unary {
-                operator: IRUnaryOperator::from(unary_op),
+                operator: TackyUnaryOperator::from(unary_op),
                 src: src_tacky,
                 dst: dst_tacky,
             });
@@ -195,11 +94,11 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             let (src1_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, op1)?;
             let (src2_tacky, src2_tacky_instrs) = emit_tacky_for_expression(ctx, op2)?;
             let dst_tacky_identifier = ctx.next_temporary_identifier();
-            let dst_tacky = IRValue::Variable(dst_tacky_identifier.clone());
-            let result = IRValue::Variable(dst_tacky_identifier);
+            let dst_tacky = TackyValue::Variable(dst_tacky_identifier.clone());
+            let result = TackyValue::Variable(dst_tacky_identifier);
             tacky_instrs.extend(src2_tacky_instrs);
             tacky_instrs.push(Binary {
-                operator: IRBinaryOperator::from(binary_op),
+                operator: TackyBinaryOperator::from(binary_op),
                 src1: src1_tacky,
                 src2: src2_tacky,
                 dst: dst_tacky,

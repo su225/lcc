@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use crate::codegen::x86_64::register::Register;
-use crate::tacky::IRSymbol;
+use crate::tacky::TackySymbol;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StackOffset(pub(crate) isize);
@@ -9,7 +9,7 @@ pub struct StackOffset(pub(crate) isize);
 pub enum AsmOperand {
     Imm32(i32),
     Reg(Register),
-    Pseudo(IRSymbol),
+    Pseudo(TackySymbol),
     Stack { offset: StackOffset },
 }
 
@@ -48,7 +48,7 @@ pub enum AsmInstruction {
 
 #[derive(Debug, PartialEq)]
 pub struct AsmFunction {
-    pub name: IRSymbol,
+    pub name: TackySymbol,
     pub instructions: Vec<AsmInstruction>,
 }
 

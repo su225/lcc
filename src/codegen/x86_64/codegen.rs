@@ -1,12 +1,13 @@
 use std::collections::HashMap;
-use crate::codegen::x86_64::error::CodegenError;
+use crate::codegen::x86_64::errors::CodegenError;
 use crate::codegen::x86_64::register::Register::*;
 use crate::codegen::x86_64::types::{AsmFunction, AsmInstruction, AsmOperand, AsmProgram, StackOffset};
 use crate::codegen::x86_64::types::AsmInstruction::*;
 use crate::codegen::x86_64::types::AsmOperand::*;
-use crate::tacky::{Instruction, IRBinaryOperator, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
+use crate::tacky::TackySymbol;
+use crate::tacky::types::*;
 
-pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
+pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
     let mut asm_functions = Vec::with_capacity(p.functions.len());
     for f in p.functions {
         let asm_func = generate_function_assembly(f)?;
@@ -19,7 +20,7 @@ pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
     Ok(AsmProgram { functions: asm_functions })
 }
 
-fn generate_function_assembly(f: IRFunction) -> Result<AsmFunction, CodegenError> {
+fn generate_function_assembly(f: TackyFunction) -> Result<AsmFunction, CodegenError> {
     let mut asm_instructions = Vec::with_capacity(f.body.len());
     for tacky_inst in f.body {
         let asm_instrs = generate_instruction_assembly(tacky_inst)?;
@@ -31,72 +32,72 @@ fn generate_function_assembly(f: IRFunction) -> Result<AsmFunction, CodegenError
     })
 }
 
-fn generate_instruction_assembly(ti: Instruction) -> Result<Vec<AsmInstruction>, CodegenError> {
+fn generate_instruction_assembly(ti: TackyInstruction) -> Result<Vec<AsmInstruction>, CodegenError> {
     match ti {
-        Instruction::Unary { operator, src, dst } => {
+        TackyInstruction::Unary { operator, src, dst } => {
             let asm_dst_operand = from_ir_value(dst);
             Ok(vec![
                 Mov32 { src: from_ir_value(src), dst: asm_dst_operand.clone() },
                 match operator {
-                    IRUnaryOperator::Complement => Not32 { op: asm_dst_operand },
-                    IRUnaryOperator::Negate => Neg32 { op: asm_dst_operand },
+                    TackyUnaryOperator::Complement => Not32 { op: asm_dst_operand },
+                    TackyUnaryOperator::Negate => Neg32 { op: asm_dst_operand },
                     _ => todo!(),
                 },
             ])
         }
-        Instruction::Binary { operator, src1, src2, dst } => {
+        TackyInstruction::Binary { operator, src1, src2, dst } => {
             let asm_dst_operand = from_ir_value(dst);
             let asm_src1_operand = from_ir_value(src1);
             let asm_src2_operand = from_ir_value(src2);
             match operator {
-                IRBinaryOperator::Add => Ok(vec![
+                TackyBinaryOperator::Add => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Add32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::Subtract => Ok(vec![
+                TackyBinaryOperator::Subtract => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Sub32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::Multiply => Ok(vec![
+                TackyBinaryOperator::Multiply => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     IMul32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::Divide => Ok(vec![
+                TackyBinaryOperator::Divide => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: Reg(EAX) },
                     SignExtendTo64, // Sign extend EAX to EDX as IDivl expects 64-bit dividend
                     IDiv32 { divisor: asm_src2_operand },
                     Mov32 { src: Reg(EAX), dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::Modulo => Ok(vec![
+                TackyBinaryOperator::Modulo => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: Reg(EAX) },
                     SignExtendTo64,
                     IDiv32 { divisor: asm_src2_operand },
                     Mov32 { src: Reg(EDX), dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::BitwiseAnd => Ok(vec![
+                TackyBinaryOperator::BitwiseAnd => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     And32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::BitwiseOr => Ok(vec![
+                TackyBinaryOperator::BitwiseOr => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Or32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::BitwiseXor => Ok(vec![
+                TackyBinaryOperator::BitwiseXor => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Xor32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::LeftShift => Ok(vec![
+                TackyBinaryOperator::LeftShift => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Sal32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                IRBinaryOperator::RightShift => Ok(vec![
+                TackyBinaryOperator::RightShift => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Sar32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
                 _ => todo!(),
             }
         }
-        Instruction::Return(v) => {
+        TackyInstruction::Return(v) => {
             Ok(vec![
                 Mov32 { src: from_ir_value(v), dst: Reg(EAX) },
                 Ret,
@@ -136,7 +137,7 @@ macro_rules! fixup_unary_expr {
 struct StackAllocationContext {
     stack_size: usize,
     cur_offset: StackOffset,
-    symbol_offset: HashMap<IRSymbol, StackOffset>,
+    symbol_offset: HashMap<TackySymbol, StackOffset>,
 }
 
 impl StackAllocationContext {
@@ -148,7 +149,7 @@ impl StackAllocationContext {
         }
     }
 
-    fn get_or_allocate_stack(&mut self, sym: IRSymbol) -> StackOffset {
+    fn get_or_allocate_stack(&mut self, sym: TackySymbol) -> StackOffset {
         if let Some(&offset) = self.symbol_offset.get(&sym) {
             return offset;
         }
@@ -307,10 +308,10 @@ fn fixup_sar32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
     Ok(processed)
 }
 
-fn from_ir_value(v: IRValue) -> AsmOperand {
+fn from_ir_value(v: TackyValue) -> AsmOperand {
     match v {
-        IRValue::Constant32(c) => Imm32(c),
-        IRValue::Variable(s) => Pseudo(s),
+        TackyValue::Constant32(c) => Imm32(c),
+        TackyValue::Variable(s) => Pseudo(s),
     }
 }
 

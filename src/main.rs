@@ -7,8 +7,8 @@ use clap::Parser as ClapParser;
 use thiserror::Error;
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
-use lcc::tacky::{TackyError};
-use lcc::codegen::x86_64::{asmgen, codegen, error::CodegenError};
+use lcc::tacky::errors::{TackyError};
+use lcc::codegen::x86_64::{asmgen, codegen, errors::CodegenError};
 use lcc::tacky;
 
 /// C-compiler for learning real compiler construction
