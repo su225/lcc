@@ -5,11 +5,11 @@ use std::process::{Command, ExitStatus};
 
 use clap::Parser as ClapParser;
 use thiserror::Error;
-use lcc::codegen::CodegenError;
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
-use lcc::{asmgen, codegen, tacky};
-use lcc::tacky::TackyError;
+use lcc::tacky::{TackyError};
+use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
+use lcc::tacky;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time

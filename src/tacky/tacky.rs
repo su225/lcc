@@ -4,7 +4,6 @@ use std::num::ParseIntError;
 use derive_more::with_trait::Display;
 use thiserror::Error;
 
-use crate::parser::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
 use crate::tacky::Instruction::{Binary, Return, Unary};
 use crate::tacky::IRValue::Constant32;
 

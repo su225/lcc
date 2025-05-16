@@ -662,7 +662,7 @@ mod test {
     use std::collections::HashMap;
 
     use crate::lexer::{KEYWORDS, Lexer, LexerError, Location, Radix, Token, TokenType};
-    use crate::lexer::TokenType::{CloseParentheses, Identifier, IntConstant, Keyword, OpenParentheses, OperatorAsterisk, OperatorDiv, OperatorMinus, OperatorModulo, OperatorPlus};
+    use crate::lexer::TokenType::*;
 
     type LexerResult<T> = Result<T, LexerError>;
 
@@ -672,8 +672,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 2 } },
+            Token { token_type: OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: CloseParentheses, location: Location { line: 1, column: 2 } },
         ]));
     }
 
@@ -683,8 +683,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenBrace, location: Location { line: 1, column: 1 } },
-            Token { token_type: TokenType::CloseBrace, location: Location { line: 1, column: 2 } },
+            Token { token_type: OpenBrace, location: Location { line: 1, column: 1 } },
+            Token { token_type: CloseBrace, location: Location { line: 1, column: 2 } },
         ]));
     }
 
@@ -694,8 +694,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 3, column: 1 } },
+            Token { token_type: OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: CloseParentheses, location: Location { line: 3, column: 1 } },
         ]));
     }
 
@@ -705,8 +705,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 8 } },
+            Token { token_type: OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: CloseParentheses, location: Location { line: 1, column: 8 } },
         ]));
     }
 
@@ -716,8 +716,8 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OpenParentheses, location: Location { line: 1, column: 1 } },
-            Token { token_type: TokenType::CloseParentheses, location: Location { line: 1, column: 5 } },
+            Token { token_type: OpenParentheses, location: Location { line: 1, column: 1 } },
+            Token { token_type: CloseParentheses, location: Location { line: 1, column: 5 } },
         ]));
     }
 
@@ -727,7 +727,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::Semicolon, location: Location { line: 1, column: 1 } },
+            Token { token_type: Semicolon, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -737,7 +737,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorUnaryComplement, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorUnaryComplement, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -747,7 +747,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorUnaryDecrement, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorUnaryDecrement, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -757,7 +757,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorMinus, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorMinus, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -767,7 +767,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorLeftShift, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorLeftShift, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -777,7 +777,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRightShift, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorRightShift, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -787,7 +787,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorBitwiseAnd, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorBitwiseAnd, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -797,7 +797,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorBitwiseOr, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorBitwiseOr, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -807,7 +807,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorBitwiseXor, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorBitwiseXor, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -817,7 +817,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorUnaryLogicalNot, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorUnaryLogicalNot, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -827,7 +827,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorLogicalOr, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorLogicalOr, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -837,7 +837,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorLogicalAnd, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorLogicalAnd, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -847,7 +847,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRelationalEqual, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorRelationalEqual, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -857,7 +857,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRelationalNotEqual, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorRelationalNotEqual, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -867,7 +867,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRelationalLessThan, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorRelationalLessThan, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -877,7 +877,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRelationalLessThanEqualTo, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorRelationalLessThanEqualTo, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -887,7 +887,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRelationalGreaterThan, location: Location { line: 1, column: 1 } },
+            Token { token_type: OperatorRelationalGreaterThan, location: Location { line: 1, column: 1 } },
         ]));
     }
 
@@ -897,7 +897,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: TokenType::OperatorRelationalGreaterThanEqualTo, location: (1, 1).into() },
+            Token { token_type: OperatorRelationalGreaterThanEqualTo, location: (1, 1).into() },
         ]));
     }
 
@@ -920,7 +920,7 @@ mod test {
             let lexer = Lexer::new(src);
             let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
             let expected_tokens: LexerResult<Vec<Token>> = Ok(vec![
-                Token { token_type: TokenType::Identifier(src), location: Location { line: 1, column: 1 } },
+                Token { token_type: Identifier(src), location: Location { line: 1, column: 1 } },
             ]);
             assert_eq!(tokens, expected_tokens,
                        "lexing identifier {}: expected: {:?}, actual:{:?}",
@@ -1085,11 +1085,11 @@ mod test {
                 location: Location { line: 1, column: 1 },
             },
             Token {
-                token_type: TokenType::CloseParentheses,
+                token_type: CloseParentheses,
                 location: Location { line: 1, column: 2 },
             },
             Token {
-                token_type: TokenType::Identifier("abcde"),
+                token_type: Identifier("abcde"),
                 location: Location { line: 2, column: 1 },
             }
         ]);
@@ -1103,11 +1103,11 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         let expected = Ok(vec![
             Token {
-                token_type: TokenType::Identifier("abcde"),
+                token_type: Identifier("abcde"),
                 location: Location { line: 1, column: 1 },
             },
             Token {
-                token_type: TokenType::Identifier("xyz"),
+                token_type: Identifier("xyz"),
                 location: Location { line: 1, column: 15 },
             }
         ]);

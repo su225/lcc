@@ -50,7 +50,7 @@ pub enum BinaryOperator {
 
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct BinaryOperatorPrecedence(u16);
+pub struct BinaryOperatorPrecedence(pub(crate) u16);
 
 impl BinaryOperator {
     #[inline]

@@ -1,6 +1,6 @@
 use std::io;
 use std::io::Write;
-use crate::codegen::{AsmFunction, AsmInstruction, AsmProgram};
+use crate::translator::{AsmFunction, AsmInstruction, AsmProgram};
 
 pub fn emit<W: Write>(asm_code: AsmProgram, mut w: W) -> io::Result<()> {
     for f in asm_code.functions.into_iter() {

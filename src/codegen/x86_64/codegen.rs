@@ -3,69 +3,11 @@ use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 
 use thiserror::Error;
-
-use AsmOperand::{Pseudo, Stack};
-
-use crate::codegen::AsmInstruction::*;
-use crate::codegen::AsmOperand::*;
-use crate::register::Register;
-use crate::register::Register::*;
+use crate::codegen::x86_64::register::Register::*;
+use crate::codegen::x86_64::types::AsmInstruction::*;
+use crate::codegen::x86_64::types::{AsmFunction, AsmInstruction, AsmOperand, AsmProgram, StackOffset};
+use crate::codegen::x86_64::types::AsmOperand::*;
 use crate::tacky::{Instruction, IRBinaryOperator, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct StackOffset(isize);
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AsmOperand {
-    Imm32(i32),
-    Reg(Register),
-    Pseudo(IRSymbol),
-    Stack { offset: StackOffset },
-}
-
-impl Display for AsmOperand {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match &self {
-            Imm32(n) => format!("${}", n),
-            Reg(r) => r.to_string(),
-            Pseudo(p) => format!("<<{}>>", p),
-            Stack { offset } => format!("{}(%rbp)", offset.0),
-        })
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum AsmInstruction {
-    AllocateStack(usize),
-    Mov8 { src: AsmOperand, dst: AsmOperand },
-    Mov32 { src: AsmOperand, dst: AsmOperand },
-    Neg32 { op: AsmOperand },
-    Not32 { op: AsmOperand },
-    Add32 { src: AsmOperand, dst: AsmOperand },
-    Sub32 { src: AsmOperand, dst: AsmOperand },
-    IMul32 { src: AsmOperand, dst: AsmOperand },
-    IDiv32 { divisor: AsmOperand },
-    And32 { src: AsmOperand, dst: AsmOperand },
-    Or32 { src: AsmOperand, dst: AsmOperand },
-    Xor32 { src: AsmOperand, dst: AsmOperand },
-    Sal32 { src: AsmOperand, dst: AsmOperand },
-    Sar32 { src: AsmOperand, dst: AsmOperand },
-    Shl32 { src: AsmOperand, dst: AsmOperand },
-    Shr32 { src: AsmOperand, dst: AsmOperand },
-    SignExtendTo64, // Sign extend %eax to 64-bit into %edx
-    Ret,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct AsmFunction {
-    pub name: IRSymbol,
-    pub instructions: Vec<AsmInstruction>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct AsmProgram {
-    pub functions: Vec<AsmFunction>,
-}
 
 #[derive(Error, Debug)]
 pub enum CodegenError {
@@ -384,13 +326,11 @@ fn from_ir_value(v: IRValue) -> AsmOperand {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-
-    use AsmOperand::Reg;
-
-    use crate::codegen::{AsmFunction, AsmOperand, AsmProgram, generate_assembly, StackOffset};
-    use crate::codegen::AsmInstruction::{AllocateStack, Mov32, Not32, Ret};
-    use crate::codegen::AsmOperand::{Imm32, Stack};
-    use crate::codegen::Register::EAX;
+    use crate::codegen::x86_64::generate_assembly;
+    use crate::codegen::x86_64::register::Register::EAX;
+    use crate::codegen::x86_64::types::*;
+    use crate::codegen::x86_64::types::AsmInstruction::*;
+    use crate::codegen::x86_64::types::AsmOperand::*;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::tacky::emit;

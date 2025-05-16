@@ -138,7 +138,7 @@ impl<'a> Parser<'a> {
         let tok = self.token_provider.peek();
         match &tok {
             Some(Ok(_)) => self.parse_expression_with_precedence(BinaryOperatorPrecedence(0)),
-            Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
             None => Err(UnexpectedEnd(vec![TokenTag::IntConstant, TokenTag::OpenParentheses])),
         }
     }

@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use crate::register::Register::*;
+use crate::codegen::x86_64::register::Register::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Register {
