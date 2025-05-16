@@ -1,19 +1,10 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::num::ParseIntError;
-
-use thiserror::Error;
+use crate::codegen::x86_64::error::CodegenError;
 use crate::codegen::x86_64::register::Register::*;
-use crate::codegen::x86_64::types::AsmInstruction::*;
 use crate::codegen::x86_64::types::{AsmFunction, AsmInstruction, AsmOperand, AsmProgram, StackOffset};
+use crate::codegen::x86_64::types::AsmInstruction::*;
 use crate::codegen::x86_64::types::AsmOperand::*;
 use crate::tacky::{Instruction, IRBinaryOperator, IRFunction, IRProgram, IRSymbol, IRUnaryOperator, IRValue};
-
-#[derive(Error, Debug)]
-pub enum CodegenError {
-    #[error(transparent)]
-    IntImmediateParseError(#[from] ParseIntError),
-}
 
 pub fn generate_assembly(p: IRProgram) -> Result<AsmProgram, CodegenError> {
     let mut asm_functions = Vec::with_capacity(p.functions.len());
@@ -184,11 +175,11 @@ fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> R
             Sal32 { src, dst } => {
                 let fixed_up = fixup_sal32(ctx, src, dst)?;
                 processed_instrs.extend(fixed_up);
-            },
+            }
             Sar32 { src, dst } => {
                 let fixed_up = fixup_sar32(ctx, src, dst)?;
                 processed_instrs.extend(fixed_up);
-            },
+            }
             And32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(And32, ctx, src, dst)),
             Or32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Or32, ctx, src, dst)),
             Xor32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Xor32, ctx, src, dst)),
@@ -265,7 +256,7 @@ fn fixup_sal32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
                 Mov8 { src: Reg(R10B), dst: Reg(CL) },
                 Sal32 { src: Reg(CL), dst: dst.clone() },
             ],
-            Sal32 { src: stack@Stack{..}, dst } => vec![
+            Sal32 { src: stack @ Stack { .. }, dst } => vec![
                 Mov8 { src: stack, dst: Reg(CL) },
                 Sal32 { src: Reg(CL), dst: dst.clone() },
             ],
@@ -306,7 +297,7 @@ fn fixup_sar32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
                 Mov8 { src: Reg(R10B), dst: Reg(CL) },
                 Sar32 { src: Reg(CL), dst: dst.clone() },
             ],
-            Sar32 { src: stack@Stack{..}, dst } => vec![
+            Sar32 { src: stack @ Stack { .. }, dst } => vec![
                 Mov8 { src: stack, dst: Reg(CL) },
                 Sar32 { src: Reg(CL), dst },
             ],
@@ -326,6 +317,7 @@ fn from_ir_value(v: IRValue) -> AsmOperand {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
+
     use crate::codegen::x86_64::generate_assembly;
     use crate::codegen::x86_64::register::Register::EAX;
     use crate::codegen::x86_64::types::*;

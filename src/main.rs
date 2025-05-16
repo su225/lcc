@@ -8,7 +8,7 @@ use thiserror::Error;
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
 use lcc::tacky::{TackyError};
-use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
+use lcc::codegen::x86_64::{asmgen, codegen, error::CodegenError};
 use lcc::tacky;
 
 /// C-compiler for learning real compiler construction

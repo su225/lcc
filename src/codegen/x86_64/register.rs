@@ -10,16 +10,6 @@ pub enum Register {
     R10B, AL, CL,
 }
 
-impl Register {
-    fn width_bits(&self) -> usize {
-        match self {
-            R10B | AL | CL => 8,
-            EAX | EDX | R10D | R11D => 32,
-            RSP | RBP => 64,
-        }
-    }
-}
-
 impl Display for Register {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "%{}", match &self {

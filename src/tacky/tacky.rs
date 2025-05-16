@@ -3,7 +3,7 @@ use std::num::ParseIntError;
 
 use derive_more::with_trait::Display;
 use thiserror::Error;
-
+use crate::parser::types::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
 use crate::tacky::Instruction::{Binary, Return, Unary};
 use crate::tacky::IRValue::Constant32;
 
@@ -169,7 +169,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             let (dst, mut expr_instrs) = emit_tacky_for_expression(ctx, expr)?;
             expr_instrs.push(Return(dst));
             Ok(expr_instrs)
-        },
+        }
     }
 }
 
@@ -205,6 +205,6 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
                 dst: dst_tacky,
             });
             Ok((result, tacky_instrs))
-        },
+        }
     }
 }

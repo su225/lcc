@@ -4,9 +4,6 @@
 
 use std::iter::Peekable;
 
-use derive_more::with_trait::Add;
-use serde::Serialize;
-
 use crate::common::Location;
 use crate::lexer::{KeywordIdentifier, Lexer, Token, TokenTag, TokenType};
 use crate::parser::errors::ParserError;
