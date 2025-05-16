@@ -1,0 +1,26 @@
+---
+source: src/parser/parser.rs
+description: relational expressions
+expression: actual.unwrap()
+info: 7 >= 7
+---
+location:
+  line: 1
+  column: 1
+kind:
+  binary:
+    - greater_than_or_equal
+    - location:
+        line: 1
+        column: 1
+      kind:
+        int_constant:
+          - "7"
+          - decimal
+    - location:
+        line: 1
+        column: 6
+      kind:
+        int_constant:
+          - "7"
+          - decimal

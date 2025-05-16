@@ -5,19 +5,11 @@ use std::process::{Command, ExitStatus};
 
 use clap::Parser as ClapParser;
 use thiserror::Error;
-
-use crate::codegen::CodegenError;
-use crate::lexer::{Lexer, LexerError, Token};
-use crate::parser::{Parser, ParserError};
-use crate::tacky::TackyError;
-
-mod lexer;
-mod parser;
-mod common;
-mod codegen;
-mod asmgen;
-mod tacky;
-mod register;
+use lcc::codegen::CodegenError;
+use lcc::lexer::{Lexer, LexerError, Token};
+use lcc::parser::{Parser, ParserError};
+use lcc::{asmgen, codegen, tacky};
+use lcc::tacky::TackyError;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time

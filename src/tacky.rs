@@ -9,18 +9,18 @@ use crate::tacky::Instruction::{Binary, Return, Unary};
 use crate::tacky::IRValue::Constant32;
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct IRProgram {
+pub struct IRProgram {
     pub functions: Vec<IRFunction>,
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct IRFunction {
+pub struct IRFunction {
     pub identifier: IRSymbol,
     pub body: Vec<Instruction>,
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum IRUnaryOperator {
+pub enum IRUnaryOperator {
     Complement,
     Negate,
     Not,
@@ -37,7 +37,7 @@ impl From<&UnaryOperator> for IRUnaryOperator {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum IRBinaryOperator {
+pub enum IRBinaryOperator {
     Add,
     Subtract,
     Multiply,
@@ -77,13 +77,13 @@ impl From<&BinaryOperator> for IRBinaryOperator {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum IRValue {
+pub enum IRValue {
     Constant32(i32),
     Variable(IRSymbol),
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum Instruction {
+pub enum Instruction {
     Unary {
         operator: IRUnaryOperator,
         src: IRValue,
@@ -104,7 +104,7 @@ pub(crate) enum Instruction {
 }
 
 #[derive(Error, PartialEq, Debug)]
-pub(crate) enum TackyError {
+pub enum TackyError {
     #[error(transparent)]
     IntImmediateParseError(#[from] ParseIntError),
 }
@@ -112,7 +112,7 @@ pub(crate) enum TackyError {
 const COMPILER_GEN_PREFIX: &'static str = "<t>";
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
-pub(crate) struct IRSymbol(pub String);
+pub struct IRSymbol(pub String);
 
 impl From<&str> for IRSymbol {
     fn from(value: &str) -> Self {

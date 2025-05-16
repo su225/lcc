@@ -1,0 +1,39 @@
+---
+source: src/parser/parser.rs
+description: bitwise operator expressions with correct precedence
+expression: actual.unwrap()
+info: (1 ^ 2) & 3
+---
+location:
+  line: 1
+  column: 2
+kind:
+  binary:
+    - bitwise_and
+    - location:
+        line: 1
+        column: 2
+      kind:
+        binary:
+          - bitwise_xor
+          - location:
+              line: 1
+              column: 2
+            kind:
+              int_constant:
+                - "1"
+                - decimal
+          - location:
+              line: 1
+              column: 6
+            kind:
+              int_constant:
+                - "2"
+                - decimal
+    - location:
+        line: 1
+        column: 11
+      kind:
+        int_constant:
+          - "3"
+          - decimal

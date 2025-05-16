@@ -3,8 +3,8 @@ use serde::Serialize;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Location {
-    pub(crate) line: usize,
-    pub(crate) column: usize,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl From<(usize, usize)> for Location {
@@ -14,16 +14,16 @@ impl From<(usize, usize)> for Location {
 }
 
 impl Location {
-    pub(crate) fn advance_line(&mut self) {
+    pub fn advance_line(&mut self) {
         self.line += 1;
         self.column = 1;
     }
 
-    pub(crate) fn advance_tab(&mut self) {
+    pub fn advance_tab(&mut self) {
         self.column = ((self.column + 7) / 8) * 8;
     }
 
-    pub(crate) fn advance(&mut self) {
+    pub fn advance(&mut self) {
         self.column += 1;
     }
 }
