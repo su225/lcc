@@ -5,213 +5,16 @@
 use std::iter::Peekable;
 
 use derive_more::with_trait::Add;
-use thiserror::Error;
 use serde::Serialize;
-use crate::common::{Location, Radix};
-use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
-use crate::parser::ParserError::{ExpectedBinaryOperator, UnexpectedEnd};
 
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Symbol<'a> {
-    pub name: &'a str,
-    location: Location,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UnaryOperator {
-    Complement,
-    Negate,
-    Not,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BinaryOperatorAssociativity {
-    Left, Right
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BinaryOperator {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
-
-    BitwiseAnd,
-    BitwiseOr,
-    BitwiseXor,
-    LeftShift,
-    RightShift,
-
-    And,
-    Or,
-    Equal,
-    NotEqual,
-    LessThan,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
-}
-
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct BinaryOperatorPrecedence(u16);
-
-impl BinaryOperator {
-    #[inline]
-    fn associativity(&self) -> BinaryOperatorAssociativity {
-        match self {
-            BinaryOperator::Add => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Subtract => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Multiply => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Divide => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Modulo => BinaryOperatorAssociativity::Left,
-            BinaryOperator::BitwiseAnd => BinaryOperatorAssociativity::Left,
-            BinaryOperator::BitwiseOr => BinaryOperatorAssociativity::Left,
-            BinaryOperator::BitwiseXor => BinaryOperatorAssociativity::Left,
-            BinaryOperator::LeftShift => BinaryOperatorAssociativity::Left,
-            BinaryOperator::RightShift => BinaryOperatorAssociativity::Left,
-            BinaryOperator::And => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Or => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Equal => BinaryOperatorAssociativity::Left,
-            BinaryOperator::NotEqual => BinaryOperatorAssociativity::Left,
-            BinaryOperator::LessThan => BinaryOperatorAssociativity::Left,
-            BinaryOperator::LessThanOrEqual => BinaryOperatorAssociativity::Left,
-            BinaryOperator::GreaterThan => BinaryOperatorAssociativity::Left,
-            BinaryOperator::GreaterThanOrEqual => BinaryOperatorAssociativity::Left,
-        }
-    }
-
-    #[inline]
-    fn precedence(&self) -> BinaryOperatorPrecedence {
-        match self {
-            BinaryOperator::Multiply
-            | BinaryOperator::Divide
-            | BinaryOperator::Modulo => BinaryOperatorPrecedence(50),
-
-            BinaryOperator::Add | BinaryOperator::Subtract => BinaryOperatorPrecedence(45),
-            BinaryOperator::LeftShift | BinaryOperator::RightShift => BinaryOperatorPrecedence(42),
-
-            BinaryOperator::LessThan
-            | BinaryOperator::LessThanOrEqual
-            | BinaryOperator::GreaterThan
-            | BinaryOperator::GreaterThanOrEqual => BinaryOperatorPrecedence(40),
-
-            BinaryOperator::Equal | BinaryOperator::NotEqual => BinaryOperatorPrecedence(38),
-
-            BinaryOperator::BitwiseAnd => BinaryOperatorPrecedence(36),
-            BinaryOperator::BitwiseXor => BinaryOperatorPrecedence(34),
-            BinaryOperator::BitwiseOr => BinaryOperatorPrecedence(32),
-
-            BinaryOperator::And => BinaryOperatorPrecedence(30),
-            BinaryOperator::Or => BinaryOperatorPrecedence(28),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExpressionKind<'a> {
-    IntConstant(&'a str, Radix),
-    Unary(UnaryOperator, Box<Expression<'a>>),
-    Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Expression<'a> {
-    location: Location,
-    pub kind: ExpressionKind<'a>,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PrimitiveKind {
-    Integer,
-    UnsignedInteger,
-    LongInteger,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TypeExpressionKind {
-    Primitive(PrimitiveKind),
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct TypeExpression {
-    pub location: Location,
-    pub kind: TypeExpressionKind,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StatementKind<'a> {
-    Return(Expression<'a>),
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Statement<'a> {
-    pub location: Location,
-    pub kind: StatementKind<'a>,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct FunctionDefinition<'a> {
-    pub location: Location,
-    pub name: Symbol<'a>,
-    pub body: Vec<Statement<'a>>,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct ProgramDefinition<'a> {
-    pub functions: Vec<FunctionDefinition<'a>>,
-}
+use crate::common::Location;
+use crate::lexer::{KeywordIdentifier, Lexer, Token, TokenTag, TokenType};
+use crate::parser::errors::ParserError;
+use crate::parser::errors::ParserError::*;
+use crate::parser::types::*;
 
 pub struct Parser<'a> {
     token_provider: Peekable<Lexer<'a>>,
-}
-
-#[derive(Error, Debug, PartialEq)]
-pub enum ParserError {
-    #[error("error from lexer: {0}")]
-    TokenizationError(LexerError),
-
-    #[error("keyword {kwd:?} used as identifier")]
-    KeywordUsedAsIdentifier { location: Location, kwd: KeywordIdentifier },
-
-    #[error("{location:?}: unexpected token")]
-    UnexpectedToken { location: Location, expected_token_tags: Vec<TokenTag> },
-
-    #[error("unexpected end of file. Expected {:?}", .0)]
-    UnexpectedEnd(Vec<TokenTag>),
-
-    #[error("{location:?}: expected unary operator, but found {actual_token:?}")]
-    ExpectedUnaryOperator {
-        location: Location,
-        actual_token: TokenTag,
-    },
-
-    #[error("{location:?}: expected binary operator, but found {actual_token:?}")]
-    ExpectedBinaryOperator {
-        location: Location,
-        actual_token: TokenTag,
-    },
-
-    #[error("{location:?}: expected keyword {keyword_identifier:?}")]
-    ExpectedKeyword {
-        location: Location,
-        keyword_identifier: KeywordIdentifier,
-        actual_token: TokenTag,
-    },
 }
 
 impl<'a> Parser<'a> {
@@ -308,7 +111,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Some(Err(e)) => Err(ParserError::TokenizationError(e)),
-            None => Err(ParserError::UnexpectedEnd(vec![TokenTag::Identifier])),
+            None => Err(UnexpectedEnd(vec![TokenTag::Identifier])),
         }
     }
 
@@ -489,10 +292,10 @@ impl<'a> Parser<'a> {
                 if token_tag == expected_token_tag {
                     Ok(token)
                 } else {
-                    Err(ParserError::UnexpectedToken { location: token.location, expected_token_tags: vec![expected_token_tag] })
+                    Err(UnexpectedToken { location: token.location, expected_token_tags: vec![expected_token_tag] })
                 }
             }
-            Some(Err(e)) => Err(ParserError::TokenizationError(e)),
+            Some(Err(e)) => Err(TokenizationError(e)),
             None => Err(UnexpectedEnd(vec![expected_token_tag])),
         }
     }
@@ -501,14 +304,15 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-    use insta::{assert_yaml_snapshot, with_settings};
-    use rstest::rstest;
+
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
-    use crate::parser::ExpressionKind::{Binary, IntConstant, Unary};
-    use crate::parser::StatementKind::Return;
+    use crate::parser::errors::ParserError;
+    use crate::parser::Parser;
+    use crate::parser::types::*;
+    use crate::parser::types::ExpressionKind::*;
+    use crate::parser::types::StatementKind::*;
 
     #[test]
     fn test_parse_program_with_tabs() {
@@ -1109,9 +913,11 @@ mod test {
 #[cfg(test)]
 mod expression_test {
     use rstest::rstest;
-    use ExpressionKind::{Binary, IntConstant, Unary};
+
     use crate::lexer::Lexer;
-    use crate::parser::{Expression, ExpressionKind, Parser};
+    use crate::parser::Parser;
+    use crate::parser::types::Expression;
+    use crate::parser::types::ExpressionKind::{Binary, IntConstant, Unary};
 
     #[rstest]
     #[case("simple_addition", "1+2")]
