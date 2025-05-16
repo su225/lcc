@@ -1,28 +1,8 @@
-use std::fmt::Debug;
-
-use derive_more::with_trait::Display;
 use crate::parser::types::*;
 use crate::tacky::errors::TackyError;
-use crate::tacky::types::{TackyInstruction, TackyBinaryOperator, TackyProgram, TackyUnaryOperator, TackyValue, TackyFunction};
+use crate::tacky::types::{TackyInstruction, TackyBinaryOperator, TackyProgram, TackyUnaryOperator, TackyValue, TackyFunction, TackySymbol, COMPILER_GEN_PREFIX};
 use crate::tacky::types::TackyInstruction::{Binary, Return, Unary};
 use crate::tacky::types::TackyValue::Constant32;
-
-const COMPILER_GEN_PREFIX: &'static str = "<t>";
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
-pub struct TackySymbol(pub String);
-
-impl From<&str> for TackySymbol {
-    fn from(value: &str) -> Self {
-        TackySymbol(value.to_string())
-    }
-}
-
-impl TackySymbol {
-    pub fn is_generated(&self) -> bool {
-        self.0.starts_with(COMPILER_GEN_PREFIX)
-    }
-}
 
 struct TackyContext {
     next_int: i64,

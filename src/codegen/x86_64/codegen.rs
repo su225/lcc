@@ -4,7 +4,6 @@ use crate::codegen::x86_64::register::Register::*;
 use crate::codegen::x86_64::types::{AsmFunction, AsmInstruction, AsmOperand, AsmProgram, StackOffset};
 use crate::codegen::x86_64::types::AsmInstruction::*;
 use crate::codegen::x86_64::types::AsmOperand::*;
-use crate::tacky::TackySymbol;
 use crate::tacky::types::*;
 
 pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {

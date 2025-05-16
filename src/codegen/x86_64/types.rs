@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use crate::codegen::x86_64::register::Register;
-use crate::tacky::TackySymbol;
+use crate::tacky::types::TackySymbol;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StackOffset(pub(crate) isize);

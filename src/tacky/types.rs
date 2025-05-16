@@ -1,5 +1,22 @@
+use derive_more::Display;
 use crate::parser::types::{BinaryOperator, UnaryOperator};
-use crate::tacky::TackySymbol;
+
+pub(crate) const COMPILER_GEN_PREFIX: &'static str = "<t>";
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
+pub struct TackySymbol(pub String);
+
+impl From<&str> for TackySymbol {
+    fn from(value: &str) -> Self {
+        TackySymbol(value.to_string())
+    }
+}
+
+impl TackySymbol {
+    pub fn is_generated(&self) -> bool {
+        self.0.starts_with(COMPILER_GEN_PREFIX)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct TackyProgram {
