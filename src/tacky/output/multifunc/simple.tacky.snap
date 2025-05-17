@@ -1,6 +1,5 @@
 ---
 source: src/tacky/tacky.rs
-assertion_line: 450
 description: multiple functions
 expression: tacky
 info: multifunc/simple.c

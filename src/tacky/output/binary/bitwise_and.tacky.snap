@@ -1,11 +1,10 @@
 ---
 source: src/tacky/tacky.rs
-assertion_line: 450
 description: binary operators
 expression: tacky
-info: binary/relational_eq.c
+info: binary/bitwise_and.c
 ---
 int main(void) {
-    <t>.0 = (int32 1) == (int32 1);
+    <t>.0 = (int32 10) & (int32 3);
     return <t>.0;
 }

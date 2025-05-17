@@ -1,6 +1,5 @@
 ---
 source: src/tacky/tacky.rs
-assertion_line: 450
 description: unary operators
 expression: tacky
 info: unary/not.c
