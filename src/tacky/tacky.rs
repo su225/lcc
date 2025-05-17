@@ -421,6 +421,9 @@ mod tacky_ir_generation_snapshot_tests {
 
     #[rstest]
     #[case("binary/arithmetic_add.c")]
+    #[case("binary/arithmetic_add_leftassoc.c")]
+    #[case("binary/arithmetic_precedence.c")]
+    #[case("binary/arithmetic_precedence_override.c")]
     #[case("binary/bitwise_and.c")]
     #[case("binary/relational_eq.c")]
     fn test_generation_for_binary_operators(#[case] input_path: &str) {
