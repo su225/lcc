@@ -100,10 +100,24 @@ mod asm_emit_snapshot_test {
     #[case("binary/arithmetic_multiplication.c")]
     #[case("binary/arithmetic_division.c")]
     #[case("binary/arithmetic_modulo.c")]
+    fn test_generation_for_arithmetic_binary_operators(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("arithmetic binary operators", input_path)
+    }
+
+    #[rstest]
     #[case("binary/bitwise_and.c")]
+    #[case("binary/bitwise_or.c")]
+    #[case("binary/bitwise_xor.c")]
+    #[case("binary/bitwise_left_shift.c")]
+    #[case("binary/bitwise_right_shift.c")]
+    fn test_generation_for_bitwise_binary_operators(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("arithmetic bitwise binary operators", input_path)
+    }
+
+    #[rstest]
     #[case("binary/relational_eq.c")]
-    fn test_generation_for_binary_operators(#[case] input_path: &str) {
-        run_asm_emit_snapshot_test("binary operators", input_path)
+    fn test_generation_for_relational_binary_operators(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("arithmetic relational binary operators", input_path)
     }
 
     fn run_asm_emit_snapshot_test(suite_description: &str, src_file: &str) {
