@@ -7,9 +7,9 @@ use clap::Parser as ClapParser;
 use thiserror::Error;
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
-use lcc::tacky::errors::{TackyError};
 use lcc::codegen::x86_64::{asmgen, codegen, errors::CodegenError};
 use lcc::tacky;
+use lcc::tacky::TackyError;
 
 /// C-compiler for learning real compiler construction
 /// and the Rust programming language at the same time

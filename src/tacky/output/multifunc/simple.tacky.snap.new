@@ -1,0 +1,15 @@
+---
+source: src/tacky/tacky.rs
+assertion_line: 450
+description: multiple functions
+expression: tacky
+info: multifunc/simple.c
+---
+int main(void) {
+    return (int32 0);
+}
+
+int one_plus_one(void) {
+    <t>.0 = (int32 1) + (int32 1);
+    return <t>.0;
+}

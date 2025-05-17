@@ -4,7 +4,7 @@ use crate::codegen::x86_64::register::Register::*;
 use crate::codegen::x86_64::types::{AsmFunction, AsmInstruction, AsmOperand, AsmProgram, StackOffset};
 use crate::codegen::x86_64::types::AsmInstruction::*;
 use crate::codegen::x86_64::types::AsmOperand::*;
-use crate::tacky::types::*;
+use crate::tacky::{TackyBinaryOperator, TackyFunction, TackyInstruction, TackyProgram, TackySymbol, TackyUnaryOperator, TackyValue};
 
 pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
     let mut asm_functions = Vec::with_capacity(p.functions.len());
@@ -309,7 +309,7 @@ fn fixup_sar32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
 
 fn from_ir_value(v: TackyValue) -> AsmOperand {
     match v {
-        TackyValue::Constant32(c) => Imm32(c),
+        TackyValue::Int32(c) => Imm32(c),
         TackyValue::Variable(s) => Pseudo(s),
     }
 }
