@@ -1,0 +1,22 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: binary operators
+expression: asm_output
+info: binary/arithmetic_precedence_override.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $16, %rsp
+    movl $1, -8(%rbp)
+    addl $3, -8(%rbp)
+    movl $2, -16(%rbp)
+    movl -8(%rbp), %r10d
+    movl -16(%rbp), %r11d
+    imull %r10d, %r11d
+    movl %r11d, -16(%rbp)
+    movl -16(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

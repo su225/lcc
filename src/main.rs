@@ -7,7 +7,7 @@ use clap::Parser as ClapParser;
 use thiserror::Error;
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
-use lcc::codegen::x86_64::{asmgen, codegen, errors::CodegenError};
+use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
 use lcc::tacky;
 use lcc::tacky::TackyError;
 
@@ -108,7 +108,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
     let output_file = &output_stem;
 
     if args.emit_assembly {
-        asmgen::emit(asm_code, io::stdout()).
+        asmgen::emit_assembly(asm_code, io::stdout()).
             map_err(|e| CompilerDriverError::CodeEmitError("<stdout>".to_string(), e))?;
         return Ok(());
     }
@@ -117,7 +117,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         .create(true)
         .write(true)
         .open(&output_asm_file)
-        .and_then(|f| asmgen::emit(asm_code, f))
+        .and_then(|f| asmgen::emit_assembly(asm_code, f))
         .map_err(|e| CompilerDriverError::CodeEmitError(output_asm_file.clone(), e))?;
 
     invoke_system_assembler(&output_file, &output_asm_file)
