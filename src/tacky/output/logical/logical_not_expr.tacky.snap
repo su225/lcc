@@ -1,0 +1,11 @@
+---
+source: src/tacky/tacky.rs
+description: logical operators
+expression: tacky
+info: logical/logical_not_expr.c
+---
+int main(void) {
+    <t>.0 = (int32 1) + (int32 2);
+    <t>.1 = ! <t>.0;
+    return <t>.1;
+}

@@ -586,8 +586,11 @@ mod tacky_ir_generation_snapshot_tests {
 
     #[rstest]
     #[case("logical/logical_and.c")]
+    #[case("logical/logical_and_expr.c")]
     #[case("logical/logical_not.c")]
+    #[case("logical/logical_not_expr.c")]
     #[case("logical/logical_or.c")]
+    #[case("logical/logical_or_expr.c")]
     fn test_generation_for_logical_operators(#[case] input_path: &str) {
         run_ir_generation_snapshot_test("logical operators", input_path)
     }
