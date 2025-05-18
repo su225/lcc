@@ -31,6 +31,29 @@ impl Display for AsmOperand {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ConditionCode {
+    Equal,
+    NotEqual,
+    Greater,
+    Lesser,
+    GreaterOrEqual,
+    LesserOrEqual,
+}
+
+impl Display for ConditionCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConditionCode::Equal => f.write_str("e"),
+            ConditionCode::NotEqual => f.write_str("ne"),
+            ConditionCode::Greater => f.write_str("g"),
+            ConditionCode::Lesser => f.write_str("l"),
+            ConditionCode::GreaterOrEqual => f.write_str("ge"),
+            ConditionCode::LesserOrEqual => f.write_str("le"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
     AllocateStack(usize),
     Mov8 { src: AsmOperand, dst: AsmOperand },
@@ -49,6 +72,17 @@ pub enum AsmInstruction {
     Shl32 { src: AsmOperand, dst: AsmOperand },
     Shr32 { src: AsmOperand, dst: AsmOperand },
     SignExtendTo64, // Sign extend %eax to 64-bit into %edx
+    Cmp32 { src: AsmOperand, dst: AsmOperand },
+    Jmp { target: TackySymbol },
+    JmpConditional{
+        condition_code: ConditionCode,
+        target_if_true: TackySymbol,
+    },
+    SetCondition {
+        condition_code: ConditionCode,
+        dst: AsmOperand,
+    },
+    Label(TackySymbol),
     Ret,
 }
 

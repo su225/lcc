@@ -50,6 +50,14 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
         Shr32 { src, dst } => emit_instruction!(w, "shrl {src}, {dst}")?,
         Sal32 { src, dst } => emit_instruction!(w, "sall {src}, {dst}")?,
         Sar32 { src, dst } => emit_instruction!(w, "sarl {src}, {dst}")?,
+
+        Cmp32 { src, dst } => emit_instruction!(w, "cmpl {src}, {dst}")?,
+        Jmp { target } => emit_instruction!(w, "jmp {target}")?,
+        JmpConditional { condition_code, target_if_true } =>
+            emit_instruction!(w, "j{condition_code} {target_if_true}")?,
+        SetCondition { condition_code, dst } =>
+            emit_instruction!(w, "set{condition_code} {dst}")?,
+        Label(lbl) => writeln!(w, "{}", format!("{}:", lbl))?,
     };
     Ok(())
 }
