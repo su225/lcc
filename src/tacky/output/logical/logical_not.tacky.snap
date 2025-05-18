@@ -1,0 +1,10 @@
+---
+source: src/tacky/tacky.rs
+description: logical operators
+expression: tacky
+info: logical/logical_not.c
+---
+int main(void) {
+    <t>.0 = ! (int32 10);
+    return <t>.0;
+}

@@ -1,0 +1,18 @@
+---
+source: src/tacky/tacky.rs
+description: logical operators
+expression: tacky
+info: logical/logical_and.c
+---
+int main(void) {
+    <t>.1 = (int32 10);
+    jump_if_zero (<t>.1) _L.and_false.0;
+    <t>.2 = (int32 20);
+    jump_if_zero (<t>.2) _L.and_false.0;
+    <t>.0 = (int32 1);
+    jump _L.and_end.1;
+_L.and_false.0:
+    <t>.0 = (int32 0);
+_L.and_end.1:
+    return <t>.0;
+}

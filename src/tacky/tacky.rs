@@ -201,16 +201,16 @@ impl Display for TackyInstruction {
                 f.write_fmt(format_args!("    return {ret_value};"))
             },
             Copy { src, dst } => {
-                f.write_fmt(format_args!("    {src} = {dst};"))
+                f.write_fmt(format_args!("    {dst} = {src};"))
             },
             Jump { target } => {
                 f.write_fmt(format_args!("    jump {target};"))
             },
             JumpIfZero { condition, target } => {
-                f.write_fmt(format_args!("    jump_if_zero {condition} {target};"))
+                f.write_fmt(format_args!("    jump_if_zero ({condition}) {target};"))
             }
             JumpIfNotZero { condition, target } => {
-                f.write_fmt(format_args!("    jump_if_not_zero {condition} {target};"))
+                f.write_fmt(format_args!("    jump_if_not_zero ({condition}) {target};"))
             },
             Label(lbl) => f.write_fmt(format_args!("{}:", lbl.0)),
         }
@@ -582,6 +582,14 @@ mod tacky_ir_generation_snapshot_tests {
     #[case("binary/relational_eq.c")]
     fn test_generation_for_binary_operators(#[case] input_path: &str) {
         run_ir_generation_snapshot_test("binary operators", input_path)
+    }
+
+    #[rstest]
+    #[case("logical/logical_and.c")]
+    #[case("logical/logical_not.c")]
+    #[case("logical/logical_or.c")]
+    fn test_generation_for_logical_operators(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("logical operators", input_path)
     }
 
     fn run_ir_generation_snapshot_test(suite_description: &str, src_file: &str) {
