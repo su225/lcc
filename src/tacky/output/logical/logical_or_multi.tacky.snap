@@ -1,0 +1,30 @@
+---
+source: src/tacky/tacky.rs
+description: logical operators
+expression: tacky
+info: logical/logical_or_multi.c
+---
+int main(void) {
+    <t>.2 = (int32 1) + (int32 2);
+    <t>.3 = <t>.2;
+    jump_if_not_zero (<t>.3) _L.or_true.2;
+    <t>.4 = (int32 2) + (int32 3);
+    <t>.5 = <t>.4;
+    jump_if_not_zero (<t>.5) _L.or_true.2;
+    <t>.1 = (int32 0);
+    jump _L.or_end.3;
+_L.or_true.2:
+    <t>.1 = (int32 1);
+_L.or_end.3:
+    <t>.6 = <t>.1;
+    jump_if_not_zero (<t>.6) _L.or_true.0;
+    <t>.7 = (int32 3) + (int32 4);
+    <t>.8 = <t>.7;
+    jump_if_not_zero (<t>.8) _L.or_true.0;
+    <t>.0 = (int32 0);
+    jump _L.or_end.1;
+_L.or_true.0:
+    <t>.0 = (int32 1);
+_L.or_end.1:
+    return <t>.0;
+}
