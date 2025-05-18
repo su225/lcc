@@ -7,6 +7,7 @@ use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::*;
 
 pub(crate) const COMPILER_GEN_PREFIX: &'static str = "<t>";
+pub(crate) const COMPILER_GEN_LABEL_PREFIX: &'static str = "_L";
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Display)]
 pub struct TackySymbol(pub String);
@@ -151,7 +152,7 @@ impl From<&BinaryOperator> for TackyBinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TackyValue {
     Int32(i32),
     Variable(TackySymbol),
@@ -180,7 +181,7 @@ pub enum TackyInstruction {
         dst: TackyValue,
     },
     Return(TackyValue),
-    Copy { src: TackyValue, dst: TackyValue },
+    Copy { src: TackyValue, dst: TackySymbol },
     Jump { target: TackySymbol },
     JumpIfZero { condition: TackyValue, target: TackySymbol },
     JumpIfNotZero { condition: TackyValue, target: TackySymbol },
@@ -224,16 +225,26 @@ pub enum TackyError {
 
 struct TackyContext {
     next_int: i64,
+    next_label_int: i64,
 }
 
 impl TackyContext {
     fn new() -> TackyContext {
-        TackyContext { next_int: 0 }
+        TackyContext { next_int: 0, next_label_int: 0 }
     }
 
     fn next_temporary_identifier(&mut self) -> TackySymbol {
         let identifier = format!("{}.{}", COMPILER_GEN_PREFIX, self.next_int);
         self.next_int += 1;
+        TackySymbol(identifier)
+    }
+
+    fn next_temporary_label(&mut self, prefix: &str) -> TackySymbol {
+        if prefix.is_empty() {
+            panic!("empty prefix is not allowed for temp label")
+        }
+        let identifier = format!("{}.{}.{}", COMPILER_GEN_LABEL_PREFIX, prefix, self.next_label_int);
+        self.next_label_int += 1;
         TackySymbol(identifier)
     }
 }
@@ -288,6 +299,76 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             });
             Ok((result_val, tacky_instrs))
         }
+        ExpressionKind::Binary(BinaryOperator::And, op1, op2) => {
+            let mut tacky_instrs = vec![];
+            let result = ctx.next_temporary_identifier();
+            let temp_false_label = ctx.next_temporary_label("and_false");
+            let temp_end_label = ctx.next_temporary_label("and_end");
+
+            let (e1_tacky_result, e1_tacky_instrs) = emit_tacky_for_expression(ctx, op1)?;
+            tacky_instrs.extend(e1_tacky_instrs);
+            let v1 = ctx.next_temporary_identifier();
+            tacky_instrs.extend(vec![
+                Copy { src: e1_tacky_result, dst: v1.clone() },
+                JumpIfZero { condition: Variable(v1), target: temp_false_label.clone() },
+            ]);
+
+            let (e2_tacky_result, e2_tacky_instrs) = emit_tacky_for_expression(ctx, op2)?;
+            tacky_instrs.extend(e2_tacky_instrs);
+            let v2 = ctx.next_temporary_identifier();
+            tacky_instrs.extend(vec![
+                Copy { src: e2_tacky_result, dst: v2.clone() },
+                JumpIfZero { condition: Variable(v2), target: temp_false_label.clone() },
+            ]);
+
+            // All expressions are true
+            tacky_instrs.extend(vec![
+                Copy { src: Int32(1), dst: result.clone() },
+                Jump { target: temp_end_label.clone() }
+            ]);
+            tacky_instrs.extend(vec![
+                Label(temp_false_label),
+                Copy { src: Int32(0), dst: result.clone() },
+            ]);
+            tacky_instrs.push(Label(temp_end_label));
+
+            Ok((Variable(result), tacky_instrs))
+        },
+        ExpressionKind::Binary(BinaryOperator::Or, op1, op2) => {
+            let mut tacky_instrs = vec![];
+            let result = ctx.next_temporary_identifier();
+            let temp_true_label = ctx.next_temporary_label("or_true");
+            let temp_end_label = ctx.next_temporary_label("or_end");
+
+            let (e1_tacky_result, e1_tacky_instrs) = emit_tacky_for_expression(ctx, op1)?;
+            tacky_instrs.extend(e1_tacky_instrs);
+            let v1 = ctx.next_temporary_identifier();
+            tacky_instrs.extend(vec![
+                Copy { src: e1_tacky_result, dst: v1.clone() },
+                JumpIfNotZero { condition: Variable(v1), target: temp_true_label.clone() },
+            ]);
+
+            let (e2_tacky_result, e2_tacky_instrs) = emit_tacky_for_expression(ctx, op2)?;
+            tacky_instrs.extend(e2_tacky_instrs);
+            let v2 = ctx.next_temporary_identifier();
+            tacky_instrs.extend(vec![
+                Copy { src: e2_tacky_result, dst: v2.clone() },
+                JumpIfNotZero { condition: Variable(v2), target: temp_true_label.clone() },
+            ]);
+
+            // All expressions are false
+            tacky_instrs.extend(vec![
+                Copy { src: Int32(0), dst: result.clone() },
+                Jump { target: temp_end_label.clone() },
+            ]);
+            tacky_instrs.extend(vec![
+                Label(temp_true_label),
+                Copy { src: Int32(1), dst: result.clone() },
+            ]);
+            tacky_instrs.push(Label(temp_end_label));
+
+            Ok((Variable(result), tacky_instrs))
+        },
         ExpressionKind::Binary(binary_op, op1, op2) => {
             let (src1_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, op1)?;
             let (src2_tacky, src2_tacky_instrs) = emit_tacky_for_expression(ctx, op2)?;
@@ -310,10 +391,11 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
 mod test {
     use ExpressionKind::*;
     use crate::common::Radix;
-    use crate::parser::types::{Expression, ExpressionKind, UnaryOperator};
+    use crate::parser::types::{BinaryOperator, Expression, ExpressionKind, UnaryOperator};
     use crate::tacky::tacky::{emit_tacky_for_expression, TackyContext};
     use crate::tacky::*;
     use crate::tacky::TackyValue::*;
+    use crate::tacky::TackyInstruction::*;
 
     #[test]
     fn test_emit_tacky_for_int_constant() {
@@ -391,6 +473,78 @@ mod test {
                 src: Int32(10),
                 dst: Variable(TackySymbol("<t>.0".into())),
             },
+        ]);
+    }
+    
+    #[test]
+    fn test_emit_tacky_for_logical_and_with_shortcircuiting() {
+        let expr = Expression {
+            location: (0, 0).into(),
+            kind: Binary(BinaryOperator::And,
+                         Box::new(Expression {
+                             location: (0, 0).into(),
+                             kind: IntConstant("0", Radix::Decimal),
+                         }),
+                         Box::new(Expression {
+                             location: (0, 0).into(),
+                             kind: IntConstant("1", Radix::Decimal),
+                         })),
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, tinstrs) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol("<t>.0".into())));
+        assert_eq!(tinstrs, vec![
+            Copy { src: Int32(0), dst: TackySymbol("<t>.1".to_string()) },
+            JumpIfZero { condition: Variable(TackySymbol("<t>.1".to_string())), target: TackySymbol("_L.and_false.0".to_string()) },
+
+            Copy { src: Int32(1), dst: TackySymbol("<t>.2".to_string()) },
+            JumpIfZero { condition: Variable(TackySymbol("<t>.2".to_string())), target: TackySymbol("_L.and_false.0".to_string()) },
+
+            // condition evaluated to true
+            Copy { src: Int32(1), dst: TackySymbol("<t>.0".to_string()) },
+            Jump { target: TackySymbol("_L.and_end.1".to_string()) },
+
+            // condition evaluated to false
+            Label(TackySymbol("_L.and_false.0".to_string())),
+            Copy { src: Int32(0), dst: TackySymbol("<t>.0".to_string()) },
+
+            Label(TackySymbol("_L.and_end.1".to_string())),
+        ]);
+    }
+    
+    #[test]
+    fn test_emit_tacky_for_logical_or_with_shortcircuiting() {
+        let expr = Expression {
+            location: (0, 0).into(),
+            kind: Binary(BinaryOperator::Or,
+                         Box::new(Expression {
+                             location: (0, 0).into(),
+                             kind: IntConstant("0", Radix::Decimal),
+                         }),
+                         Box::new(Expression {
+                             location: (0, 0).into(),
+                             kind: IntConstant("1", Radix::Decimal),
+                         })),
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, tinstrs) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol("<t>.0".into())));
+        assert_eq!(tinstrs, vec![
+            Copy { src: Int32(0), dst: TackySymbol("<t>.1".to_string()) },
+            JumpIfNotZero { condition: Variable(TackySymbol("<t>.1".to_string())), target: TackySymbol("_L.or_true.0".to_string()) },
+
+            Copy { src: Int32(1), dst: TackySymbol("<t>.2".to_string()) },
+            JumpIfNotZero { condition: Variable(TackySymbol("<t>.2".to_string())), target: TackySymbol("_L.or_true.0".to_string()) },
+
+            // condition evaluated to false
+            Copy { src: Int32(0), dst: TackySymbol("<t>.0".to_string()) },
+            Jump { target: TackySymbol("_L.or_end.1".to_string()) },
+
+            // condition evaluated to false
+            Label(TackySymbol("_L.or_true.0".to_string())),
+            Copy { src: Int32(1), dst: TackySymbol("<t>.0".to_string()) },
+
+            Label(TackySymbol("_L.or_end.1".to_string())),
         ]);
     }
 }
