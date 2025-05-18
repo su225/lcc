@@ -103,9 +103,13 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", asm_code);
         return Ok(());
     }
-    let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
-    let output_asm_file = format!("{}.s", output_stem);
-    let output_file = &output_stem;
+    let output_file = if args.output.is_empty() {
+        let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
+        output_stem
+    } else {
+        &args.output
+    };
+    let output_asm_file = format!("{}.s", output_file);
 
     if args.emit_assembly {
         asmgen::emit_assembly(asm_code, io::stdout()).
