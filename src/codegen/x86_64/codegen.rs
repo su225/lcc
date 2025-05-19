@@ -54,6 +54,21 @@ impl Display for ConditionCode {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct AsmLabel(String);
+
+impl From<TackySymbol> for AsmLabel {
+    fn from(value: TackySymbol) -> Self {
+        AsmLabel(value.0)
+    }
+}
+
+impl Display for AsmLabel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(".L{}", self))
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum AsmInstruction {
     AllocateStack(usize),
     Mov8 { src: AsmOperand, dst: AsmOperand },
@@ -72,17 +87,11 @@ pub enum AsmInstruction {
     Shl32 { src: AsmOperand, dst: AsmOperand },
     Shr32 { src: AsmOperand, dst: AsmOperand },
     SignExtendTo64, // Sign extend %eax to 64-bit into %edx
-    Cmp32 { src: AsmOperand, dst: AsmOperand },
-    Jmp { target: TackySymbol },
-    JmpConditional{
-        condition_code: ConditionCode,
-        target_if_true: TackySymbol,
-    },
-    SetCondition {
-        condition_code: ConditionCode,
-        dst: AsmOperand,
-    },
-    Label(TackySymbol),
+    Cmp32 { op1: AsmOperand, op2: AsmOperand },
+    Jmp { target: AsmLabel },
+    JmpConditional{ condition_code: ConditionCode, target_if_true: AsmLabel },
+    SetCondition { condition_code: ConditionCode, dst: AsmOperand },
+    Label(AsmLabel),
     Ret,
 }
 
@@ -111,9 +120,17 @@ pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
         let mut stack_alloced = fixup_asm_instructions(&mut stack_alloc_ctx, asm_func)?;
         let reqd_stack_size = stack_alloc_ctx.stack_size;
         stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size)); // not-efficient
+        validate_generated_function_assembly(&stack_alloced); // validates generated assembly as sanity check
         asm_functions.push(stack_alloced);
     }
     Ok(AsmProgram { functions: asm_functions })
+}
+
+// validate_generated_function_assembly validates generated assembly code as a sanity check to
+// help catch issues early on. If any issue was found here, it is likely a compiler bug. It works
+// by checking for various x86-64 assembly rules.
+fn validate_generated_function_assembly(asm_func: &AsmFunction) {
+    todo!()
 }
 
 fn generate_function_assembly(f: TackyFunction) -> Result<AsmFunction, CodegenError> {
@@ -131,20 +148,27 @@ fn generate_function_assembly(f: TackyFunction) -> Result<AsmFunction, CodegenEr
 fn generate_instruction_assembly(ti: TackyInstruction) -> Result<Vec<AsmInstruction>, CodegenError> {
     match ti {
         TackyInstruction::Unary { operator, src, dst } => {
-            let asm_dst_operand = from_ir_value(dst);
-            Ok(vec![
-                Mov32 { src: from_ir_value(src), dst: asm_dst_operand.clone() },
-                match operator {
-                    TackyUnaryOperator::Complement => Not32 { op: asm_dst_operand },
-                    TackyUnaryOperator::Negate => Neg32 { op: asm_dst_operand },
-                    _ => todo!(),
-                },
-            ])
+            let asm_dst_operand: AsmOperand = dst.into();
+            match operator {
+                TackyUnaryOperator::Complement => Ok(vec![
+                    Mov32 { src: src.into(), dst: asm_dst_operand.clone() },
+                    Not32 { op: asm_dst_operand },
+                ]),
+                TackyUnaryOperator::Negate => Ok(vec![
+                    Mov32 { src: src.into(), dst: asm_dst_operand.clone() },
+                    Neg32 { op: asm_dst_operand },
+                ]),
+                TackyUnaryOperator::Not => Ok(vec![
+                    Cmp32 { op1: Imm32(0), op2: src.into() },
+                    Mov32 { src: Imm32(0), dst: asm_dst_operand.clone() },
+                    SetCondition { condition_code: ConditionCode::Equal, dst: asm_dst_operand },
+                ]),
+            }
         }
         TackyInstruction::Binary { operator, src1, src2, dst } => {
-            let asm_dst_operand = from_ir_value(dst);
-            let asm_src1_operand = from_ir_value(src1);
-            let asm_src2_operand = from_ir_value(src2);
+            let asm_dst_operand: AsmOperand = dst.into();
+            let asm_src1_operand: AsmOperand = src1.into();
+            let asm_src2_operand: AsmOperand = src2.into();
             match operator {
                 TackyBinaryOperator::Add => Ok(vec![
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
@@ -190,17 +214,55 @@ fn generate_instruction_assembly(ti: TackyInstruction) -> Result<Vec<AsmInstruct
                     Mov32 { src: asm_src1_operand, dst: asm_dst_operand.clone() },
                     Sar32 { src: asm_src2_operand, dst: asm_dst_operand },
                 ]),
-                _ => todo!(),
+                TackyBinaryOperator::Equal => Ok(generate_instruction_assembly_for_relational(
+                    ConditionCode::Equal, asm_src1_operand, asm_src2_operand, asm_dst_operand)),
+
+                TackyBinaryOperator::NotEqual => Ok(generate_instruction_assembly_for_relational(
+                    ConditionCode::NotEqual, asm_src1_operand, asm_src2_operand, asm_dst_operand)),
+
+                TackyBinaryOperator::LessThan => Ok(generate_instruction_assembly_for_relational(
+                    ConditionCode::Lesser, asm_src1_operand, asm_src2_operand, asm_dst_operand)),
+
+                TackyBinaryOperator::LessOrEqual => Ok(generate_instruction_assembly_for_relational(
+                    ConditionCode::LesserOrEqual, asm_src1_operand, asm_src2_operand, asm_dst_operand)),
+
+                TackyBinaryOperator::GreaterThan => Ok(generate_instruction_assembly_for_relational(
+                    ConditionCode::Greater, asm_src1_operand, asm_src2_operand, asm_dst_operand)),
+
+                TackyBinaryOperator::GreaterOrEqual => Ok(generate_instruction_assembly_for_relational(
+                    ConditionCode::GreaterOrEqual, asm_src1_operand, asm_src2_operand, asm_dst_operand)),
             }
         }
         TackyInstruction::Return(v) => {
             Ok(vec![
-                Mov32 { src: from_ir_value(v), dst: Reg(EAX) },
+                Mov32 { src: v.into(), dst: Reg(EAX) },
                 Ret,
             ])
-        }
-        _ => todo!(),
+        },
+        TackyInstruction::Copy { src, dst } => {
+            let asm_src = src.into();
+            let asm_dst = TackyValue::Variable(dst).into();
+            Ok(vec![Mov32 { src: asm_src, dst: asm_dst }])
+        },
+        TackyInstruction::Jump { target: t } => Ok(vec![Jmp {target: AsmLabel::from(t)}]),
+        TackyInstruction::JumpIfZero { condition, target } => Ok(vec![
+            Cmp32 { op1: Imm32(0), op2: condition.into() },
+            JmpConditional { condition_code: ConditionCode::Equal, target_if_true: AsmLabel::from(target) },
+        ]),
+        TackyInstruction::JumpIfNotZero { condition, target } => Ok(vec![
+            Cmp32 { op1: Imm32(0), op2: condition.into() },
+            JmpConditional { condition_code: ConditionCode::NotEqual, target_if_true: AsmLabel::from(target) },
+        ]),
+        TackyInstruction::Label(lbl) => Ok(vec![Label(AsmLabel::from(lbl))]),
     }
+}
+
+fn generate_instruction_assembly_for_relational(condition_code: ConditionCode, s1: AsmOperand, s2: AsmOperand, d: AsmOperand) -> Vec<AsmInstruction> {
+    vec![
+        Cmp32 { op1: s2, op2: s1 },
+        Mov32 { src: Imm32(0), dst: d.clone() },
+        SetCondition { condition_code, dst: d },
+    ]
 }
 
 macro_rules! fixup_binary_expr {
@@ -280,6 +342,8 @@ fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> R
             And32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(And32, ctx, src, dst)),
             Or32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Or32, ctx, src, dst)),
             Xor32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Xor32, ctx, src, dst)),
+            SetCondition { condition_code, dst: Pseudo(v) } => processed_instrs.push(
+                SetCondition { condition_code, dst: Stack { offset: ctx.get_or_allocate_stack(v) }}),
             instr => processed_instrs.push(instr),
         }
     }
@@ -404,10 +468,12 @@ fn fixup_sar32(ctx: &mut StackAllocationContext, src: AsmOperand, dst: AsmOperan
     Ok(processed)
 }
 
-fn from_ir_value(v: TackyValue) -> AsmOperand {
-    match v {
-        TackyValue::Int32(c) => Imm32(c),
-        TackyValue::Variable(s) => Pseudo(s),
+impl From<TackyValue> for AsmOperand {
+    fn from(v: TackyValue) -> Self {
+        match v {
+            TackyValue::Int32(c) => Imm32(c),
+            TackyValue::Variable(s) => Pseudo(s),
+        }
     }
 }
 
