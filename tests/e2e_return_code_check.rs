@@ -12,6 +12,7 @@ use rstest::rstest;
 #[case("binary/arithmetic_multiplication.c")]
 #[case("binary/arithmetic_precedence.c")]
 #[case("binary/arithmetic_precedence_override.c")]
+#[case("binary/arithmetic_division_assoc.c")]
 fn test_e2e_arithmetic_binary_operator(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }

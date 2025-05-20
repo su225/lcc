@@ -3,7 +3,9 @@ use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 use thiserror::Error;
 use crate::codegen::x86_64::AsmInstruction::*;
+use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed};
 use crate::codegen::x86_64::AsmOperand::*;
+use crate::codegen::x86_64::CodegenError::InstructionValidationError;
 use crate::codegen::x86_64::register::Register;
 use crate::codegen::x86_64::register::Register::*;
 use crate::tacky::{TackyBinaryOperator, TackyFunction, TackyInstruction, TackyProgram, TackySymbol, TackyUnaryOperator, TackyValue};
@@ -19,6 +21,29 @@ pub enum AsmOperand {
     Stack { offset: StackOffset },
 }
 
+impl AsmOperand {
+    fn is_pseudo_location(&self) -> bool {
+        match self {
+            Pseudo(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_memory_location(&self) -> bool {
+        match self {
+            Stack { .. } => true,
+            _ => false,
+        }
+    }
+
+    fn is_constant(&self) -> bool {
+        match self {
+            Imm32(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl Display for AsmOperand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match &self {
@@ -30,7 +55,7 @@ impl Display for AsmOperand {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ConditionCode {
     Equal,
     NotEqual,
@@ -53,8 +78,14 @@ impl Display for ConditionCode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AsmLabel(String);
+
+impl AsmLabel {
+    fn is_valid(&self) -> bool {
+        self.0.chars().all(|c| { c.is_ascii_alphanumeric() || c == '_' || c == '.' })
+    }
+}
 
 impl From<TackySymbol> for AsmLabel {
     fn from(value: TackySymbol) -> Self {
@@ -68,7 +99,7 @@ impl Display for AsmLabel {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum AsmInstruction {
     AllocateStack(usize),
     Mov8 { src: AsmOperand, dst: AsmOperand },
@@ -95,6 +126,168 @@ pub enum AsmInstruction {
     Ret,
 }
 
+#[derive(Error, Debug)]
+pub enum AsmInstructionValidationError {
+    #[error("invalid jump label: {0}")]
+    InvalidLabel(AsmLabel),
+
+    #[error("pseudo location operands are not allowed. Check stack-allocation pass")]
+    PseudoLocationOperandsNotAllowed,
+
+    #[error("both src({src:?}) and dst({dst:?}) cannot be memory locations")]
+    BothOperandsCannotBeMemoryLocations { src: AsmOperand, dst: AsmOperand },
+
+    #[error("destination operand {dst:?} is invalid")]
+    InvalidDestinationOperand { dst: AsmOperand },
+
+    #[error("source operand {src:?} is invalid")]
+    InvalidSourceOperand { src: AsmOperand },
+
+    #[error("operand out of range: {0}")]
+    OperandOutOfRange(i32),
+}
+
+impl AsmInstruction {
+    fn validate(&self) -> Result<(), AsmInstructionValidationError> {
+        self.validate_check_pseudo_location()
+            .and_then(|_| self.validate_labels())
+            .and_then(|_| self.validate_binary_operands_both_not_memory())
+            .and_then(|_| self.validate_dest_operand_not_constant())
+            .and_then(|_| self.validate_instruction_operand_constraints())
+    }
+
+    fn validate_check_pseudo_location(&self) -> Result<(), AsmInstructionValidationError> {
+        match self {
+            Mov8 { src, dst }
+            | Mov32 { src, dst }
+            | Add32 { src, dst }
+            | Sub32 { src, dst }
+            | IMul32 { src, dst }
+            | And32 { src, dst }
+            | Or32 { src, dst }
+            | Xor32 { src, dst }
+            | Sal32 { src, dst }
+            | Sar32 { src, dst }
+            | Shl32 { src, dst }
+            | Shr32 { src, dst }
+            | Cmp32 { op1: src, op2: dst } => {
+                if src.is_pseudo_location() || dst.is_pseudo_location() {
+                    return Err(PseudoLocationOperandsNotAllowed);
+                }
+                Ok(())
+            },
+            IDiv32 { divisor: op }
+            | SetCondition { dst: op, .. }
+            | Neg32 { op }
+            | Not32 { op } => {
+                if op.is_pseudo_location() {
+                    return Err(PseudoLocationOperandsNotAllowed);
+                }
+                Ok(())
+            },
+            _ => Ok(()),
+        }
+    }
+
+    fn validate_labels(&self) -> Result<(), AsmInstructionValidationError> {
+        match self {
+            Jmp { target: asm_label }
+            | JmpConditional { target_if_true: asm_label, .. }
+            | Label(asm_label) =>
+                if asm_label.is_valid() { Ok(()) } else { Err(InvalidLabel(asm_label.clone())) },
+            _ => Ok(()),
+        }
+    }
+
+    fn validate_binary_operands_both_not_memory(&self) -> Result<(), AsmInstructionValidationError> {
+        match self {
+            Mov8 { src, dst }
+            | Mov32 { src, dst }
+            | Add32 { src, dst }
+            | Sub32 { src, dst }
+            | And32 { src, dst }
+            | Or32 { src, dst }
+            | Xor32 { src, dst }
+            | Cmp32 { op1: src, op2: dst } => {
+                if src.is_memory_location() && dst.is_memory_location() {
+                    return Err(BothOperandsCannotBeMemoryLocations{ src: src.clone(), dst: dst.clone() });
+                }
+                Ok(())
+            }
+            _ => Ok(())
+        }
+    }
+
+    fn validate_dest_operand_not_constant(&self) -> Result<(), AsmInstructionValidationError> {
+        match self {
+            Mov8 { dst, .. }
+            | Mov32 { dst, .. }
+            | Add32 { dst, .. }
+            | Sub32 { dst, .. }
+            | IMul32 { dst, .. }
+            | And32 { dst, .. }
+            | Or32 { dst, .. }
+            | Xor32 { dst, .. }
+            | Cmp32 { op2: dst, .. } => {
+                if dst.is_constant() {
+                    return Err(InvalidDestinationOperand { dst: dst.clone() });
+                }
+                Ok(())
+            },
+            Neg32 { op }
+            | Not32 { op } => {
+                if op.is_constant() {
+                    return Err(InvalidDestinationOperand { dst: op.clone() });
+                }
+                Ok(())
+            },
+            _ => Ok(())
+        }
+    }
+
+    fn validate_instruction_operand_constraints(&self) -> Result<(), AsmInstructionValidationError> {
+        match self {
+            AllocateStack(_) => Ok(()),
+            IMul32 { dst, .. } => self.validate_imul_instruction(dst),
+            IDiv32 { divisor } => self.validate_idiv_instruction(divisor),
+            Sal32 { src, dst }
+            | Sar32 { src, dst }
+            | Shl32 { src, dst }
+            | Shr32 { src, dst } => self.validate_shift_instruction(src, dst),
+            _ => Ok(()),
+        }
+    }
+
+    fn validate_imul_instruction(&self, dst: &AsmOperand) -> Result<(), AsmInstructionValidationError> {
+        if dst.is_memory_location() {
+            return Err(InvalidDestinationOperand { dst: dst.clone() });
+        }
+        Ok(())
+    }
+
+    fn validate_idiv_instruction(&self, divisor: &AsmOperand) -> Result<(), AsmInstructionValidationError> {
+        if divisor.is_constant() {
+            return Err(InvalidSourceOperand {src: divisor.clone()});
+        }
+        Ok(())
+    }
+
+    fn validate_shift_instruction(&self, shift_op: &AsmOperand, dst: &AsmOperand) -> Result<(), AsmInstructionValidationError> {
+        let src_validation_res = match shift_op {
+            Imm32(c) if !(i8::MIN as i32..=i8::MAX as i32).contains(&c) => Err(OperandOutOfRange(*c)),
+            Reg(ref reg) if *reg != CL => Err(InvalidSourceOperand { src: Reg(reg.clone())}),
+            _ => Ok(()),
+        };
+        if src_validation_res.is_err() {
+            return src_validation_res;
+        }
+        match dst {
+            Stack { .. } | Reg(_) => Ok(()),
+            dst => Err(InvalidDestinationOperand { dst: dst.clone() })
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct AsmFunction {
     pub name: TackySymbol,
@@ -110,6 +303,13 @@ pub struct AsmProgram {
 pub enum CodegenError {
     #[error(transparent)]
     IntImmediateParseError(#[from] ParseIntError),
+
+    #[error("{function:?}: instruction validation error: [{instruction:?}]: {inner:?}")]
+    InstructionValidationError {
+        function: String,
+        instruction: AsmInstruction,
+        inner: AsmInstructionValidationError,
+    }
 }
 
 pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
@@ -117,10 +317,10 @@ pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
     for f in p.functions {
         let asm_func = generate_function_assembly(f)?;
         let mut stack_alloc_ctx = StackAllocationContext::new();
-        let mut stack_alloced = fixup_asm_instructions(&mut stack_alloc_ctx, asm_func)?;
+        let mut stack_alloced = fixup_generated_asm_instructions(&mut stack_alloc_ctx, asm_func)?;
         let reqd_stack_size = stack_alloc_ctx.stack_size;
         stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size)); // not-efficient
-        validate_generated_function_assembly(&stack_alloced); // validates generated assembly as sanity check
+        validate_generated_function_assembly(&stack_alloced)?;
         asm_functions.push(stack_alloced);
     }
     Ok(AsmProgram { functions: asm_functions })
@@ -129,8 +329,18 @@ pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
 // validate_generated_function_assembly validates generated assembly code as a sanity check to
 // help catch issues early on. If any issue was found here, it is likely a compiler bug. It works
 // by checking for various x86-64 assembly rules.
-fn validate_generated_function_assembly(asm_func: &AsmFunction) {
-    todo!()
+fn validate_generated_function_assembly(asm_func: &AsmFunction) -> Result<(), CodegenError> {
+    let fname = asm_func.name.clone().0;
+    for instr in asm_func.instructions.iter() {
+        if let Err(e) = instr.validate() {
+            return Err(InstructionValidationError {
+                function: fname,
+                instruction: instr.clone(),
+                inner: e,
+            })
+        }
+    }
+    Ok(())
 }
 
 fn generate_function_assembly(f: TackyFunction) -> Result<AsmFunction, CodegenError> {
@@ -319,10 +529,11 @@ impl StackAllocationContext {
     }
 }
 
-fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
+fn fixup_generated_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> Result<AsmFunction, CodegenError> {
     let mut processed_instrs = vec![];
     for instr in f.instructions {
         match instr {
+            AllocateStack(sz) => processed_instrs.push(AllocateStack(sz)),
             Mov8 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Mov8, ctx, src, dst)),
             Mov32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Mov32, ctx, src, dst)),
             Not32 { op } => processed_instrs.extend(fixup_unary_expr!(Not32, ctx, op)),
@@ -331,20 +542,21 @@ fn fixup_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunction) -> R
             Sub32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Sub32, ctx, src, dst)),
             IMul32 { src, dst } => processed_instrs.extend(fixup_imul32(ctx, src, dst)),
             IDiv32 { divisor } => processed_instrs.extend(fixup_idiv32(ctx, divisor)),
-            Sal32 { src, dst } => {
-                let fixed_up = fixup_sal32(ctx, src, dst)?;
-                processed_instrs.extend(fixed_up);
-            }
-            Sar32 { src, dst } => {
-                let fixed_up = fixup_sar32(ctx, src, dst)?;
-                processed_instrs.extend(fixed_up);
-            }
+            Shl32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Shl32, ctx, src, dst)),
+            Shr32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Shr32, ctx, src, dst)),
+            Sal32 { src, dst } => processed_instrs.extend(fixup_sal32(ctx, src, dst)?),
+            Sar32 { src, dst } => processed_instrs.extend(fixup_sar32(ctx, src, dst)?),
             And32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(And32, ctx, src, dst)),
             Or32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Or32, ctx, src, dst)),
             Xor32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Xor32, ctx, src, dst)),
-            SetCondition { condition_code, dst: Pseudo(v) } => processed_instrs.push(
-                SetCondition { condition_code, dst: Stack { offset: ctx.get_or_allocate_stack(v) }}),
-            instr => processed_instrs.push(instr),
+            SetCondition { condition_code, dst } => processed_instrs.extend(fixup_set_condition(ctx, condition_code, dst)),
+            Cmp32 { op1: src, op2: dst } => processed_instrs.extend(fixup_cmp32(ctx, src, dst)),
+            Jmp { target } => processed_instrs.push(Jmp { target }),
+            JmpConditional { condition_code, target_if_true } => processed_instrs.push(
+                JmpConditional {condition_code, target_if_true}),
+            Label(lbl) => processed_instrs.push(Label(lbl)),
+            SignExtendTo64 => processed_instrs.push(SignExtendTo64),
+            Ret => processed_instrs.push(Ret),
         }
     }
     Ok(AsmFunction {
@@ -383,6 +595,37 @@ fn fixup_idiv32(ctx: &mut StackAllocationContext, divisor: AsmOperand) -> Vec<As
         divisor => vec![
             IDiv32 { divisor }
         ]
+    }
+}
+
+fn fixup_cmp32(ctx: &mut StackAllocationContext, op1: AsmOperand, op2: AsmOperand) -> Vec<AsmInstruction> {
+    match (op1, op2) {
+        (Pseudo(t1), Pseudo(t2)) => vec![
+            Mov32 { src: Stack {offset: ctx.get_or_allocate_stack(t1)}, dst: Reg(R10D) },
+            Cmp32 { op1: Reg(R10D), op2: Stack { offset: ctx.get_or_allocate_stack(t2) } },
+        ],
+        (Pseudo(t1), Imm32(x)) => vec![
+            Mov32 { src: Imm32(x), dst: Reg(R10D) },
+            Cmp32 { op1: Stack {offset: ctx.get_or_allocate_stack(t1)}, op2: Reg(R10D) },
+        ],
+        (Pseudo(t1), op2) => vec![
+            Cmp32 { op1: Stack {offset: ctx.get_or_allocate_stack(t1)}, op2 },
+        ],
+        (op1, Pseudo(t2)) => vec![
+            Cmp32 { op1, op2: Stack { offset: ctx.get_or_allocate_stack(t2)}},
+        ],
+        (op1, Imm32(x)) => vec![
+            Mov32 { src: Imm32(x), dst: Reg(R10D) },
+            Cmp32 { op1, op2: Reg(R10D) },
+        ],
+        (op1, op2) => vec![Cmp32 { op1, op2 }],
+    }
+}
+
+fn fixup_set_condition(ctx: &mut StackAllocationContext, condition_code: ConditionCode, dst: AsmOperand) -> Vec<AsmInstruction> {
+    match dst {
+        Pseudo(d) => vec![SetCondition {condition_code, dst: Stack { offset: ctx.get_or_allocate_stack(d)}}],
+        dst => vec![SetCondition { condition_code, dst }],
     }
 }
 
