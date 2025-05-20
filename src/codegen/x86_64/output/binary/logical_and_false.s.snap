@@ -1,0 +1,56 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: logical operators with short-circuiting
+expression: asm_output
+info: binary/logical_and_false.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $88, %rsp
+    movl $10, -8(%rbp)
+    cmpl $0, -8(%rbp)
+    je _L.and_false.0
+    movl $0, -16(%rbp)
+    cmpl $0, -16(%rbp)
+    je _L.and_false.0
+    movl $1, -24(%rbp)
+    jmp _L.and_end.1
+_L.and_false.0:
+    movl $0, -24(%rbp)
+_L.and_end.1:
+    movl $0, -32(%rbp)
+    cmpl $0, -32(%rbp)
+    je _L.and_false.2
+    movl $4, -40(%rbp)
+    cmpl $0, -40(%rbp)
+    je _L.and_false.2
+    movl $1, -48(%rbp)
+    jmp _L.and_end.3
+_L.and_false.2:
+    movl $0, -48(%rbp)
+_L.and_end.3:
+    movl -24(%rbp), %r10d
+    movl %r10d, -56(%rbp)
+    movl -48(%rbp), %r10d
+    addl %r10d, -56(%rbp)
+    movl $0, -64(%rbp)
+    cmpl $0, -64(%rbp)
+    je _L.and_false.4
+    movl $0, -72(%rbp)
+    cmpl $0, -72(%rbp)
+    je _L.and_false.4
+    movl $1, -80(%rbp)
+    jmp _L.and_end.5
+_L.and_false.4:
+    movl $0, -80(%rbp)
+_L.and_end.5:
+    movl -56(%rbp), %r10d
+    movl %r10d, -88(%rbp)
+    movl -80(%rbp), %r10d
+    addl %r10d, -88(%rbp)
+    movl -88(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

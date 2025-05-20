@@ -550,7 +550,7 @@ mod test {
 }
 
 #[cfg(test)]
-mod tacky_ir_generation_snapshot_tests {
+mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use insta::assert_snapshot;
@@ -594,6 +594,7 @@ mod tacky_ir_generation_snapshot_tests {
     #[case("logical/logical_or.c")]
     #[case("logical/logical_or_expr.c")]
     #[case("logical/logical_or_multi.c")]
+    #[case("logical/logical_and_mixed_assoc.c")]
     fn test_generation_for_logical_operators(#[case] input_path: &str) {
         run_ir_generation_snapshot_test("logical operators", input_path)
     }

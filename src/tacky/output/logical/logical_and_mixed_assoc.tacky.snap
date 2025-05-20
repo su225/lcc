@@ -1,0 +1,38 @@
+---
+source: src/tacky/tacky.rs
+description: logical operators
+expression: tacky
+info: logical/logical_and_mixed_assoc.c
+---
+int main(void) {
+    <t>.1 = (int32 10);
+    jump_if_zero (<t>.1) _L.and_false.0;
+    <t>.2 = (int32 0);
+    jump_if_zero (<t>.2) _L.and_false.0;
+    <t>.0 = (int32 1);
+    jump _L.and_end.1;
+_L.and_false.0:
+    <t>.0 = (int32 0);
+_L.and_end.1:
+    <t>.4 = (int32 0);
+    jump_if_zero (<t>.4) _L.and_false.2;
+    <t>.5 = (int32 4);
+    jump_if_zero (<t>.5) _L.and_false.2;
+    <t>.3 = (int32 1);
+    jump _L.and_end.3;
+_L.and_false.2:
+    <t>.3 = (int32 0);
+_L.and_end.3:
+    <t>.6 = <t>.0 + <t>.3;
+    <t>.8 = (int32 0);
+    jump_if_zero (<t>.8) _L.and_false.4;
+    <t>.9 = (int32 0);
+    jump_if_zero (<t>.9) _L.and_false.4;
+    <t>.7 = (int32 1);
+    jump _L.and_end.5;
+_L.and_false.4:
+    <t>.7 = (int32 0);
+_L.and_end.5:
+    <t>.10 = <t>.6 + <t>.7;
+    return <t>.10;
+}

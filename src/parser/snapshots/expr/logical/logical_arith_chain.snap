@@ -1,0 +1,78 @@
+---
+source: src/parser/parser.rs
+description: logical expressions
+expression: actual.unwrap()
+info: (10 && 0) + (0 && 4) + (0 && 0)
+---
+location:
+  line: 1
+  column: 2
+kind:
+  binary:
+    - add
+    - location:
+        line: 1
+        column: 2
+      kind:
+        binary:
+          - add
+          - location:
+              line: 1
+              column: 2
+            kind:
+              binary:
+                - and
+                - location:
+                    line: 1
+                    column: 2
+                  kind:
+                    int_constant:
+                      - "10"
+                      - decimal
+                - location:
+                    line: 1
+                    column: 8
+                  kind:
+                    int_constant:
+                      - "0"
+                      - decimal
+          - location:
+              line: 1
+              column: 14
+            kind:
+              binary:
+                - and
+                - location:
+                    line: 1
+                    column: 14
+                  kind:
+                    int_constant:
+                      - "0"
+                      - decimal
+                - location:
+                    line: 1
+                    column: 19
+                  kind:
+                    int_constant:
+                      - "4"
+                      - decimal
+    - location:
+        line: 1
+        column: 25
+      kind:
+        binary:
+          - and
+          - location:
+              line: 1
+              column: 25
+            kind:
+              int_constant:
+                - "0"
+                - decimal
+          - location:
+              line: 1
+              column: 30
+            kind:
+              int_constant:
+                - "0"
+                - decimal

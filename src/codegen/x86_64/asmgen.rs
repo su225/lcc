@@ -75,7 +75,7 @@ fn emit_function_epilogue<W: Write>(w: &mut W) -> io::Result<()> {
 }
 
 #[cfg(test)]
-mod asm_emit_snapshot_test {
+mod test {
     use std::fs;
     use std::io::Cursor;
     use std::path::{Path, PathBuf};
@@ -126,6 +126,12 @@ mod asm_emit_snapshot_test {
     #[case("binary/relational_eq.c")]
     fn test_generation_for_relational_binary_operators(#[case] input_path: &str) {
         run_asm_emit_snapshot_test("arithmetic relational binary operators", input_path)
+    }
+
+    #[rstest]
+    #[case("binary/logical_and_false.c")]
+    fn test_generation_for_logical_and_false(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("logical operators with short-circuiting", input_path)
     }
 
     fn run_asm_emit_snapshot_test(suite_description: &str, src_file: &str) {

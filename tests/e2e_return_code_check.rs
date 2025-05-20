@@ -27,6 +27,12 @@ fn test_e2e_bitwise_binary_operator(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }
 
+#[rstest]
+#[case("binary/logical_and_false.c")]
+fn test_e2e_logical_binary_operator(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
 fn run_e2e_against_clang(input_file: &str) {
     println!("current working directory: {}", env::current_dir().unwrap().display());
 

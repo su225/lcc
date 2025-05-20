@@ -301,7 +301,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-
+    use rstest::rstest;
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
@@ -905,16 +905,6 @@ mod test {
         let actual = parser.parse_expression();
         assert_eq!(test_case.expected, actual);
     }
-}
-
-#[cfg(test)]
-mod expression_test {
-    use rstest::rstest;
-
-    use crate::lexer::Lexer;
-    use crate::parser::Parser;
-    use crate::parser::types::Expression;
-    use crate::parser::types::ExpressionKind::{Binary, IntConstant, Unary};
 
     #[rstest]
     #[case("simple_addition", "1+2")]
@@ -1000,6 +990,7 @@ mod expression_test {
     #[case("logical_and", "10 && 20")]
     #[case("logical_or", "1 || 0")]
     #[case("logical_not", "!10")]
+    #[case("logical_arith_chain", "(10 && 0) + (0 && 4) + (0 && 0)")]
     fn test_should_parse_logical_expressions(#[case] description: &str, #[case] src: &str) {
         run_snapshot_test("logical expressions", description, "expr/logical", src);
     }
@@ -1216,6 +1207,7 @@ mod expression_test {
     #[case("!1 && 0 || 1 && !0", "((!1) && 0) || (1 && (!0))")]
     #[case("1 && 0 || 1 && 0", "((1 && 0) || (1 && 0))")]
     #[case("1 || 0 && 1 || 0", "((1 || (0 && 1)) || 0)")]
+    #[case("(10 && 0) + (0 && 4) + (0 && 0)", "(((10 && 0)+(0 && 4))+(0 && 0))")]
     fn test_logical_operator_precedence_and_associativity(#[case] src1: &str, #[case] src2: &str) {
         run_expression_equivalence_test(src1, src2);
     }
