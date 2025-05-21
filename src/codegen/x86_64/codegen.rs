@@ -126,7 +126,7 @@ pub enum AsmInstruction {
     Ret,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum AsmInstructionValidationError {
     #[error("invalid jump label: {0}")]
     InvalidLabel(AsmLabel),
@@ -312,7 +312,7 @@ pub struct AsmProgram {
     pub functions: Vec<AsmFunction>,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum CodegenError {
     #[error(transparent)]
     IntImmediateParseError(#[from] ParseIntError),
@@ -749,9 +749,11 @@ mod test {
     use crate::codegen::x86_64::register::Register::EAX;
     use crate::codegen::x86_64::AsmInstruction::*;
     use crate::codegen::x86_64::AsmOperand::*;
+    use crate::codegen::x86_64::codegen::generate_instruction_assembly;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
-    use crate::tacky::emit;
+    use crate::tacky::{emit, TackyInstruction, TackyUnaryOperator, TackyValue};
+    use crate::tacky::TackyInstruction::Unary;
 
     #[test]
     fn test_generate_assembly_for_return_0() {
@@ -814,6 +816,57 @@ mod test {
             }],
         };
         assert_generated_asm_for_source(src, expected_asm);
+    }
+
+    #[test]
+    fn test_tacky_translation_unary_complement() {
+        assert_tacky_to_x86_64_translation_result(
+            Unary {
+                operator: TackyUnaryOperator::Complement,
+                src: TackyValue::Int32(10),
+                dst: TackyValue::Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(10), dst: Pseudo("a".into()) },
+                Not32 { op: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_unary_negate() {
+        assert_tacky_to_x86_64_translation_result(
+            Unary {
+                operator: TackyUnaryOperator::Negate,
+                src: TackyValue::Int32(10),
+                dst: TackyValue::Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(10), dst: Pseudo("a".into()) },
+                Neg32 { op: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_unary_not() {
+        assert_tacky_to_x86_64_translation_result(
+            Unary {
+                operator: TackyUnaryOperator::Not,
+                src: TackyValue::Int32(10),
+                dst: TackyValue::Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(0), op2: Imm32(10) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::Equal, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    fn assert_tacky_to_x86_64_translation_result(tacky: TackyInstruction, expected: Result<Vec<AsmInstruction>, CodegenError>) {
+        let actual_result = generate_instruction_assembly(tacky);
+        assert_eq!(actual_result, expected, "{}", format!("expected:{:#?}\nactual:{:#?}", expected, actual_result))
     }
 
     fn assert_generated_asm_for_source(source_code: &str, expected_asm: AsmProgram) {
