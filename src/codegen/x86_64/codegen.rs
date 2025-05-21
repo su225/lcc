@@ -93,6 +93,12 @@ impl From<TackySymbol> for AsmLabel {
     }
 }
 
+impl From<&str> for AsmLabel {
+    fn from(value: &str) -> Self {
+        AsmLabel(String::from(value))
+    }
+}
+
 impl Display for AsmLabel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.0))
@@ -1398,7 +1404,107 @@ mod test {
         );
     }
 
+    #[test]
+    fn test_tacky_translation_return_variable() {
+        assert_tacky_to_x86_64_translation_result(
+            Return(Variable("a".into())),
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Reg(EAX) },
+                Ret,
+            ]),
+        );
+    }
 
+    #[test]
+    fn test_tacky_translation_return_constant() {
+        assert_tacky_to_x86_64_translation_result(
+            Return(Int32(42)),
+            Ok(vec![
+                Mov32 { src: Imm32(42), dst: Reg(EAX) },
+                Ret,
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_copy_variable_to_variable() {
+        assert_tacky_to_x86_64_translation_result(
+            Copy {
+                src: Variable("a".into()),
+                dst: "b".into(),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("b".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_copy_constant_to_variable() {
+        assert_tacky_to_x86_64_translation_result(
+            Copy {
+                src: Int32(100),
+                dst: "x".into(),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(100), dst: Pseudo("x".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_jump() {
+        assert_tacky_to_x86_64_translation_result(
+            Jump { target: "loop_start".into() },
+            Ok(vec![
+                Jmp { target: AsmLabel::from("loop_start") },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_jump_if_zero_variable() {
+        assert_tacky_to_x86_64_translation_result(
+            JumpIfZero {
+                condition: Variable("flag".into()),
+                target: "exit".into(),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(0), op2: Pseudo("flag".into()) },
+                JmpConditional {
+                    condition_code: ConditionCode::Equal,
+                    target_if_true: AsmLabel::from("exit"),
+                },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_jump_if_not_zero_variable() {
+        assert_tacky_to_x86_64_translation_result(
+            JumpIfNotZero {
+                condition: Variable("status".into()),
+                target: "continue".into(),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(0), op2: Pseudo("status".into()) },
+                JmpConditional {
+                    condition_code: ConditionCode::NotEqual,
+                    target_if_true: AsmLabel::from("continue"),
+                },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_label() {
+        assert_tacky_to_x86_64_translation_result(
+            TackyInstruction::Label("start".into()),
+            Ok(vec![
+                AsmInstruction::Label(AsmLabel::from("start")),
+            ]),
+        );
+    }
 
     fn assert_tacky_to_x86_64_translation_result(tacky: TackyInstruction, expected: Result<Vec<AsmInstruction>, CodegenError>) {
         let actual_result = generate_instruction_assembly(tacky);
