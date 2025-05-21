@@ -3,9 +3,9 @@ use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 use thiserror::Error;
 use crate::codegen::x86_64::AsmInstruction::*;
-use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed};
+use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed, SetConditionDestOperandMustBeOneByte};
 use crate::codegen::x86_64::AsmOperand::*;
-use crate::codegen::x86_64::CodegenError::InstructionValidationError;
+use crate::codegen::x86_64::CodegenError::{CannotDownsizeRegisterError, InstructionValidationError};
 use crate::codegen::x86_64::register::Register;
 use crate::codegen::x86_64::register::Register::*;
 use crate::tacky::{TackyBinaryOperator, TackyFunction, TackyInstruction, TackyProgram, TackySymbol, TackyUnaryOperator, TackyValue};
@@ -140,6 +140,9 @@ pub enum AsmInstructionValidationError {
     #[error("destination operand {dst:?} is invalid")]
     InvalidDestinationOperand { dst: AsmOperand },
 
+    #[error("conditional set destination operand must be 1-byte wide")]
+    SetConditionDestOperandMustBeOneByte,
+
     #[error("source operand {src:?} is invalid")]
     InvalidSourceOperand { src: AsmOperand },
 
@@ -254,6 +257,7 @@ impl AsmInstruction {
             | Sar32 { src, dst }
             | Shl32 { src, dst }
             | Shr32 { src, dst } => self.validate_shift_instruction(src, dst),
+            SetCondition { dst, .. } => self.validate_set_conditional_instruction(dst),
             _ => Ok(()),
         }
     }
@@ -286,6 +290,15 @@ impl AsmInstruction {
             dst => Err(InvalidDestinationOperand { dst: dst.clone() })
         }
     }
+
+    fn validate_set_conditional_instruction(&self, dst: &AsmOperand) -> Result<(), AsmInstructionValidationError> {
+        if let Reg(register) = dst {
+            if register.width() > 1 {
+                return Err(SetConditionDestOperandMustBeOneByte)
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -309,7 +322,10 @@ pub enum CodegenError {
         function: String,
         instruction: AsmInstruction,
         inner: AsmInstructionValidationError,
-    }
+    },
+
+    #[error("cannot downsize register {0} to {1} byte(s)")]
+    CannotDownsizeRegisterError(Register, usize),
 }
 
 pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
@@ -549,7 +565,7 @@ fn fixup_generated_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunc
             And32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(And32, ctx, src, dst)),
             Or32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Or32, ctx, src, dst)),
             Xor32 { src, dst } => processed_instrs.extend(fixup_binary_expr!(Xor32, ctx, src, dst)),
-            SetCondition { condition_code, dst } => processed_instrs.extend(fixup_set_condition(ctx, condition_code, dst)),
+            SetCondition { condition_code, dst } => processed_instrs.extend(fixup_set_condition(ctx, condition_code, dst)?),
             Cmp32 { op1: src, op2: dst } => processed_instrs.extend(fixup_cmp32(ctx, src, dst)),
             Jmp { target } => processed_instrs.push(Jmp { target }),
             JmpConditional { condition_code, target_if_true } => processed_instrs.push(
@@ -622,10 +638,15 @@ fn fixup_cmp32(ctx: &mut StackAllocationContext, op1: AsmOperand, op2: AsmOperan
     }
 }
 
-fn fixup_set_condition(ctx: &mut StackAllocationContext, condition_code: ConditionCode, dst: AsmOperand) -> Vec<AsmInstruction> {
+fn fixup_set_condition(ctx: &mut StackAllocationContext, condition_code: ConditionCode, dst: AsmOperand) -> Result<Vec<AsmInstruction>, CodegenError> {
     match dst {
-        Pseudo(d) => vec![SetCondition {condition_code, dst: Stack { offset: ctx.get_or_allocate_stack(d)}}],
-        dst => vec![SetCondition { condition_code, dst }],
+        Pseudo(d) => Ok(vec![SetCondition { condition_code, dst: Stack { offset: ctx.get_or_allocate_stack(d)} }]),
+        Reg(reg) => {
+            reg.least_significant_byte()
+                .map(|lsb_reg| Ok(vec![SetCondition{condition_code, dst: Reg(lsb_reg)}]))
+                .unwrap_or(Err(CannotDownsizeRegisterError(reg, 1)))
+        }
+        dst => Ok(vec![SetCondition { condition_code, dst }]),
     }
 }
 
@@ -722,7 +743,6 @@ impl From<TackyValue> for AsmOperand {
 
 #[cfg(test)]
 mod test {
-    use std::io::Cursor;
     use indoc::indoc;
 
     use crate::codegen::x86_64::*;
