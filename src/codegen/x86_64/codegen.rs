@@ -744,16 +744,18 @@ impl From<TackyValue> for AsmOperand {
 #[cfg(test)]
 mod test {
     use indoc::indoc;
-
+    use TackyUnaryOperator::*;
+    use TackyValue::*;
     use crate::codegen::x86_64::*;
-    use crate::codegen::x86_64::register::Register::EAX;
+    use crate::codegen::x86_64::register::Register::*;
     use crate::codegen::x86_64::AsmInstruction::*;
     use crate::codegen::x86_64::AsmOperand::*;
     use crate::codegen::x86_64::codegen::generate_instruction_assembly;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::tacky::{emit, TackyInstruction, TackyUnaryOperator, TackyValue};
-    use crate::tacky::TackyInstruction::Unary;
+    use crate::tacky::TackyBinaryOperator::*;
+    use crate::tacky::TackyInstruction::*;
 
     #[test]
     fn test_generate_assembly_for_return_0() {
@@ -822,9 +824,9 @@ mod test {
     fn test_tacky_translation_unary_complement() {
         assert_tacky_to_x86_64_translation_result(
             Unary {
-                operator: TackyUnaryOperator::Complement,
-                src: TackyValue::Int32(10),
-                dst: TackyValue::Variable("a".into()),
+                operator: Complement,
+                src: Int32(10),
+                dst: Variable("a".into()),
             },
             Ok(vec![
                 Mov32 { src: Imm32(10), dst: Pseudo("a".into()) },
@@ -837,9 +839,9 @@ mod test {
     fn test_tacky_translation_unary_negate() {
         assert_tacky_to_x86_64_translation_result(
             Unary {
-                operator: TackyUnaryOperator::Negate,
-                src: TackyValue::Int32(10),
-                dst: TackyValue::Variable("a".into()),
+                operator: Negate,
+                src: Int32(10),
+                dst: Variable("a".into()),
             },
             Ok(vec![
                 Mov32 { src: Imm32(10), dst: Pseudo("a".into()) },
@@ -852,9 +854,9 @@ mod test {
     fn test_tacky_translation_unary_not() {
         assert_tacky_to_x86_64_translation_result(
             Unary {
-                operator: TackyUnaryOperator::Not,
-                src: TackyValue::Int32(10),
-                dst: TackyValue::Variable("a".into()),
+                operator: Not,
+                src: Int32(10),
+                dst: Variable("a".into()),
             },
             Ok(vec![
                 Cmp32 { op1: Imm32(0), op2: Imm32(10) },
@@ -863,6 +865,540 @@ mod test {
             ]),
         );
     }
+
+    #[test]
+    fn test_tacky_translation_binary_arithmetic_add_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Add,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                Add32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_arithmetic_add_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Add,
+                src1: Int32(10),
+                src2: Int32(20),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(10), dst: Pseudo("a".into()) },
+                Add32 { src: Imm32(20), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_arithmetic_sub_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Subtract,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                Sub32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_arithmetic_mul_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Multiply,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                IMul32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_bitwise_and_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: BitwiseAnd,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                And32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_bitwise_or_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: BitwiseOr,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                Or32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_bitwise_xor_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: BitwiseXor,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                Xor32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_leftshift_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: LeftShift,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                Sal32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_rightshift_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: RightShift,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Pseudo("c".into()) },
+                Sar32 { src: Pseudo("b".into()), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_arithmetic_sub_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Subtract,
+                src1: Int32(10),
+                src2: Int32(5),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(10), dst: Pseudo("a".into()) },
+                Sub32 { src: Imm32(5), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_arithmetic_mul_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Multiply,
+                src1: Int32(2),
+                src2: Int32(3),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(2), dst: Pseudo("a".into()) },
+                IMul32 { src: Imm32(3), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_bitwise_and_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: BitwiseAnd,
+                src1: Int32(0b1100),
+                src2: Int32(0b1010),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(0b1100), dst: Pseudo("a".into()) },
+                And32 { src: Imm32(0b1010), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_bitwise_or_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: BitwiseOr,
+                src1: Int32(0b0101),
+                src2: Int32(0b1000),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(0b0101), dst: Pseudo("a".into()) },
+                Or32 { src: Imm32(0b1000), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_bitwise_xor_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: BitwiseXor,
+                src1: Int32(0b1111),
+                src2: Int32(0b1010),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(0b1111), dst: Pseudo("a".into()) },
+                Xor32 { src: Imm32(0b1010), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_leftshift_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: LeftShift,
+                src1: Int32(1),
+                src2: Int32(3),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(1), dst: Pseudo("a".into()) },
+                Sal32 { src: Imm32(3), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_rightshift_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: RightShift,
+                src1: Int32(0b1000),
+                src2: Int32(2),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(0b1000), dst: Pseudo("a".into()) },
+                Sar32 { src: Imm32(2), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_divide_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Divide,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Reg(EAX) },
+                SignExtendTo64,
+                IDiv32 { divisor: Pseudo("b".into()) },
+                Mov32 { src: Reg(EAX), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_modulo_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Modulo,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Pseudo("a".into()), dst: Reg(EAX) },
+                SignExtendTo64,
+                IDiv32 { divisor: Pseudo("b".into()) },
+                Mov32 { src: Reg(EDX), dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_divide_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Divide,
+                src1: Int32(20),
+                src2: Int32(4),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(20), dst: Reg(EAX) },
+                SignExtendTo64,
+                IDiv32 { divisor: Imm32(4) },
+                Mov32 { src: Reg(EAX), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_binary_modulo_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Modulo,
+                src1: Int32(20),
+                src2: Int32(6),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Mov32 { src: Imm32(20), dst: Reg(EAX) },
+                SignExtendTo64,
+                IDiv32 { divisor: Imm32(6) },
+                Mov32 { src: Reg(EDX), dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_equal_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Equal,
+                src1: Int32(5),
+                src2: Int32(5),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(5), op2: Imm32(5) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::Equal, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_notequal_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: NotEqual,
+                src1: Int32(5),
+                src2: Int32(3),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(3), op2: Imm32(5) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::NotEqual, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_greater_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: GreaterThan,
+                src1: Int32(10),
+                src2: Int32(5),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(5), op2: Imm32(10) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::Greater, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_lesser_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: LessThan,
+                src1: Int32(2),
+                src2: Int32(4),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(4), op2: Imm32(2) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::Lesser, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_greater_equal_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: GreaterOrEqual,
+                src1: Int32(7),
+                src2: Int32(7),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(7), op2: Imm32(7) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::GreaterOrEqual, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_lesser_equal_all_constants() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: LessOrEqual,
+                src1: Int32(3),
+                src2: Int32(8),
+                dst: Variable("a".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Imm32(8), op2: Imm32(3) },
+                Mov32 { src: Imm32(0), dst: Pseudo("a".into()) },
+                SetCondition { condition_code: ConditionCode::LesserOrEqual, dst: Pseudo("a".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_equal_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: Equal,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Pseudo("b".into()), op2: Pseudo("a".into()) },
+                Mov32 { src: Imm32(0), dst: Pseudo("c".into()) },
+                SetCondition { condition_code: ConditionCode::Equal, dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_notequal_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: NotEqual,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Pseudo("b".into()), op2: Pseudo("a".into()) },
+                Mov32 { src: Imm32(0), dst: Pseudo("c".into()) },
+                SetCondition { condition_code: ConditionCode::NotEqual, dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_greater_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: GreaterThan,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Pseudo("b".into()), op2: Pseudo("a".into()) },
+                Mov32 { src: Imm32(0), dst: Pseudo("c".into()) },
+                SetCondition { condition_code: ConditionCode::Greater, dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_lesser_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: LessThan,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Pseudo("b".into()), op2: Pseudo("a".into()) },
+                Mov32 { src: Imm32(0), dst: Pseudo("c".into()) },
+                SetCondition { condition_code: ConditionCode::Lesser, dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_greater_equal_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: GreaterOrEqual,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Pseudo("b".into()), op2: Pseudo("a".into()) },
+                Mov32 { src: Imm32(0), dst: Pseudo("c".into()) },
+                SetCondition { condition_code: ConditionCode::GreaterOrEqual, dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_tacky_translation_relational_lesser_equal_all_memory_locations() {
+        assert_tacky_to_x86_64_translation_result(
+            Binary {
+                operator: LessOrEqual,
+                src1: Variable("a".into()),
+                src2: Variable("b".into()),
+                dst: Variable("c".into()),
+            },
+            Ok(vec![
+                Cmp32 { op1: Pseudo("b".into()), op2: Pseudo("a".into()) },
+                Mov32 { src: Imm32(0), dst: Pseudo("c".into()) },
+                SetCondition { condition_code: ConditionCode::LesserOrEqual, dst: Pseudo("c".into()) },
+            ]),
+        );
+    }
+
+
 
     fn assert_tacky_to_x86_64_translation_result(tacky: TackyInstruction, expected: Result<Vec<AsmInstruction>, CodegenError>) {
         let actual_result = generate_instruction_assembly(tacky);
