@@ -167,6 +167,22 @@ pub struct Statement<'a> {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum DeclarationKind<'a> {
+    Declaration {
+        identifier_name: &'a str,
+        init_expression: Option<Expression<'a>>,
+    },
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct Declaration<'a> {
+    pub location: Location,
+    pub kind: DeclarationKind<'a>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct FunctionDefinition<'a> {
     pub location: Location,
     pub name: Symbol<'a>,
