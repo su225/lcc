@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
-use crate::parser::types::*;
+use crate::parser::*;
 use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::*;
 
@@ -391,7 +391,8 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
 mod test {
     use ExpressionKind::*;
     use crate::common::Radix;
-    use crate::parser::types::{BinaryOperator, Expression, ExpressionKind, UnaryOperator};
+    use crate::parser::*;
+    use crate::parser::ExpressionKind::IntConstant;
     use crate::tacky::tacky::{emit_tacky_for_expression, TackyContext};
     use crate::tacky::*;
     use crate::tacky::TackyValue::*;
