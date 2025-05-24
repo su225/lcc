@@ -68,6 +68,7 @@ pub enum TokenTag {
     OperatorRelationalLessThanEqualTo,
     OperatorRelationalGreaterThan,
     OperatorRelationalGreaterThanEqualTo,
+    OperatorAssignment,
 }
 
 impl Display for TokenTag {
@@ -109,6 +110,8 @@ pub enum TokenType<'a> {
     OperatorRelationalLessThanEqualTo,
     OperatorRelationalGreaterThan,
     OperatorRelationalGreaterThanEqualTo,
+
+    OperatorAssignment,
 }
 
 impl<'a> TokenType<'a> {
@@ -146,6 +149,8 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorRelationalLessThanEqualTo => TokenTag::OperatorRelationalLessThanEqualTo,
             TokenType::OperatorRelationalGreaterThan => TokenTag::OperatorRelationalGreaterThan,
             TokenType::OperatorRelationalGreaterThanEqualTo => TokenTag::OperatorRelationalGreaterThanEqualTo,
+
+            TokenType::OperatorAssignment => TokenTag::OperatorAssignment,
         }
     }
 
@@ -244,6 +249,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorRelationalLessThanEqualTo => f.write_str("<="),
             TokenType::OperatorRelationalGreaterThan => f.write_str(">"),
             TokenType::OperatorRelationalGreaterThanEqualTo => f.write_str(">="),
+            TokenType::OperatorAssignment => f.write_str("="),
         }
     }
 }
@@ -593,7 +599,10 @@ impl<'a> Lexer<'a> {
                                         location: loc,
                                     }))
                                 }
-                                _ => Err(LexerError::UnexpectedCharacter { location: loc, ch: '=' })
+                                None | Some(_) => Ok(Some(Token {
+                                    token_type: TokenType::OperatorAssignment,
+                                    location: loc,
+                                }))
                             }
                         }
                         '0'..='9' => {
@@ -661,6 +670,7 @@ impl<'a> Iterator for Lexer<'a> {
 mod test {
     use rstest::rstest;
     use crate::common::{Location, Radix};
+    use crate::common::Radix::Decimal;
     use crate::lexer::{Lexer, LexerError, Token, TokenType};
     use crate::lexer::lexer::KEYWORDS;
     use crate::lexer::TokenType::*;
@@ -899,6 +909,18 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: OperatorRelationalGreaterThanEqualTo, location: (1, 1).into() },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_assignment_operator() {
+        let source = "a = 10";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: Identifier("a"), location: (1,1).into() },
+            Token { token_type: OperatorAssignment, location: (1,3).into() },
+            Token { token_type: IntConstant("10", Decimal), location: (1,5).into() },
         ]));
     }
 
