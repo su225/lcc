@@ -2,9 +2,9 @@ use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
-use crate::parser::*;
+use crate::parser::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
 use crate::tacky::TackyInstruction::*;
-use crate::tacky::TackyValue::*;
+use crate::tacky::TackyValue::{Variable,Int32};
 
 pub(crate) const COMPILER_GEN_PREFIX: &'static str = "<t>";
 pub(crate) const COMPILER_GEN_LABEL_PREFIX: &'static str = "_L";
@@ -278,6 +278,8 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             expr_instrs.push(Return(dst));
             Ok(expr_instrs)
         }
+        StatementKind::Expression(_) => todo!(),
+        StatementKind::Null => Ok(vec![]),
     }
 }
 
@@ -287,6 +289,7 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             let n = i32::from_str_radix(c, radix.value())?;
             Ok((Int32(n), vec![]))
         }
+        ExpressionKind::Variable(_) => todo!(),
         ExpressionKind::Unary(unary_op, src) => {
             let (src_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, src)?;
             let dst_tacky_identifier = ctx.next_temporary_identifier();
@@ -383,16 +386,16 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
                 dst: dst_tacky,
             });
             Ok((result, tacky_instrs))
-        }
+        },
+        ExpressionKind::Assignment {..} => todo!(),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use ExpressionKind::*;
     use crate::common::Radix;
-    use crate::parser::*;
-    use crate::parser::ExpressionKind::IntConstant;
+    use crate::parser::{BinaryOperator, Expression, UnaryOperator};
+    use crate::parser::ExpressionKind::{IntConstant,Unary,Binary};
     use crate::tacky::tacky::{emit_tacky_for_expression, TackyContext};
     use crate::tacky::*;
     use crate::tacky::TackyValue::*;

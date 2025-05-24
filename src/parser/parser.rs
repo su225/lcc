@@ -116,8 +116,10 @@ impl BinaryOperator {
 #[serde(rename_all = "snake_case")]
 pub enum ExpressionKind<'a> {
     IntConstant(&'a str, Radix),
+    Variable(&'a str),
     Unary(UnaryOperator, Box<Expression<'a>>),
     Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
+    Assignment { lvalue: Box<Expression<'a>>, rvalue: Box<Expression<'a>> },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -152,6 +154,8 @@ pub struct TypeExpression {
 #[serde(rename_all = "snake_case")]
 pub enum StatementKind<'a> {
     Return(Expression<'a>),
+    Expression(Expression<'a>),
+    Null,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -286,10 +290,10 @@ impl<'a> Parser<'a> {
                 if kwid == expected_kwid {
                     Ok(location)
                 } else {
-                    Err(ParserError::ExpectedKeyword { location, keyword_identifier: expected_kwid, actual_token: TokenTag::Keyword })
+                    Err(ExpectedKeyword { location, keyword_identifier: expected_kwid, actual_token: TokenTag::Keyword })
                 }
             }
-            Token { location, token_type } => Err(ParserError::ExpectedKeyword {
+            Token { location, token_type } => Err(ExpectedKeyword {
                 location,
                 keyword_identifier: expected_kwid,
                 actual_token: token_type.tag(),
@@ -302,11 +306,11 @@ impl<'a> Parser<'a> {
             Some(Ok(Token { location, token_type })) => {
                 match token_type {
                     TokenType::Identifier(name) => Ok(Symbol { name, location }),
-                    TokenType::Keyword(kwd) => Err(ParserError::KeywordUsedAsIdentifier { location, kwd }),
-                    _ => Err(ParserError::UnexpectedToken { location, expected_token_tags: vec![TokenTag::Identifier] })
+                    TokenType::Keyword(kwd) => Err(KeywordUsedAsIdentifier { location, kwd }),
+                    _ => Err(UnexpectedToken { location, expected_token_tags: vec![TokenTag::Identifier] })
                 }
             }
-            Some(Err(e)) => Err(ParserError::TokenizationError(e)),
+            Some(Err(e)) => Err(TokenizationError(e)),
             None => Err(UnexpectedEnd(vec![TokenTag::Identifier])),
         }
     }
@@ -372,7 +376,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 Err(e) => {
-                    return Err(ParserError::TokenizationError(e.clone()));
+                    return Err(TokenizationError(e.clone()));
                 }
             };
         }
@@ -400,7 +404,7 @@ impl<'a> Parser<'a> {
                         self.expect_token_with_tag(TokenTag::CloseParentheses)?;
                         Ok(expr)
                     }
-                    _ => Err(ParserError::UnexpectedToken {
+                    _ => Err(UnexpectedToken {
                         location: location.clone(),
                         expected_token_tags: vec![
                             TokenTag::IntConstant,
@@ -411,7 +415,7 @@ impl<'a> Parser<'a> {
                     })
                 }
             },
-            Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
             None => Err(UnexpectedEnd(vec![TokenTag::IntConstant])),
         }
     }
@@ -425,10 +429,10 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorUnaryComplement => Ok(UnaryOperator::Complement),
                     TokenType::OperatorMinus => Ok(UnaryOperator::Negate),
                     TokenType::OperatorUnaryLogicalNot => Ok(UnaryOperator::Not),
-                    tok_type => Err(ParserError::ExpectedUnaryOperator { location, actual_token: tok_type.tag() })
+                    tok_type => Err(ExpectedUnaryOperator { location, actual_token: tok_type.tag() })
                 }
             },
-            Some(Err(e)) => Err(ParserError::TokenizationError(e)),
+            Some(Err(e)) => Err(TokenizationError(e)),
         }
     }
 
@@ -436,7 +440,7 @@ impl<'a> Parser<'a> {
         let op_tok = self.token_provider.peek();
         match &op_tok {
             None => Err(UnexpectedEnd(vec![TokenTag::OperatorPlus])),
-            Some(Err(e)) => Err(ParserError::TokenizationError(e.clone())),
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
             Some(Ok(Token { token_type, location })) => {
                 match token_type {
                     TokenType::OperatorPlus => Ok(BinaryOperator::Add),
@@ -504,7 +508,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::*;
+    use crate::parser::{BinaryOperator, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
