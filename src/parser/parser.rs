@@ -6,8 +6,11 @@ use std::iter::Peekable;
 use derive_more::Add;
 use serde::Serialize;
 use thiserror::Error;
+use TokenTag::OperatorAssignment;
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
+use crate::lexer::TokenTag::{Keyword, OpenBrace, Semicolon};
+use crate::parser::ExpressionKind::Variable;
 use crate::parser::ParserError::*;
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -169,7 +172,7 @@ pub struct Statement<'a> {
 #[serde(rename_all = "snake_case")]
 pub enum DeclarationKind<'a> {
     Declaration {
-        identifier_name: &'a str,
+        identifier_name: Symbol<'a>,
         init_expression: Option<Expression<'a>>,
     },
 }
@@ -183,10 +186,26 @@ pub struct Declaration<'a> {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum BlockItem<'a> {
+    Statement(Statement<'a>),
+    Declaration(Declaration<'a>),
+    SubBlock(Block<'a>),
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct Block<'a> {
+    start_loc: Location,
+    end_loc: Location,
+    items: Vec<BlockItem<'a>>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct FunctionDefinition<'a> {
     pub location: Location,
     pub name: Symbol<'a>,
-    pub body: Vec<Statement<'a>>,
+    pub body: Block<'a>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -264,7 +283,7 @@ impl<'a> Parser<'a> {
         self.expect_open_parentheses()?;
         self.parse_function_parameters()?;
         self.expect_close_parentheses()?;
-        let body = self.parse_function_body()?;
+        let body = self.parse_block()?;
         Ok(FunctionDefinition { location: return_type.location, name, body })
     }
 
@@ -273,11 +292,107 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_function_body(&mut self) -> Result<Vec<Statement<'a>>, ParserError> {
-        self.expect_open_braces()?;
-        let stmt = self.parse_statement()?;
-        self.expect_close_braces()?;
-        Ok(vec![stmt])
+    fn parse_block(&mut self) -> Result<Block<'a>, ParserError> {
+        let block_open = self.get_token_with_tag(OpenBrace)?;
+        let mut block_items = Vec::with_capacity(2);
+        loop {
+            let next_token = self.token_provider.peek();
+            match next_token {
+                None => { return Err(UnexpectedEnd(vec![TokenTag::CloseBrace])); },
+                Some(Ok(tok)) if tok.token_type.tag() == TokenTag::CloseBrace => { break; },
+                Some(Ok(_)) => {
+                    let block_item = self.parse_block_item()?;
+                    block_items.push(block_item);
+                }
+                Some(Err(e)) => { return Err(TokenizationError(e.clone())) },
+            };
+        }
+        let block_close = self.get_token_with_tag(TokenTag::CloseBrace)?;
+        Ok(Block {
+            start_loc: block_open.location,
+            end_loc: block_close.location,
+            items: block_items,
+        })
+    }
+
+    fn parse_block_item(&mut self) -> Result<BlockItem<'a>, ParserError> {
+        let tok = self.token_provider.peek();
+        if tok.is_none() {
+            return Err(UnexpectedEnd(vec![Semicolon]));
+        }
+        match tok.unwrap() {
+            Ok(Token { token_type, .. }) => {
+                match token_type {
+                    TokenType::OpenBrace => {
+                        let sub_block = self.parse_block()?;
+                        Ok(BlockItem::SubBlock(sub_block))
+                    }
+                    TokenType::Keyword(KeywordIdentifier::TypeInt) => {
+                        let decl = self.parse_declaration()?;
+                        Ok(BlockItem::Declaration(decl))
+                    }
+                    _ => {
+                        let stmt = self.parse_statement()?;
+                        Ok(BlockItem::Statement(stmt))
+                    }
+                }
+            },
+            Err(e) => Err(TokenizationError(e.clone())),
+        }
+    }
+
+    fn parse_declaration(&mut self) -> Result<Declaration<'a>, ParserError> {
+        let ty_decl = self.get_keyword_token(KeywordIdentifier::TypeInt)?;
+        let var_name = self.parse_identifier()?;
+        let next_tok = self.token_provider.next();
+        match next_tok {
+            None => Err(UnexpectedEnd(vec![OperatorAssignment, Semicolon])),
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
+            Some(Ok(tok)) => {
+                let tok_loc = tok.location;
+                match tok.token_type {
+                    TokenType::OperatorAssignment => {
+                        let init_expr = self.parse_expression()?;
+                        self.expect_semicolon()?;
+                        Ok(Declaration {
+                            location: ty_decl.clone(),
+                            kind: DeclarationKind::Declaration {
+                                identifier_name: var_name,
+                                init_expression: Some(init_expr),
+                            }
+                        })
+                    }
+                    TokenType::Semicolon => {
+                        Ok(Declaration {
+                            location: ty_decl.clone(),
+                            kind: DeclarationKind::Declaration {
+                                identifier_name: var_name,
+                                init_expression: None,
+                            },
+                        })
+                    }
+                    _ => Err(UnexpectedToken {
+                        location: tok_loc,
+                        expected_token_tags: vec![OperatorAssignment, Semicolon],
+                    })
+                }
+            }
+        }
+    }
+
+    fn get_keyword_token(&mut self, kw_ident_type: KeywordIdentifier) -> Result<Token<'a>, ParserError> {
+        let kwd = self.get_token_with_tag(Keyword)?;
+        let kwd_loc = kwd.location;
+        match kwd.token_type {
+            TokenType::Keyword(kw) if kw_ident_type == kw => Ok(Token {
+                location: kwd_loc,
+                token_type: TokenType::Keyword(kw_ident_type),
+            }),
+            _ => Err(UnexpectedToken {
+                location: kwd_loc,
+                expected_token_tags: vec![Keyword],
+            })
+        }
     }
 
     fn expect_open_parentheses(&mut self) -> Result<(), ParserError> {
@@ -403,10 +518,10 @@ impl<'a> Parser<'a> {
         let next_token = self.token_provider.peek();
         match &next_token {
             Some(Ok(Token { token_type, location })) => {
+                let tok_location = location.clone();
                 match token_type {
                     TokenType::IntConstant(_, _) => self.parse_int_constant_expression(),
                     op if op.is_unary_operator() => {
-                        let tok_location = location.clone();
                         let unary_op = self.parse_unary_operator_token()?;
                         let factor = self.parse_factor()?;
                         Ok(Expression {
@@ -419,6 +534,12 @@ impl<'a> Parser<'a> {
                         let expr = self.parse_expression()?;
                         self.expect_token_with_tag(TokenTag::CloseParentheses)?;
                         Ok(expr)
+                    }
+                    TokenType::Identifier(identifier) => {
+                        Ok(Expression {
+                            location: tok_location,
+                            kind: Variable(identifier.clone()),
+                        })
                     }
                     _ => Err(UnexpectedToken {
                         location: location.clone(),
@@ -524,7 +645,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -575,28 +696,36 @@ mod test {
                 FunctionDefinition {
                     location: Location { line: 2, column: 13 },
                     name: Symbol { name: "main", location: Location { line: 2, column: 17 } },
-                    body: vec![
-                        Statement {
-                            location: Location { line: 3, column: 17 },
-                            kind: Return(Expression {
-                                location: Location { line: 3, column: 24 },
-                                kind: IntConstant("2", Decimal),
+                    body: Block {
+                        start_loc: (2,13).into(),
+                        end_loc: (4,13).into(),
+                        items: vec![
+                            BlockItem::Statement(Statement {
+                                location: (3,17).into(),
+                                kind: Return(Expression {
+                                    location: (3,24).into(),
+                                    kind: IntConstant("2", Decimal),
+                                }),
                             })
-                        }
-                    ],
+                        ],
+                    }
                 },
                 FunctionDefinition {
                     location: Location { line: 6, column: 13 },
                     name: Symbol { name: "foo", location: Location { line: 6, column: 17 } },
-                    body: vec![
-                        Statement {
-                            location: Location { line: 7, column: 17 },
-                            kind: Return(Expression {
-                                location: Location { line: 7, column: 24 },
-                                kind: IntConstant("3", Decimal),
-                            }),
-                        }
-                    ],
+                    body: Block {
+                        start_loc: (6,13).into(),
+                        end_loc: (8,13).into(),
+                        items: vec![
+                            BlockItem::Statement(Statement {
+                                location: (7,17).into(),
+                                kind: Return(Expression {
+                                    location: (7,24).into(),
+                                    kind: IntConstant("3", Decimal),
+                                }),
+                            })
+                        ],
+                    }
                 }
             ],
         }), parsed)

@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::common::{Location, Radix};
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
 pub enum KeywordIdentifier {
     TypeInt,
     TypeVoid,
