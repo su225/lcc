@@ -1,6 +1,6 @@
 ---
 source: src/codegen/x86_64/asmgen.rs
-description: binary operators
+description: arithmetic binary operators
 expression: asm_output
 info: binary/arithmetic_multiplication.c
 ---
