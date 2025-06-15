@@ -3,13 +3,13 @@
 //! Parsing is used. It is handwritten.
 
 use std::iter::Peekable;
+
 use derive_more::Add;
 use serde::Serialize;
 use thiserror::Error;
-use TokenTag::OperatorAssignment;
+
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
-use crate::lexer::TokenTag::{Keyword, OpenBrace, Semicolon};
 use crate::parser::ExpressionKind::Variable;
 use crate::parser::ParserError::*;
 
@@ -300,7 +300,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_block(&mut self) -> Result<Block<'a>, ParserError> {
-        let block_open = self.get_token_with_tag(OpenBrace)?;
+        let block_open = self.get_token_with_tag(TokenTag::OpenBrace)?;
         let mut block_items = Vec::with_capacity(2);
         loop {
             let next_token = self.token_provider.peek();
@@ -325,7 +325,7 @@ impl<'a> Parser<'a> {
     fn parse_block_item(&mut self) -> Result<BlockItem<'a>, ParserError> {
         let tok = self.token_provider.peek();
         if tok.is_none() {
-            return Err(UnexpectedEnd(vec![Semicolon]));
+            return Err(UnexpectedEnd(vec![TokenTag::Semicolon]));
         }
         match tok.unwrap() {
             Ok(Token { token_type, .. }) => {
@@ -353,7 +353,7 @@ impl<'a> Parser<'a> {
         let var_name = self.parse_identifier()?;
         let next_tok = self.token_provider.next();
         match next_tok {
-            None => Err(UnexpectedEnd(vec![OperatorAssignment, Semicolon])),
+            None => Err(UnexpectedEnd(vec![TokenTag::OperatorAssignment, TokenTag::Semicolon])),
             Some(Err(e)) => Err(TokenizationError(e.clone())),
             Some(Ok(tok)) => {
                 let tok_loc = tok.location;
@@ -380,7 +380,7 @@ impl<'a> Parser<'a> {
                     }
                     _ => Err(UnexpectedToken {
                         location: tok_loc,
-                        expected_token_tags: vec![OperatorAssignment, Semicolon],
+                        expected_token_tags: vec![TokenTag::OperatorAssignment, TokenTag::Semicolon],
                     })
                 }
             }
@@ -388,7 +388,7 @@ impl<'a> Parser<'a> {
     }
 
     fn get_keyword_token(&mut self, kw_ident_type: KeywordIdentifier) -> Result<Token<'a>, ParserError> {
-        let kwd = self.get_token_with_tag(Keyword)?;
+        let kwd = self.get_token_with_tag(TokenTag::Keyword)?;
         let kwd_loc = kwd.location;
         match kwd.token_type {
             TokenType::Keyword(kw) if kw_ident_type == kw => Ok(Token {
@@ -397,7 +397,7 @@ impl<'a> Parser<'a> {
             }),
             _ => Err(UnexpectedToken {
                 location: kwd_loc,
-                expected_token_tags: vec![Keyword],
+                expected_token_tags: vec![TokenTag::Keyword],
             })
         }
     }
@@ -454,7 +454,24 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> Result<Statement<'a>, ParserError> {
-        self.parse_return_statement()
+        let tok = self.token_provider.peek();
+        if tok.is_none() {
+            return Err(UnexpectedEnd(vec![TokenTag::Semicolon]));
+        }
+        match tok.unwrap() {
+            Ok(Token { token_type, location }) => {
+                let tok_loc = location.clone();
+                match token_type {
+                    TokenType::Semicolon => {
+                        self.token_provider.next();
+                        Ok(Statement { location: tok_loc, kind: StatementKind::Null })
+                    },
+                    TokenType::Keyword(KeywordIdentifier::Return) => self.parse_return_statement(),
+                    _ => self.parse_expression_statement(),
+                }
+            }
+            Err(e) => Err(TokenizationError(e.clone())),
+        }
     }
 
     fn parse_return_statement(&mut self) -> Result<Statement<'a>, ParserError> {
@@ -462,6 +479,12 @@ impl<'a> Parser<'a> {
         let return_code_expr = self.parse_expression()?;
         self.expect_semicolon()?;
         Ok(Statement { location: kloc, kind: StatementKind::Return(return_code_expr) })
+    }
+
+    fn parse_expression_statement(&mut self) -> Result<Statement<'a>, ParserError> {
+        let expr_stmt = self.parse_expression()?;
+        self.expect_semicolon()?;
+        Ok(Statement { location: expr_stmt.location.clone(), kind: StatementKind::Expression(expr_stmt) })
     }
 
     fn parse_expression(&mut self) -> Result<Expression<'a>, ParserError> {
@@ -653,7 +676,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -785,9 +808,70 @@ mod test {
         assert_eq!(expected, actual, "expected:\n{:#?}\nactual:\n{:#?}\n", expected, actual);
     }
 
+    struct StatementTestCase<'a> {
+        src: &'a str,
+        expected: Result<Statement<'a>, ParserError>,
+    }
+
+    fn run_parse_statement_test_case(test_case: StatementTestCase) {
+        let lexer = Lexer::new(test_case.src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_statement();
+        assert_eq!(test_case.expected, actual);
+    }
+
+    #[test]
+    fn test_parse_statement_empty() {
+        let src = ";";
+        let expected = Ok(Statement { location: (1,1).into(), kind: Null });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_return() {
+        let src = "return 10;";
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            kind: Return(Expression {
+                location: (1,8).into(),
+                kind: IntConstant("10", Decimal),
+            }),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_simple_assignment() {
+        let src = "a = 10;";
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            kind: StatementKind::Expression(Expression {
+                location: (1,1).into(),
+                kind: Assignment {
+                    lvalue: Box::new(Expression {
+                        location: (1,1).into(),
+                        kind: Variable("a"),
+                    }),
+                    rvalue: Box::new(Expression {
+                        location: (1,5).into(),
+                        kind: IntConstant("10", Decimal),
+                    }),
+                },
+            }),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
     struct ExprTestCase<'a> {
         src: &'a str,
         expected: Result<Expression<'a>, ParserError>,
+    }
+
+    fn run_parse_expression_test_case(test_case: ExprTestCase) {
+        let lexer = Lexer::new(test_case.src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_expression();
+        assert_eq!(test_case.expected, actual);
     }
 
     #[test]
@@ -1311,11 +1395,212 @@ mod test {
         run_parse_expression_test_case(ExprTestCase { src, expected });
     }
 
-    fn run_parse_expression_test_case(test_case: ExprTestCase) {
+    struct BlockTestCase<'a> {
+        src: &'a str,
+        expected: Result<Block<'a>, ParserError>,
+    }
+
+    fn run_parse_block_test_case(test_case: BlockTestCase) {
         let lexer = Lexer::new(test_case.src);
         let mut parser = Parser::new(lexer);
-        let actual = parser.parse_expression();
+        let actual = parser.parse_block();
         assert_eq!(test_case.expected, actual);
+    }
+
+    #[test]
+    fn test_parse_block_empty() {
+        let src = "{}";
+        let expected = Ok(Block {
+            start_loc: (1,1).into(),
+            end_loc: (1,2).into(),
+            items: vec![],
+        });
+        run_parse_block_test_case(BlockTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_block_return_0() {
+        let src = "{}";
+        let expected = Ok(Block {
+            start_loc: (1,1).into(),
+            end_loc: (1,2).into(),
+            items: vec![],
+        });
+        run_parse_block_test_case(BlockTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_block_with_variable_declaration() {
+        let src = indoc!{r#"
+        {
+            return 0;
+        }
+        "#};
+        let expected = Ok(Block {
+            start_loc: (1,1).into(),
+            end_loc: (3,1).into(),
+            items: vec![
+                BlockItem::Statement(Statement {
+                    location: (2,5).into(),
+                    kind: Return(Expression {
+                        location: (2,12).into(),
+                        kind: IntConstant("0", Decimal),
+                    }),
+                }),
+            ],
+        });
+        run_parse_block_test_case(BlockTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_block_multiple_statements_with_declarations() {
+        let src = indoc!{r#"
+        {
+            int a = 10;
+            int b;
+            b = 10;
+        }
+        "#};
+        let expected = Ok(Block {
+            start_loc: (1,1).into(),
+            end_loc: (5,1).into(),
+            items: vec![
+                BlockItem::Declaration(Declaration {
+                    location: (2,5).into(),
+                    kind: DeclarationKind::Declaration {
+                        identifier: Symbol {
+                            location: (2,9).into(),
+                            name: "a",
+                        },
+                        init_expression: Some(Expression {
+                            location: (2,13).into(),
+                            kind: IntConstant("10", Decimal),
+                        }),
+                    },
+                }),
+                BlockItem::Declaration(Declaration {
+                    location: (3,5).into(), // fixed from (2,5)
+                    kind: DeclarationKind::Declaration {
+                        identifier: Symbol {
+                            location: (3,9).into(),
+                            name: "b",
+                        },
+                        init_expression: None,
+                    },
+                }),
+                BlockItem::Statement(Statement {
+                    location: (4,5).into(), // fixed from (3,5)
+                    kind: StatementKind::Expression(Expression {
+                        location: (4,5).into(),
+                        kind: Assignment {
+                            lvalue: Box::new(Expression {
+                                location: (4,5).into(),
+                                kind: Variable("b"),
+                            }),
+                            rvalue: Box::new(Expression {
+                                location: (4,9).into(),
+                                kind: IntConstant("10", Decimal),
+                            }),
+                        },
+                    }),
+                }),
+            ],
+        });
+        run_parse_block_test_case(BlockTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_block_subblocks() {
+        let src = indoc!{r#"
+        {
+          int a = 10;
+          {
+            int b = 20;
+            int c = 30;
+            a = b + c;
+          }
+          return 0;
+        }
+        "#};
+        let expected = Ok(Block {
+            start_loc: (1,1).into(),
+            end_loc: (9,1).into(),
+            items: vec![
+                BlockItem::Declaration(Declaration {
+                    location: (2,3).into(),
+                    kind: DeclarationKind::Declaration {
+                        identifier: Symbol {
+                            name: "a",
+                            location: (2,7).into(),
+                        },
+                        init_expression: Some(Expression {
+                            location: (2,11).into(),
+                            kind: IntConstant("10", Decimal),
+                        }),
+                    },
+                }),
+                BlockItem::SubBlock(Block {
+                    start_loc: (3,3).into(),
+                    end_loc: (7,3).into(),
+                    items: vec![
+                        BlockItem::Declaration(Declaration {
+                            location: (4,5).into(),
+                            kind: DeclarationKind::Declaration {
+                                identifier: Symbol {location: (4,9).into(), name: "b"},
+                                init_expression: Some(Expression {
+                                    location: (4,13).into(),
+                                    kind: IntConstant("20", Decimal),
+                                }),
+                            },
+                        }),
+                        BlockItem::Declaration(Declaration {
+                            location: (5,5).into(),
+                            kind: DeclarationKind::Declaration {
+                                identifier: Symbol {location: (5,9).into(), name: "c"},
+                                init_expression: Some(Expression {
+                                    location: (5,13).into(),
+                                    kind: IntConstant("30", Decimal),
+                                }),
+                            },
+                        }),
+                        BlockItem::Statement(Statement {
+                            location: (6,5).into(),
+                            kind: StatementKind::Expression(Expression {
+                                location: (6,5).into(),
+                                kind: Assignment {
+                                    lvalue: Box::new(Expression {
+                                        location: (6,5).into(),
+                                        kind: Variable("a"),
+                                    }),
+                                    rvalue: Box::new(Expression {
+                                        location: (6,9).into(),
+                                        kind: Binary(
+                                            BinaryOperator::Add,
+                                            Box::new(Expression {
+                                                location: (6,9).into(),
+                                                kind: Variable("b"),
+                                            }),
+                                            Box::new(Expression {
+                                                location: (6,13).into(),
+                                                kind: Variable("c"),
+                                            })
+                                        ),
+                                    }),
+                                },
+                            })
+                        })
+                    ],
+                }),
+                BlockItem::Statement(Statement {
+                    location: (8,3).into(),
+                    kind: Return(Expression {
+                        location: (8,10).into(),
+                        kind: IntConstant("0", Decimal),
+                    })
+                })
+            ],
+        });
+        run_parse_block_test_case(BlockTestCase { src, expected })
     }
 
     #[rstest]
@@ -1648,6 +1933,14 @@ mod test {
         run_expression_equivalence_test(src1, src2);
     }
 
+    #[rstest]
+    #[case("a = b = c", "a = (b = c)")]
+    #[case("a = b + 10", "a = (b + 10)")]
+    #[case("a = b = c = d + 10", "a = (b = (c = (d + 10)))")]
+    fn test_assignment_operator_precedence_and_associativity(#[case] src1: &str, #[case] src2: &str) {
+        run_expression_equivalence_test(src1, src2);
+    }
+
     fn run_expression_equivalence_test(expr1_src: &str, expr2_src: &str) {
         let lex1 = Lexer::new(expr1_src);
         let mut parser1 = Parser::new(lex1);
@@ -1657,18 +1950,25 @@ mod test {
         let mut parser2 = Parser::new(lex2);
         let actual2 = parser2.parse_expression();
 
-        assert!(is_equivalent_expression(actual1.unwrap(), actual2.unwrap()),
-                "expected {expr1_src} to be equivalent to {expr2_src}");
+        let expr1 = actual1.unwrap();
+        let expr2 = actual2.unwrap();
+        assert!(is_equivalent_expression(&expr1, &expr2),
+                "expected {expr1_src} to be equivalent to {expr2_src}, but parsed as {:#?} and {:#?}", expr1, expr2);
     }
 
-    fn is_equivalent_expression(e1: Expression, e2: Expression) -> bool {
-        match (e1.kind, e2.kind) {
+    fn is_equivalent_expression(e1: &Expression, e2: &Expression) -> bool {
+        match (&e1.kind, &e2.kind) {
+            (Variable(v1), Variable(v2)) => v1 == v2,
             (IntConstant(c1, r1), IntConstant(c2, r2)) => c1 == c2 && r1 == r2,
             (Unary(uop1, subexp1), Unary(uop2, subexp2)) => uop1 == uop2
-                && is_equivalent_expression(*subexp1, *subexp2),
+                && is_equivalent_expression(&*subexp1, &*subexp2),
             (Binary(binop1, op11, op12), Binary(binop2, op21, op22)) => binop1 == binop2
-                && is_equivalent_expression(*op11, *op21)
-                && is_equivalent_expression(*op12, *op22),
+                && is_equivalent_expression(&*op11, &*op21)
+                && is_equivalent_expression(&*op12, &*op22),
+            (Assignment {lvalue: lv1, rvalue: rv1},
+             Assignment {lvalue: lv2, rvalue: rv2}) =>
+                is_equivalent_expression(&*lv1, &*lv2)
+                && is_equivalent_expression(&*rv1, &*rv2),
             _ => false,
         }
     }
