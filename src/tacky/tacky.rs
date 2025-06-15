@@ -150,6 +150,8 @@ impl From<&BinaryOperator> for TackyBinaryOperator {
             BinaryOperator::LessThanOrEqual => TackyBinaryOperator::LessOrEqual,
             BinaryOperator::GreaterThan => TackyBinaryOperator::GreaterThan,
             BinaryOperator::GreaterThanOrEqual => TackyBinaryOperator::GreaterOrEqual,
+
+            BinaryOperator::Assignment => panic!("Assignment cannot be translated as binary operator"),
         }
     }
 }

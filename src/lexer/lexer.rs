@@ -183,7 +183,8 @@ impl<'a> TokenType<'a> {
             | TokenType::OperatorRelationalLessThan
             | TokenType::OperatorRelationalLessThanEqualTo
             | TokenType::OperatorLogicalAnd
-            | TokenType::OperatorLogicalOr => true,
+            | TokenType::OperatorLogicalOr
+            | TokenType::OperatorAssignment => true,
             _ => false,
         }
     }

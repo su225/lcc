@@ -58,6 +58,8 @@ pub enum BinaryOperator {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+
+    Assignment,
 }
 
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
@@ -68,24 +70,26 @@ impl BinaryOperator {
     #[inline]
     pub(crate) fn associativity(&self) -> BinaryOperatorAssociativity {
         match self {
-            BinaryOperator::Add => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Subtract => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Multiply => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Divide => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Modulo => BinaryOperatorAssociativity::Left,
-            BinaryOperator::BitwiseAnd => BinaryOperatorAssociativity::Left,
-            BinaryOperator::BitwiseOr => BinaryOperatorAssociativity::Left,
-            BinaryOperator::BitwiseXor => BinaryOperatorAssociativity::Left,
-            BinaryOperator::LeftShift => BinaryOperatorAssociativity::Left,
-            BinaryOperator::RightShift => BinaryOperatorAssociativity::Left,
-            BinaryOperator::And => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Or => BinaryOperatorAssociativity::Left,
-            BinaryOperator::Equal => BinaryOperatorAssociativity::Left,
-            BinaryOperator::NotEqual => BinaryOperatorAssociativity::Left,
-            BinaryOperator::LessThan => BinaryOperatorAssociativity::Left,
-            BinaryOperator::LessThanOrEqual => BinaryOperatorAssociativity::Left,
-            BinaryOperator::GreaterThan => BinaryOperatorAssociativity::Left,
-            BinaryOperator::GreaterThanOrEqual => BinaryOperatorAssociativity::Left,
+            BinaryOperator::Add
+            | BinaryOperator::Subtract
+            | BinaryOperator::Multiply
+            | BinaryOperator::Divide
+            | BinaryOperator::Modulo
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::LeftShift
+            | BinaryOperator::RightShift
+            | BinaryOperator::And
+            | BinaryOperator::Or
+            | BinaryOperator::Equal
+            | BinaryOperator::NotEqual
+            | BinaryOperator::LessThan
+            | BinaryOperator::LessThanOrEqual
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterThanOrEqual => BinaryOperatorAssociativity::Left,
+
+            BinaryOperator::Assignment => BinaryOperatorAssociativity::Right,
         }
     }
 
@@ -112,6 +116,8 @@ impl BinaryOperator {
 
             BinaryOperator::And => BinaryOperatorPrecedence(30),
             BinaryOperator::Or => BinaryOperatorPrecedence(28),
+
+            BinaryOperator::Assignment => BinaryOperatorPrecedence(10),
         }
     }
 }
@@ -468,7 +474,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression_with_precedence(&mut self, min_precedence: BinaryOperatorPrecedence) -> Result<Expression<'a>, ParserError> {
-        let mut result = self.parse_factor()?;
+        let mut left = self.parse_factor()?;
         while let Some(next_token) = self.token_provider.peek() {
             match &next_token {
                 Ok(token) if token.token_type.is_binary_operator() => {
@@ -487,9 +493,15 @@ impl<'a> Parser<'a> {
                         BinaryOperatorAssociativity::Right => binary_op_precedence,
                     };
                     let rhs = self.parse_expression_with_precedence(next_min_precedence)?;
-                    result = Expression {
-                        location: result.location,
-                        kind: ExpressionKind::Binary(binary_op, Box::new(result), Box::new(rhs)),
+                    let left_loc = left.location.clone();
+                    let expr_kind = if binary_op == BinaryOperator::Assignment {
+                        ExpressionKind::Assignment { lvalue: Box::new(left), rvalue: Box::new(rhs) }
+                    } else {
+                        ExpressionKind::Binary(binary_op, Box::new(left), Box::new(rhs))
+                    };
+                    left = Expression {
+                        location: left_loc,
+                        kind: expr_kind,
                     }
                 }
                 Ok(_) => {
@@ -504,7 +516,7 @@ impl<'a> Parser<'a> {
                 }
             };
         }
-        Ok(result)
+        Ok(left)
     }
 
     fn parse_factor(&mut self) -> Result<Expression<'a>, ParserError> {
@@ -529,10 +541,12 @@ impl<'a> Parser<'a> {
                         Ok(expr)
                     }
                     TokenType::Identifier(identifier) => {
-                        Ok(Expression {
+                        let expr = Expression {
                             location: tok_location,
                             kind: Variable(*identifier),
-                        })
+                        };
+                        self.token_provider.next();
+                        Ok(expr)
                     }
                     _ => Err(UnexpectedToken {
                         location: location.clone(),
@@ -591,6 +605,7 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorRelationalGreaterThanEqualTo => Ok(BinaryOperator::GreaterThanOrEqual),
                     TokenType::OperatorRelationalLessThan => Ok(BinaryOperator::LessThan),
                     TokenType::OperatorRelationalLessThanEqualTo => Ok(BinaryOperator::LessThanOrEqual),
+                    TokenType::OperatorAssignment => Ok(BinaryOperator::Assignment),
                     tok_type => Err(ExpectedBinaryOperator { location: location.clone(), actual_token: tok_type.tag() })
                 }
             }
@@ -1179,6 +1194,52 @@ mod test {
         run_parse_expression_test_case(ExprTestCase { src, expected });
     }
 
+    #[test]
+    fn test_parse_simple_assignment() {
+        let src = "a=10";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a"),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,3).into(),
+                    kind: IntConstant("10", Decimal),
+                }),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_simple_assignment_as_right_associative() {
+        let src = "a=b=10";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a"),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,3).into(),
+                    kind: Assignment {
+                        lvalue: Box::new(Expression {
+                            location: (1,3).into(),
+                            kind: Variable("b"),
+                        }),
+                        rvalue: Box::new(Expression {
+                            location: (1,5).into(),
+                            kind: IntConstant("10", Decimal),
+                        }),
+                    },
+                }),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
 
     #[test]
     fn test_parse_expression_parentheses_override_precedence() {
