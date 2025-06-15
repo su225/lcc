@@ -31,7 +31,8 @@ pub enum UnaryOperator {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BinaryOperatorAssociativity {
-    Left, Right
+    Left,
+    Right,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -172,7 +173,7 @@ pub struct Statement<'a> {
 #[serde(rename_all = "snake_case")]
 pub enum DeclarationKind<'a> {
     Declaration {
-        identifier_name: Symbol<'a>,
+        identifier: Symbol<'a>,
         init_expression: Option<Expression<'a>>,
     },
 }
@@ -195,9 +196,9 @@ pub enum BlockItem<'a> {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Block<'a> {
-    start_loc: Location,
-    end_loc: Location,
-    items: Vec<BlockItem<'a>>,
+    pub start_loc: Location,
+    pub end_loc: Location,
+    pub items: Vec<BlockItem<'a>>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -298,13 +299,13 @@ impl<'a> Parser<'a> {
         loop {
             let next_token = self.token_provider.peek();
             match next_token {
-                None => { return Err(UnexpectedEnd(vec![TokenTag::CloseBrace])); },
-                Some(Ok(tok)) if tok.token_type.tag() == TokenTag::CloseBrace => { break; },
+                None => { return Err(UnexpectedEnd(vec![TokenTag::CloseBrace])); }
+                Some(Ok(tok)) if tok.token_type.tag() == TokenTag::CloseBrace => { break; }
                 Some(Ok(_)) => {
                     let block_item = self.parse_block_item()?;
                     block_items.push(block_item);
                 }
-                Some(Err(e)) => { return Err(TokenizationError(e.clone())) },
+                Some(Err(e)) => { return Err(TokenizationError(e.clone())) }
             };
         }
         let block_close = self.get_token_with_tag(TokenTag::CloseBrace)?;
@@ -336,7 +337,7 @@ impl<'a> Parser<'a> {
                         Ok(BlockItem::Statement(stmt))
                     }
                 }
-            },
+            }
             Err(e) => Err(TokenizationError(e.clone())),
         }
     }
@@ -355,18 +356,18 @@ impl<'a> Parser<'a> {
                         let init_expr = self.parse_expression()?;
                         self.expect_semicolon()?;
                         Ok(Declaration {
-                            location: ty_decl.clone(),
+                            location: ty_decl.location.clone(),
                             kind: DeclarationKind::Declaration {
-                                identifier_name: var_name,
+                                identifier: var_name,
                                 init_expression: Some(init_expr),
-                            }
+                            },
                         })
                     }
                     TokenType::Semicolon => {
                         Ok(Declaration {
-                            location: ty_decl.clone(),
+                            location: ty_decl.location.clone(),
                             kind: DeclarationKind::Declaration {
-                                identifier_name: var_name,
+                                identifier: var_name,
                                 init_expression: None,
                             },
                         })
@@ -401,14 +402,6 @@ impl<'a> Parser<'a> {
 
     fn expect_close_parentheses(&mut self) -> Result<(), ParserError> {
         self.expect_token_with_tag(TokenTag::CloseParentheses)
-    }
-
-    fn expect_open_braces(&mut self) -> Result<(), ParserError> {
-        self.expect_token_with_tag(TokenTag::OpenBrace)
-    }
-
-    fn expect_close_braces(&mut self) -> Result<(), ParserError> {
-        self.expect_token_with_tag(TokenTag::CloseBrace)
     }
 
     fn expect_semicolon(&mut self) -> Result<(), ParserError> {
@@ -498,7 +491,7 @@ impl<'a> Parser<'a> {
                         location: result.location,
                         kind: ExpressionKind::Binary(binary_op, Box::new(result), Box::new(rhs)),
                     }
-                },
+                }
                 Ok(_) => {
                     // It is not an error to see something else.
                     // Think of something like "10 + 20;" Here semicolon
@@ -538,7 +531,7 @@ impl<'a> Parser<'a> {
                     TokenType::Identifier(identifier) => {
                         Ok(Expression {
                             location: tok_location,
-                            kind: Variable(identifier.clone()),
+                            kind: Variable(*identifier),
                         })
                     }
                     _ => Err(UnexpectedToken {
@@ -551,7 +544,7 @@ impl<'a> Parser<'a> {
                         ],
                     })
                 }
-            },
+            }
             Some(Err(e)) => Err(TokenizationError(e.clone())),
             None => Err(UnexpectedEnd(vec![TokenTag::IntConstant])),
         }
@@ -568,7 +561,7 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorUnaryLogicalNot => Ok(UnaryOperator::Not),
                     tok_type => Err(ExpectedUnaryOperator { location, actual_token: tok_type.tag() })
                 }
-            },
+            }
             Some(Err(e)) => Err(TokenizationError(e)),
         }
     }
@@ -658,20 +651,26 @@ mod test {
         assert_eq!(Ok(ProgramDefinition {
             functions: vec![
                 FunctionDefinition {
-                    location: Location {line: 1, column: 1},
+                    location: Location { line: 1, column: 1 },
                     name: Symbol {
                         name: "main",
-                        location: Location {line: 1, column: 8},
+                        location: Location { line: 1, column: 8 },
                     },
-                    body: vec![
-                        Statement {
-                            location: Location { line: 1, column: 40 },
-                            kind: Return(Expression {
-                                location: Location { line: 1, column: 48 },
-                                kind: IntConstant("0", Decimal),
-                            }),
-                        },
-                    ],
+                    body: Block {
+                        start_loc: Location { line: 1, column: 32 }, // ← updated from (0,0)
+                        end_loc: Location { line: 1, column: 64 },   // ← updated from (0,0)
+                        items: vec![
+                            BlockItem::Statement(
+                                Statement {
+                                    location: Location { line: 1, column: 40 },
+                                    kind: Return(Expression {
+                                        location: Location { line: 1, column: 48 },
+                                        kind: IntConstant("0", Decimal),
+                                    }),
+                                },
+                            ),
+                        ],
+                    },
                 },
             ],
         }), parsed);
@@ -679,7 +678,7 @@ mod test {
 
     #[test]
     fn test_parse_multiple_functions() {
-        let src = r#"
+        let src = indoc!(r#"
             int main(void) {
                 return 2;
             }
@@ -687,46 +686,46 @@ mod test {
             int foo(void) {
                 return 3;
             }
-        "#;
+        "#);
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();
         assert_eq!(Ok(ProgramDefinition {
             functions: vec![
                 FunctionDefinition {
-                    location: Location { line: 2, column: 13 },
-                    name: Symbol { name: "main", location: Location { line: 2, column: 17 } },
+                    location: (1, 1).into(),
+                    name: Symbol { name: "main", location: (1, 5).into() },
                     body: Block {
-                        start_loc: (2,13).into(),
-                        end_loc: (4,13).into(),
+                        start_loc: (1, 16).into(),
+                        end_loc: (3, 1).into(),
                         items: vec![
                             BlockItem::Statement(Statement {
-                                location: (3,17).into(),
+                                location: (2, 5).into(),
                                 kind: Return(Expression {
-                                    location: (3,24).into(),
+                                    location: (2, 12).into(),
                                     kind: IntConstant("2", Decimal),
                                 }),
                             })
                         ],
-                    }
+                    },
                 },
                 FunctionDefinition {
-                    location: Location { line: 6, column: 13 },
-                    name: Symbol { name: "foo", location: Location { line: 6, column: 17 } },
+                    location: (5, 1).into(),
+                    name: Symbol { name: "foo", location: (5, 5).into() },
                     body: Block {
-                        start_loc: (6,13).into(),
-                        end_loc: (8,13).into(),
+                        start_loc: (5, 15).into(),
+                        end_loc: (7, 1).into(),
                         items: vec![
                             BlockItem::Statement(Statement {
-                                location: (7,17).into(),
+                                location: (6, 5).into(), // ← updated from (7,17)
                                 kind: Return(Expression {
-                                    location: (7,24).into(),
+                                    location: (6, 12).into(), // ← updated from (7,24)
                                     kind: IntConstant("3", Decimal),
                                 }),
                             })
                         ],
-                    }
-                }
+                    },
+                },
             ],
         }), parsed)
     }
@@ -746,19 +745,25 @@ mod test {
                 FunctionDefinition {
                     location: (1, 1).into(),
                     name: Symbol { name: "main", location: (1, 5).into() },
-                    body: vec![
-                        Statement {
-                            location: (2, 5).into(),
-                            kind: Return(Expression {
-                                location: (2, 12).into(),
-                                kind: Binary(
-                                    BinaryOperator::Add,
-                                    Box::new(Expression { location: (2, 12).into(), kind: IntConstant("1", Decimal) }),
-                                    Box::new(Expression { location: (2, 16).into(), kind: IntConstant("2", Decimal) }),
-                                ),
-                            }),
-                        },
-                    ],
+                    body: Block {
+                        start_loc: (1, 16).into(),
+                        end_loc: (3, 1).into(),
+                        items: vec![
+                            BlockItem::Statement(
+                                Statement {
+                                    location: (2, 5).into(),
+                                    kind: Return(Expression {
+                                        location: (2, 12).into(),
+                                        kind: Binary(
+                                            BinaryOperator::Add,
+                                            Box::new(Expression { location: (2, 12).into(), kind: IntConstant("1", Decimal) }),
+                                            Box::new(Expression { location: (2, 16).into(), kind: IntConstant("2", Decimal) }),
+                                        ),
+                                    }),
+                                },
+                            ),
+                        ],
+                    },
                 },
             ],
         });
@@ -826,7 +831,7 @@ mod test {
                 kind: Unary(UnaryOperator::Complement, Box::new(Expression {
                     location: Location { line: 1, column: 3 },
                     kind: IntConstant("100", Decimal),
-                }))
+                })),
             })),
         });
         run_parse_expression_test_case(ExprTestCase { src, expected })
@@ -1592,7 +1597,7 @@ mod test {
         let actual2 = parser2.parse_expression();
 
         assert!(is_equivalent_expression(actual1.unwrap(), actual2.unwrap()),
-            "expected {expr1_src} to be equivalent to {expr2_src}");
+                "expected {expr1_src} to be equivalent to {expr2_src}");
     }
 
     fn is_equivalent_expression(e1: Expression, e2: Expression) -> bool {

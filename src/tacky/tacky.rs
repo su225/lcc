@@ -1,10 +1,12 @@
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
+
 use derive_more::Display;
 use thiserror::Error;
-use crate::parser::{BinaryOperator, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
+
+use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
 use crate::tacky::TackyInstruction::*;
-use crate::tacky::TackyValue::{Variable,Int32};
+use crate::tacky::TackyValue::{Int32, Variable};
 
 pub(crate) const COMPILER_GEN_PREFIX: &'static str = "<t>";
 pub(crate) const COMPILER_GEN_LABEL_PREFIX: &'static str = "_L";
@@ -261,14 +263,40 @@ pub fn emit(prog: &ProgramDefinition) -> Result<TackyProgram, TackyError> {
 
 fn emit_tacky_for_function(ctx: &mut TackyContext, f: &FunctionDefinition) -> Result<TackyFunction, TackyError> {
     let mut instructions = vec![];
-    for stmt in f.body.iter() {
-        let instrs = emit_tacky_for_statement(ctx, stmt)?;
+    for blk_item in f.body.items.iter() {
+        let instrs = emit_tacky_for_block_item(ctx, blk_item)?;
         instructions.extend(instrs);
     }
     Ok(TackyFunction {
         identifier: TackySymbol(f.name.name.into()),
         body: instructions,
     })
+}
+
+fn emit_tacky_for_block_item(ctx: &mut TackyContext, blk_item: &BlockItem) -> Result<Vec<TackyInstruction>, TackyError> {
+    match blk_item {
+        BlockItem::Statement(stmt) => emit_tacky_for_statement(ctx, stmt),
+        BlockItem::Declaration(decl) => emit_tacky_for_declaration(ctx, decl),
+        BlockItem::SubBlock(sub_block) => {
+            let mut sub_block_instrs = vec![];
+            for sub_block_item in sub_block.items.iter() {
+                let instrs = emit_tacky_for_block_item(ctx, sub_block_item)?;
+                sub_block_instrs.extend(instrs);
+            }
+            Ok(sub_block_instrs)
+        }
+    }
+}
+
+fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Result<Vec<TackyInstruction>, TackyError> {
+    match &decl.kind {
+        DeclarationKind::Declaration { identifier, init_expression: Some(expr) } => {
+            let (tacky_val, mut expr_tacky) = emit_tacky_for_expression(ctx, expr)?;
+            expr_tacky.push(Copy { src: tacky_val, dst: identifier.name.into() });
+            Ok(expr_tacky)
+        },
+        DeclarationKind::Declaration { init_expression: None, .. } => Ok(vec![]),
+    }
 }
 
 fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<TackyInstruction>, TackyError> {
@@ -395,11 +423,11 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
 mod test {
     use crate::common::Radix;
     use crate::parser::{BinaryOperator, Expression, UnaryOperator};
-    use crate::parser::ExpressionKind::{IntConstant,Unary,Binary};
-    use crate::tacky::tacky::{emit_tacky_for_expression, TackyContext};
+    use crate::parser::ExpressionKind::{Binary, IntConstant, Unary};
     use crate::tacky::*;
-    use crate::tacky::TackyValue::*;
+    use crate::tacky::tacky::{emit_tacky_for_expression, TackyContext};
     use crate::tacky::TackyInstruction::*;
+    use crate::tacky::TackyValue::*;
 
     #[test]
     fn test_emit_tacky_for_int_constant() {
@@ -557,8 +585,10 @@ mod test {
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
+
     use insta::assert_snapshot;
     use rstest::rstest;
+
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::tacky::emit;
