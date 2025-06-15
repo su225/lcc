@@ -279,14 +279,6 @@ fn emit_tacky_for_block_item(ctx: &mut TackyContext, blk_item: &BlockItem) -> Re
     match blk_item {
         BlockItem::Statement(stmt) => emit_tacky_for_statement(ctx, stmt),
         BlockItem::Declaration(decl) => emit_tacky_for_declaration(ctx, decl),
-        BlockItem::SubBlock(sub_block) => {
-            let mut sub_block_instrs = vec![];
-            for sub_block_item in sub_block.items.iter() {
-                let instrs = emit_tacky_for_block_item(ctx, sub_block_item)?;
-                sub_block_instrs.extend(instrs);
-            }
-            Ok(sub_block_instrs)
-        }
     }
 }
 
@@ -302,11 +294,19 @@ fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Res
 }
 
 fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<TackyInstruction>, TackyError> {
-    match s.kind {
+    match &s.kind {
         StatementKind::Return(ref expr) => {
             let (dst, mut expr_instrs) = emit_tacky_for_expression(ctx, expr)?;
             expr_instrs.push(Return(dst));
             Ok(expr_instrs)
+        }
+        StatementKind::SubBlock(block) => {
+            let mut instrs = vec![];
+            for blk_item in block.items.iter() {
+                let blk_instrs = emit_tacky_for_block_item(ctx, blk_item)?;
+                instrs.extend(blk_instrs);
+            }
+            Ok(instrs)
         }
         StatementKind::Expression(_) => todo!(),
         StatementKind::Null => Ok(vec![]),

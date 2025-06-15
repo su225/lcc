@@ -165,6 +165,7 @@ pub struct TypeExpression {
 pub enum StatementKind<'a> {
     Return(Expression<'a>),
     Expression(Expression<'a>),
+    SubBlock(Block<'a>),
     Null,
 }
 
@@ -196,7 +197,6 @@ pub struct Declaration<'a> {
 pub enum BlockItem<'a> {
     Statement(Statement<'a>),
     Declaration(Declaration<'a>),
-    SubBlock(Block<'a>),
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -330,10 +330,6 @@ impl<'a> Parser<'a> {
         match tok.unwrap() {
             Ok(Token { token_type, .. }) => {
                 match token_type {
-                    TokenType::OpenBrace => {
-                        let sub_block = self.parse_block()?;
-                        Ok(BlockItem::SubBlock(sub_block))
-                    }
                     TokenType::Keyword(KeywordIdentifier::TypeInt) => {
                         let decl = self.parse_declaration()?;
                         Ok(BlockItem::Declaration(decl))
@@ -462,6 +458,10 @@ impl<'a> Parser<'a> {
             Ok(Token { token_type, location }) => {
                 let tok_loc = location.clone();
                 match token_type {
+                    TokenType::OpenBrace => {
+                        let sub_block = self.parse_block()?;
+                        Ok(Statement { location: tok_loc, kind: StatementKind::SubBlock(sub_block)})
+                    }
                     TokenType::Semicolon => {
                         self.token_provider.next();
                         Ok(Statement { location: tok_loc, kind: StatementKind::Null })
@@ -1547,57 +1547,60 @@ mod test {
                         }),
                     },
                 }),
-                BlockItem::SubBlock(Block {
-                    start_loc: (3,3).into(),
-                    end_loc: (7,3).into(),
-                    items: vec![
-                        BlockItem::Declaration(Declaration {
-                            location: (4,5).into(),
-                            kind: DeclarationKind::Declaration {
-                                identifier: Symbol {location: (4,9).into(), name: "b"},
-                                init_expression: Some(Expression {
-                                    location: (4,13).into(),
-                                    kind: IntConstant("20", Decimal),
-                                }),
-                            },
-                        }),
-                        BlockItem::Declaration(Declaration {
-                            location: (5,5).into(),
-                            kind: DeclarationKind::Declaration {
-                                identifier: Symbol {location: (5,9).into(), name: "c"},
-                                init_expression: Some(Expression {
-                                    location: (5,13).into(),
-                                    kind: IntConstant("30", Decimal),
-                                }),
-                            },
-                        }),
-                        BlockItem::Statement(Statement {
-                            location: (6,5).into(),
-                            kind: StatementKind::Expression(Expression {
-                                location: (6,5).into(),
-                                kind: Assignment {
-                                    lvalue: Box::new(Expression {
-                                        location: (6,5).into(),
-                                        kind: Variable("a"),
-                                    }),
-                                    rvalue: Box::new(Expression {
-                                        location: (6,9).into(),
-                                        kind: Binary(
-                                            BinaryOperator::Add,
-                                            Box::new(Expression {
-                                                location: (6,9).into(),
-                                                kind: Variable("b"),
-                                            }),
-                                            Box::new(Expression {
-                                                location: (6,13).into(),
-                                                kind: Variable("c"),
-                                            })
-                                        ),
+                BlockItem::Statement(Statement {
+                    location: (3,3).into(),
+                    kind: SubBlock(Block {
+                        start_loc: (3,3).into(),
+                        end_loc: (7,3).into(),
+                        items: vec![
+                            BlockItem::Declaration(Declaration {
+                                location: (4,5).into(),
+                                kind: DeclarationKind::Declaration {
+                                    identifier: Symbol {location: (4,9).into(), name: "b"},
+                                    init_expression: Some(Expression {
+                                        location: (4,13).into(),
+                                        kind: IntConstant("20", Decimal),
                                     }),
                                 },
+                            }),
+                            BlockItem::Declaration(Declaration {
+                                location: (5,5).into(),
+                                kind: DeclarationKind::Declaration {
+                                    identifier: Symbol {location: (5,9).into(), name: "c"},
+                                    init_expression: Some(Expression {
+                                        location: (5,13).into(),
+                                        kind: IntConstant("30", Decimal),
+                                    }),
+                                },
+                            }),
+                            BlockItem::Statement(Statement {
+                                location: (6,5).into(),
+                                kind: StatementKind::Expression(Expression {
+                                    location: (6,5).into(),
+                                    kind: Assignment {
+                                        lvalue: Box::new(Expression {
+                                            location: (6,5).into(),
+                                            kind: Variable("a"),
+                                        }),
+                                        rvalue: Box::new(Expression {
+                                            location: (6,9).into(),
+                                            kind: Binary(
+                                                BinaryOperator::Add,
+                                                Box::new(Expression {
+                                                    location: (6,9).into(),
+                                                    kind: Variable("b"),
+                                                }),
+                                                Box::new(Expression {
+                                                    location: (6,13).into(),
+                                                    kind: Variable("c"),
+                                                })
+                                            ),
+                                        }),
+                                    },
+                                })
                             })
-                        })
-                    ],
+                        ],
+                    })
                 }),
                 BlockItem::Statement(Statement {
                     location: (8,3).into(),
@@ -2018,8 +2021,8 @@ mod test {
         let input_path = Path::new(src_file);
         let parent = input_path.parent().unwrap_or_else(|| Path::new(""));
         let stem = input_path.file_stem().expect("No file stem").to_string_lossy();
-        let output_dir = Path::new("output").join(parent);
-        let output_file = format!("{}.s", stem);
+        let output_dir = Path::new("snapshots/output").join(parent);
+        let output_file = format!("{}.ast", stem);
         (output_dir, output_file)
     }
 }
