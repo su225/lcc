@@ -671,14 +671,22 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod test {
+    use std::fs;
+    use std::io::Cursor;
+    use std::path::{Path, PathBuf};
+
     use indoc::indoc;
+    use insta::assert_snapshot;
     use rstest::rstest;
+
+    use crate::codegen::x86_64::{emit_assembly, generate_assembly};
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
     use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
+    use crate::tacky::emit;
 
     #[test]
     fn test_parse_program_with_tabs() {
@@ -1611,7 +1619,7 @@ mod test {
     #[case("simple_remainder", "3%2")]
     #[case("multiplication_with_unary_operands", "~4*-3")]
     fn test_should_parse_arithmetic_expressions(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("arithmetic expressions", description, "expr/arithmetic", src);
+        run_snapshot_test_for_parse_expression("arithmetic expressions", description, "expr/arithmetic", src);
     }
 
     #[rstest]
@@ -1621,7 +1629,7 @@ mod test {
     #[case("division_is_left_associative", "10/2/3")]
     #[case("modulo_is_left_associative", "10 % 2 % 3")]
     fn test_should_parse_arithmetic_expressions_with_correct_associativity(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("arithmetic expressions with correct associativity", description, "expr/arithmetic", src);
+        run_snapshot_test_for_parse_expression("arithmetic expressions with correct associativity", description, "expr/arithmetic", src);
     }
 
     #[rstest]
@@ -1633,7 +1641,7 @@ mod test {
     #[case("operation_with_complement_operator", "4+~3")]
     #[case("addition_with_negated_operand", "4+(-3)")]
     fn test_should_parse_arithmetic_expressions_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("arithmetic expressions with correct precedence", description, "expr/arithmetic", src);
+        run_snapshot_test_for_parse_expression("arithmetic expressions with correct precedence", description, "expr/arithmetic", src);
     }
 
     #[rstest]
@@ -1643,7 +1651,7 @@ mod test {
     #[case("logical_unary_not", "!20")]
     #[case("double_logical_unary_not", "!!10")]
     fn test_should_parse_unary_expressions(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("unary expressions", description, "expr/unary", src);
+        run_snapshot_test_for_parse_expression("unary expressions", description, "expr/unary", src);
     }
 
     #[rstest]
@@ -1653,7 +1661,7 @@ mod test {
     #[case("logical_unary_not", "!20")]
     #[case("double_logical_unary_not", "!!10")]
     fn test_should_parse_bitwise_expressions(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("bitwise operator expressions", description, "expr/bitwise", src);
+        run_snapshot_test_for_parse_expression("bitwise operator expressions", description, "expr/bitwise", src);
     }
 
     #[rstest]
@@ -1663,7 +1671,7 @@ mod test {
     #[case("left_shift_is_left_associative", "1<<2<<3")]
     #[case("right_shift_is_left_associative", "200>>1>>1")]
     fn test_should_parse_bitwise_expressions_with_correct_associativity(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("bitwise operator expressions with correct associativity", description, "expr/bitwise", src);
+        run_snapshot_test_for_parse_expression("bitwise operator expressions with correct associativity", description, "expr/bitwise", src);
     }
 
     #[rstest]
@@ -1680,7 +1688,7 @@ mod test {
     #[case("bitwise_or_xor_parens", "(1 | 2) ^ 3")]
     #[case("bitwise_xor_and_parens_rhs", "1 ^ (2 & 3)")]
     fn test_should_parse_bitwise_expressions_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("bitwise operator expressions with correct precedence", description, "expr/bitwise", src);
+        run_snapshot_test_for_parse_expression("bitwise operator expressions with correct precedence", description, "expr/bitwise", src);
     }
 
     #[rstest]
@@ -1689,14 +1697,14 @@ mod test {
     #[case("logical_not", "!10")]
     #[case("logical_arith_chain", "(10 && 0) + (0 && 4) + (0 && 0)")]
     fn test_should_parse_logical_expressions(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("logical expressions", description, "expr/logical", src);
+        run_snapshot_test_for_parse_expression("logical expressions", description, "expr/logical", src);
     }
 
     #[rstest]
     #[case("logical_or_is_left_associative", "1 || 2 || 3")]
     #[case("logical_and_is_left_associative", "1 && 2 && 3")]
     fn test_should_parse_logical_expressions_with_correct_associativity(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("logical expressions with correct associativity", description, "expr/logical", src);
+        run_snapshot_test_for_parse_expression("logical expressions with correct associativity", description, "expr/logical", src);
     }
 
     #[rstest]
@@ -1705,7 +1713,7 @@ mod test {
     #[case("logical_or_with_parens", "(1 || 2) || 3")]
     #[case("logical_mixed_and_or_parens", "1 && (2 || 3)")]
     fn test_should_parse_logical_expressions_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("logical expressions with correct precedence", description, "expr/logical", src)
+        run_snapshot_test_for_parse_expression("logical expressions with correct precedence", description, "expr/logical", src)
     }
 
     #[rstest]
@@ -1716,7 +1724,7 @@ mod test {
     #[case("equal", "5 == 5")]
     #[case("not_equal", "5 != 6")]
     fn test_should_parse_relational_expressions(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("relational expressions", description, "expr/relational", src);
+        run_snapshot_test_for_parse_expression("relational expressions", description, "expr/relational", src);
     }
 
     #[rstest]
@@ -1726,7 +1734,7 @@ mod test {
     #[case("assoc_logical_and", "1 && 1 && 0")]          // (1 && 1) && 0
     #[case("assoc_logical_or", "0 || 1 || 1")]           // (0 || 1) || 1
     fn test_should_parse_relational_expressions_with_correct_associativity(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("relational expressions with correct associativity", description, "expr/relational", src);
+        run_snapshot_test_for_parse_expression("relational expressions with correct associativity", description, "expr/relational", src);
     }
 
     #[rstest]
@@ -1734,10 +1742,10 @@ mod test {
     #[case("precedence_cmp_or", "1 == 1 || 0 != 1")]     // (==, !=) before ||
     #[case("precedence_and_or", "1 && 0 || 1")]          // && before ||
     fn test_should_parse_relational_expressions_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
-        run_snapshot_test("relational expressions with correct precedence", description, "expr/relational", src);
+        run_snapshot_test_for_parse_expression("relational expressions with correct precedence", description, "expr/relational", src);
     }
 
-    fn run_snapshot_test(suite_description: &str, description: &str, snapshot_path: &str, src: &str) {
+    fn run_snapshot_test_for_parse_expression(suite_description: &str, description: &str, snapshot_path: &str, src: &str) {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
         let actual = parser.parse_expression();
@@ -1971,5 +1979,47 @@ mod test {
                 && is_equivalent_expression(&*rv1, &*rv2),
             _ => false,
         }
+    }
+
+    #[rstest]
+    #[case("simple_return.c")]
+    #[case("simple_return_with_expression.c")]
+    #[case("simple_return_with_declaration.c")]
+    #[case("function_body_with_subblocks.c")]
+    #[case("multiple_functions.c")]
+    fn test_parse_basic(#[case] src_file: &str) {
+        run_snapshot_test_for_parsing("basic", src_file);
+    }
+
+    fn run_snapshot_test_for_parsing(suite_description: &str, src_file: &str) {
+        let base_dir = file!();
+        let src_path = Path::new(base_dir).parent().unwrap().join("snapshots").join("input").join(src_file);
+        let source = fs::read_to_string(src_path.clone());
+        assert!(source.is_ok(), "failed to read {:?}", src_path);
+
+        let src = source.unwrap();
+        let lexer = Lexer::new(&src);
+        let mut parser = Parser::new(lexer);
+        let ast = parser.parse().expect("parsing failed");
+
+        let (out_dir, snapshot_file) = output_path_parts(src_file);
+        insta::with_settings!({
+            sort_maps => true,
+            prepend_module_to_snapshot => false,
+            description => suite_description,
+            snapshot_path => out_dir,
+            info => &format!("{}", src_file),
+        }, {
+            insta::assert_yaml_snapshot!(snapshot_file, ast);
+        });
+    }
+
+    fn output_path_parts(src_file: &str) -> (PathBuf, String) {
+        let input_path = Path::new(src_file);
+        let parent = input_path.parent().unwrap_or_else(|| Path::new(""));
+        let stem = input_path.file_stem().expect("No file stem").to_string_lossy();
+        let output_dir = Path::new("output").join(parent);
+        let output_file = format!("{}.s", stem);
+        (output_dir, output_file)
     }
 }

@@ -1,0 +1,65 @@
+---
+source: src/parser/parser.rs
+description: basic
+expression: ast
+info: multiple_functions.c
+---
+functions:
+  - location:
+      line: 1
+      column: 1
+    name:
+      name: main
+      location:
+        line: 1
+        column: 5
+    body:
+      start_loc:
+        line: 1
+        column: 16
+      end_loc:
+        line: 3
+        column: 1
+      items:
+        - statement:
+            location:
+              line: 2
+              column: 5
+            kind:
+              return:
+                location:
+                  line: 2
+                  column: 12
+                kind:
+                  int_constant:
+                    - "0"
+                    - decimal
+  - location:
+      line: 5
+      column: 1
+    name:
+      name: foo
+      location:
+        line: 5
+        column: 5
+    body:
+      start_loc:
+        line: 5
+        column: 15
+      end_loc:
+        line: 7
+        column: 1
+      items:
+        - statement:
+            location:
+              line: 6
+              column: 5
+            kind:
+              return:
+                location:
+                  line: 6
+                  column: 12
+                kind:
+                  int_constant:
+                    - "10"
+                    - decimal
