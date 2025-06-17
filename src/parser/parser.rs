@@ -13,7 +13,7 @@ use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenT
 use crate::parser::ExpressionKind::Variable;
 use crate::parser::ParserError::*;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct Symbol<'a> {
     pub name: &'a str,
