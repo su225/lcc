@@ -13,14 +13,14 @@ use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenT
 use crate::parser::ExpressionKind::Variable;
 use crate::parser::ParserError::*;
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
-pub struct Symbol<'a> {
-    pub name: &'a str,
+pub struct Symbol {
+    pub name: String,
     pub(crate) location: Location,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnaryOperator {
     Complement,
@@ -35,7 +35,7 @@ pub enum BinaryOperatorAssociativity {
     Right,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BinaryOperator {
     Add,
@@ -124,19 +124,28 @@ impl BinaryOperator {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ExpressionKind<'a> {
-    IntConstant(&'a str, Radix),
-    Variable(&'a str),
-    Unary(UnaryOperator, Box<Expression<'a>>),
-    Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
-    Assignment { lvalue: Box<Expression<'a>>, rvalue: Box<Expression<'a>> },
+pub enum ExpressionKind {
+    IntConstant(String, Radix),
+    Variable(String),
+    Unary(UnaryOperator, Box<Expression>),
+    Binary(BinaryOperator, Box<Expression>, Box<Expression>),
+    Assignment { lvalue: Box<Expression>, rvalue: Box<Expression> },
+}
+
+impl ExpressionKind {
+    pub fn is_lvalue_expression(&self) -> bool {
+        match self {
+            Variable(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Expression<'a> {
+pub struct Expression {
     pub(crate) location: Location,
-    pub kind: ExpressionKind<'a>,
+    pub kind: ExpressionKind,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -162,63 +171,63 @@ pub struct TypeExpression {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum StatementKind<'a> {
-    Return(Expression<'a>),
-    Expression(Expression<'a>),
-    SubBlock(Block<'a>),
+pub enum StatementKind {
+    Return(Expression),
+    Expression(Expression),
+    SubBlock(Block),
     Null,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Statement<'a> {
+pub struct Statement {
     pub location: Location,
-    pub kind: StatementKind<'a>,
+    pub kind: StatementKind,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DeclarationKind<'a> {
+pub enum DeclarationKind {
     Declaration {
-        identifier: Symbol<'a>,
-        init_expression: Option<Expression<'a>>,
+        identifier: Symbol,
+        init_expression: Option<Expression>,
     },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Declaration<'a> {
+pub struct Declaration {
     pub location: Location,
-    pub kind: DeclarationKind<'a>,
+    pub kind: DeclarationKind,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BlockItem<'a> {
-    Statement(Statement<'a>),
-    Declaration(Declaration<'a>),
+pub enum BlockItem {
+    Statement(Statement),
+    Declaration(Declaration),
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Block<'a> {
+pub struct Block {
     pub start_loc: Location,
     pub end_loc: Location,
-    pub items: Vec<BlockItem<'a>>,
+    pub items: Vec<BlockItem>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct FunctionDefinition<'a> {
+pub struct FunctionDefinition {
     pub location: Location,
-    pub name: Symbol<'a>,
-    pub body: Block<'a>,
+    pub name: Symbol,
+    pub body: Block,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct ProgramDefinition<'a> {
-    pub functions: Vec<FunctionDefinition<'a>>,
+pub struct ProgramDefinition {
+    pub functions: Vec<FunctionDefinition>,
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -266,12 +275,12 @@ impl<'a> Parser<'a> {
 
     /// parse parses the given source file and returns the
     /// Abstract Syntax Tree (AST).
-    pub fn parse(&mut self) -> Result<ProgramDefinition<'a>, ParserError> {
+    pub fn parse(&mut self) -> Result<ProgramDefinition, ParserError> {
         Ok(self.parse_program()?)
     }
 
-    fn parse_program(&mut self) -> Result<ProgramDefinition<'a>, ParserError> {
-        let mut functions: Vec<FunctionDefinition<'a>> = vec![];
+    fn parse_program(&mut self) -> Result<ProgramDefinition, ParserError> {
+        let mut functions: Vec<FunctionDefinition> = vec![];
         loop {
             if self.token_provider.peek().is_none() {
                 break; // No more tokens and hence we are safe to stop here
@@ -284,7 +293,7 @@ impl<'a> Parser<'a> {
         Ok(ProgramDefinition { functions })
     }
 
-    fn parse_function_definition(&mut self) -> Result<FunctionDefinition<'a>, ParserError> {
+    fn parse_function_definition(&mut self) -> Result<FunctionDefinition, ParserError> {
         let return_type = self.parse_type_expression()?;
         let name = self.parse_identifier()?;
         self.expect_open_parentheses()?;
@@ -299,8 +308,9 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_block(&mut self) -> Result<Block<'a>, ParserError> {
+    fn parse_block(&mut self) -> Result<Block, ParserError> {
         let block_open = self.get_token_with_tag(TokenTag::OpenBrace)?;
+        let open_loc = block_open.location.clone();
         let mut block_items = Vec::with_capacity(2);
         loop {
             let next_token = self.token_provider.peek();
@@ -316,13 +326,13 @@ impl<'a> Parser<'a> {
         }
         let block_close = self.get_token_with_tag(TokenTag::CloseBrace)?;
         Ok(Block {
-            start_loc: block_open.location,
+            start_loc: open_loc,
             end_loc: block_close.location,
             items: block_items,
         })
     }
 
-    fn parse_block_item(&mut self) -> Result<BlockItem<'a>, ParserError> {
+    fn parse_block_item(&mut self) -> Result<BlockItem, ParserError> {
         let tok = self.token_provider.peek();
         if tok.is_none() {
             return Err(UnexpectedEnd(vec![TokenTag::Semicolon]));
@@ -344,7 +354,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_declaration(&mut self) -> Result<Declaration<'a>, ParserError> {
+    fn parse_declaration(&mut self) -> Result<Declaration, ParserError> {
         let ty_decl = self.get_keyword_token(KeywordIdentifier::TypeInt)?;
         let var_name = self.parse_identifier()?;
         let next_tok = self.token_provider.next();
@@ -427,11 +437,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_identifier(&mut self) -> Result<Symbol<'a>, ParserError> {
+    fn parse_identifier(&mut self) -> Result<Symbol, ParserError> {
         match self.token_provider.next() {
             Some(Ok(Token { location, token_type })) => {
                 match token_type {
-                    TokenType::Identifier(name) => Ok(Symbol { name, location }),
+                    TokenType::Identifier(name) => Ok(Symbol { name: name.to_string(), location }),
                     TokenType::Keyword(kwd) => Err(KeywordUsedAsIdentifier { location, kwd }),
                     _ => Err(UnexpectedToken { location, expected_token_tags: vec![TokenTag::Identifier] })
                 }
@@ -449,7 +459,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_statement(&mut self) -> Result<Statement<'a>, ParserError> {
+    fn parse_statement(&mut self) -> Result<Statement, ParserError> {
         let tok = self.token_provider.peek();
         if tok.is_none() {
             return Err(UnexpectedEnd(vec![TokenTag::Semicolon]));
@@ -474,20 +484,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_return_statement(&mut self) -> Result<Statement<'a>, ParserError> {
+    fn parse_return_statement(&mut self) -> Result<Statement, ParserError> {
         let kloc = self.expect_keyword(KeywordIdentifier::Return)?;
         let return_code_expr = self.parse_expression()?;
         self.expect_semicolon()?;
         Ok(Statement { location: kloc, kind: StatementKind::Return(return_code_expr) })
     }
 
-    fn parse_expression_statement(&mut self) -> Result<Statement<'a>, ParserError> {
+    fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
         let expr_stmt = self.parse_expression()?;
         self.expect_semicolon()?;
         Ok(Statement { location: expr_stmt.location.clone(), kind: StatementKind::Expression(expr_stmt) })
     }
 
-    fn parse_expression(&mut self) -> Result<Expression<'a>, ParserError> {
+    fn parse_expression(&mut self) -> Result<Expression, ParserError> {
         let tok = self.token_provider.peek();
         match &tok {
             Some(Ok(_)) => self.parse_expression_with_precedence(BinaryOperatorPrecedence(0)),
@@ -496,7 +506,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_expression_with_precedence(&mut self, min_precedence: BinaryOperatorPrecedence) -> Result<Expression<'a>, ParserError> {
+    fn parse_expression_with_precedence(&mut self, min_precedence: BinaryOperatorPrecedence) -> Result<Expression, ParserError> {
         let mut left = self.parse_factor()?;
         while let Some(next_token) = self.token_provider.peek() {
             match &next_token {
@@ -542,7 +552,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_factor(&mut self) -> Result<Expression<'a>, ParserError> {
+    fn parse_factor(&mut self) -> Result<Expression, ParserError> {
         let next_token = self.token_provider.peek();
         match &next_token {
             Some(Ok(Token { token_type, location })) => {
@@ -566,7 +576,7 @@ impl<'a> Parser<'a> {
                     TokenType::Identifier(identifier) => {
                         let expr = Expression {
                             location: tok_location,
-                            kind: Variable(*identifier),
+                            kind: Variable(identifier.to_string()),
                         };
                         self.token_provider.next();
                         Ok(expr)
@@ -635,13 +645,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_int_constant_expression(&mut self) -> Result<Expression<'a>, ParserError> {
+    fn parse_int_constant_expression(&mut self) -> Result<Expression, ParserError> {
         let tok = self.get_token_with_tag(TokenTag::IntConstant)?;
         let tok_loc = tok.location;
         match tok.token_type {
             TokenType::IntConstant(c, rad) => Ok(Expression {
                 location: tok_loc,
-                kind: ExpressionKind::IntConstant(c, rad),
+                kind: ExpressionKind::IntConstant(c.to_string(), rad),
             }),
             _ => panic!("should not reach here"),
         }
@@ -652,7 +662,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn get_token_with_tag(&mut self, expected_token_tag: TokenTag) -> Result<Token<'a>, ParserError> {
+    fn get_token_with_tag(&mut self, expected_token_tag: TokenTag) -> Result<Token, ParserError> {
         let token = self.token_provider.next();
         match token {
             Some(Ok(token)) => {
@@ -672,21 +682,17 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod test {
     use std::fs;
-    use std::io::Cursor;
     use std::path::{Path, PathBuf};
 
     use indoc::indoc;
-    use insta::assert_snapshot;
     use rstest::rstest;
 
-    use crate::codegen::x86_64::{emit_assembly, generate_assembly};
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
     use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
-    use crate::tacky::emit;
 
     #[test]
     fn test_parse_program_with_tabs() {
@@ -699,7 +705,7 @@ mod test {
                 FunctionDefinition {
                     location: Location { line: 1, column: 1 },
                     name: Symbol {
-                        name: "main",
+                        name: "main".to_string(),
                         location: Location { line: 1, column: 8 },
                     },
                     body: Block {
@@ -711,7 +717,7 @@ mod test {
                                     location: Location { line: 1, column: 40 },
                                     kind: Return(Expression {
                                         location: Location { line: 1, column: 48 },
-                                        kind: IntConstant("0", Decimal),
+                                        kind: IntConstant("0".to_string(), Decimal),
                                     }),
                                 },
                             ),
@@ -740,7 +746,7 @@ mod test {
             functions: vec![
                 FunctionDefinition {
                     location: (1, 1).into(),
-                    name: Symbol { name: "main", location: (1, 5).into() },
+                    name: Symbol { name: "main".to_string(), location: (1, 5).into() },
                     body: Block {
                         start_loc: (1, 16).into(),
                         end_loc: (3, 1).into(),
@@ -749,7 +755,7 @@ mod test {
                                 location: (2, 5).into(),
                                 kind: Return(Expression {
                                     location: (2, 12).into(),
-                                    kind: IntConstant("2", Decimal),
+                                    kind: IntConstant("2".to_string(), Decimal),
                                 }),
                             })
                         ],
@@ -757,7 +763,7 @@ mod test {
                 },
                 FunctionDefinition {
                     location: (5, 1).into(),
-                    name: Symbol { name: "foo", location: (5, 5).into() },
+                    name: Symbol { name: "foo".to_string(), location: (5, 5).into() },
                     body: Block {
                         start_loc: (5, 15).into(),
                         end_loc: (7, 1).into(),
@@ -766,7 +772,7 @@ mod test {
                                 location: (6, 5).into(), // ← updated from (7,17)
                                 kind: Return(Expression {
                                     location: (6, 12).into(), // ← updated from (7,24)
-                                    kind: IntConstant("3", Decimal),
+                                    kind: IntConstant("3".to_string(), Decimal),
                                 }),
                             })
                         ],
@@ -790,7 +796,7 @@ mod test {
             functions: vec![
                 FunctionDefinition {
                     location: (1, 1).into(),
-                    name: Symbol { name: "main", location: (1, 5).into() },
+                    name: Symbol { name: "main".to_string(), location: (1, 5).into() },
                     body: Block {
                         start_loc: (1, 16).into(),
                         end_loc: (3, 1).into(),
@@ -802,8 +808,8 @@ mod test {
                                         location: (2, 12).into(),
                                         kind: Binary(
                                             BinaryOperator::Add,
-                                            Box::new(Expression { location: (2, 12).into(), kind: IntConstant("1", Decimal) }),
-                                            Box::new(Expression { location: (2, 16).into(), kind: IntConstant("2", Decimal) }),
+                                            Box::new(Expression { location: (2, 12).into(), kind: IntConstant("1".to_string(), Decimal) }),
+                                            Box::new(Expression { location: (2, 16).into(), kind: IntConstant("2".to_string(), Decimal) }),
                                         ),
                                     }),
                                 },
@@ -818,7 +824,7 @@ mod test {
 
     struct StatementTestCase<'a> {
         src: &'a str,
-        expected: Result<Statement<'a>, ParserError>,
+        expected: Result<Statement, ParserError>,
     }
 
     fn run_parse_statement_test_case(test_case: StatementTestCase) {
@@ -842,7 +848,7 @@ mod test {
             location: (1,1).into(),
             kind: Return(Expression {
                 location: (1,8).into(),
-                kind: IntConstant("10", Decimal),
+                kind: IntConstant("10".to_string(), Decimal),
             }),
         });
         run_parse_statement_test_case(StatementTestCase { src, expected });
@@ -858,11 +864,11 @@ mod test {
                 kind: Assignment {
                     lvalue: Box::new(Expression {
                         location: (1,1).into(),
-                        kind: Variable("a"),
+                        kind: Variable("a".to_string()),
                     }),
                     rvalue: Box::new(Expression {
                         location: (1,5).into(),
-                        kind: IntConstant("10", Decimal),
+                        kind: IntConstant("10".to_string(), Decimal),
                     }),
                 },
             }),
@@ -872,7 +878,7 @@ mod test {
 
     struct ExprTestCase<'a> {
         src: &'a str,
-        expected: Result<Expression<'a>, ParserError>,
+        expected: Result<Expression, ParserError>,
     }
 
     fn run_parse_expression_test_case(test_case: ExprTestCase) {
@@ -887,7 +893,7 @@ mod test {
         let src = "100";
         let expected = Ok(Expression {
             location: Location { line: 1, column: 1 },
-            kind: IntConstant("100", Decimal),
+            kind: IntConstant("100".to_string(), Decimal),
         });
         run_parse_expression_test_case(ExprTestCase { src, expected })
     }
@@ -899,7 +905,7 @@ mod test {
             location: Location { line: 1, column: 1 },
             kind: Unary(UnaryOperator::Complement, Box::new(Expression {
                 location: Location { line: 1, column: 2 },
-                kind: IntConstant("0xdeadbeef", Radix::Hexadecimal),
+                kind: IntConstant("0xdeadbeef".to_string(), Radix::Hexadecimal),
             })),
         });
         run_parse_expression_test_case(ExprTestCase { src, expected })
@@ -912,7 +918,7 @@ mod test {
             location: Location { line: 1, column: 1 },
             kind: Unary(UnaryOperator::Negate, Box::new(Expression {
                 location: Location { line: 1, column: 2 },
-                kind: IntConstant("100", Decimal),
+                kind: IntConstant("100".to_string(), Decimal),
             })),
         });
         run_parse_expression_test_case(ExprTestCase { src, expected })
@@ -923,7 +929,7 @@ mod test {
         let src = "(100)";
         let expected = Ok(Expression {
             location: Location { line: 1, column: 2 },
-            kind: IntConstant("100", Decimal),
+            kind: IntConstant("100".to_string(), Decimal),
         });
         run_parse_expression_test_case(ExprTestCase { src, expected })
     }
@@ -937,7 +943,7 @@ mod test {
                 location: Location { line: 1, column: 2 },
                 kind: Unary(UnaryOperator::Complement, Box::new(Expression {
                     location: Location { line: 1, column: 3 },
-                    kind: IntConstant("100", Decimal),
+                    kind: IntConstant("100".to_string(), Decimal),
                 })),
             })),
         });
@@ -957,7 +963,7 @@ mod test {
                         UnaryOperator::Negate,
                         Box::new(Expression {
                             location: (1, 4).into(),
-                            kind: IntConstant("100", Decimal),
+                            kind: IntConstant("100".to_string(), Decimal),
                         }),
                     ),
                 }),
@@ -975,11 +981,11 @@ mod test {
                 BinaryOperator::Add,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("10", Decimal),
+                    kind: IntConstant("10".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 6).into(),
-                    kind: IntConstant("20", Decimal),
+                    kind: IntConstant("20".to_string(), Decimal),
                 }),
             ),
         });
@@ -995,11 +1001,11 @@ mod test {
                 BinaryOperator::Subtract,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("30", Decimal),
+                    kind: IntConstant("30".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 6).into(),
-                    kind: IntConstant("15", Decimal),
+                    kind: IntConstant("15".to_string(), Decimal),
                 }),
             ),
         });
@@ -1015,11 +1021,11 @@ mod test {
                 BinaryOperator::Multiply,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("4", Decimal),
+                    kind: IntConstant("4".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: IntConstant("5", Decimal),
+                    kind: IntConstant("5".to_string(), Decimal),
                 }),
             ),
         });
@@ -1035,11 +1041,11 @@ mod test {
                 BinaryOperator::Divide,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("100", Decimal),
+                    kind: IntConstant("100".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 7).into(),
-                    kind: IntConstant("25", Decimal),
+                    kind: IntConstant("25".to_string(), Decimal),
                 }),
             ),
         });
@@ -1059,17 +1065,17 @@ mod test {
                         BinaryOperator::Add,
                         Box::new(Expression {
                             location: (1, 1).into(),
-                            kind: IntConstant("1", Decimal),
+                            kind: IntConstant("1".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 3).into(),
-                            kind: IntConstant("2", Decimal),
+                            kind: IntConstant("2".to_string(), Decimal),
                         }),
                     ),
                 }),
                 Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: IntConstant("3", Decimal),
+                    kind: IntConstant("3".to_string(), Decimal),
                 }),
             ),
         });
@@ -1089,17 +1095,17 @@ mod test {
                         BinaryOperator::Subtract,
                         Box::new(Expression {
                             location: (1, 1).into(),
-                            kind: IntConstant("5", Decimal),
+                            kind: IntConstant("5".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 3).into(),
-                            kind: IntConstant("3", Decimal),
+                            kind: IntConstant("3".to_string(), Decimal),
                         }),
                     ),
                 }),
                 Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: IntConstant("1", Decimal),
+                    kind: IntConstant("1".to_string(), Decimal),
                 }),
             ),
         });
@@ -1119,17 +1125,17 @@ mod test {
                         BinaryOperator::Multiply,
                         Box::new(Expression {
                             location: (1, 1).into(),
-                            kind: IntConstant("2", Decimal),
+                            kind: IntConstant("2".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 3).into(),
-                            kind: IntConstant("3", Decimal),
+                            kind: IntConstant("3".to_string(), Decimal),
                         }),
                     ),
                 }),
                 Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: IntConstant("4", Decimal),
+                    kind: IntConstant("4".to_string(), Decimal),
                 }),
             ),
         });
@@ -1149,17 +1155,17 @@ mod test {
                         BinaryOperator::Divide,
                         Box::new(Expression {
                             location: (1, 1).into(),
-                            kind: IntConstant("20", Decimal),
+                            kind: IntConstant("20".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 4).into(),
-                            kind: IntConstant("5", Decimal),
+                            kind: IntConstant("5".to_string(), Decimal),
                         }),
                     ),
                 }),
                 Box::new(Expression {
                     location: (1, 6).into(),
-                    kind: IntConstant("2", Decimal),
+                    kind: IntConstant("2".to_string(), Decimal),
                 }),
             ),
         });
@@ -1179,17 +1185,17 @@ mod test {
                         BinaryOperator::Modulo,
                         Box::new(Expression {
                             location: (1, 1).into(),
-                            kind: IntConstant("10", Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 4).into(),
-                            kind: IntConstant("4", Decimal),
+                            kind: IntConstant("4".to_string(), Decimal),
                         }),
                     ),
                 }),
                 Box::new(Expression {
                     location: (1, 6).into(),
-                    kind: IntConstant("2", Decimal),
+                    kind: IntConstant("2".to_string(), Decimal),
                 }),
             ),
         });
@@ -1205,7 +1211,7 @@ mod test {
                 BinaryOperator::Add,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("2", Decimal),
+                    kind: IntConstant("2".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 3).into(),
@@ -1213,11 +1219,11 @@ mod test {
                         BinaryOperator::Multiply,
                         Box::new(Expression {
                             location: (1, 3).into(),
-                            kind: IntConstant("3", Decimal),
+                            kind: IntConstant("3".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 5).into(),
-                            kind: IntConstant("4", Decimal),
+                            kind: IntConstant("4".to_string(), Decimal),
                         }),
                     ),
                 }),
@@ -1235,7 +1241,7 @@ mod test {
                 BinaryOperator::Subtract,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("20", Decimal),
+                    kind: IntConstant("20".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 4).into(),
@@ -1243,11 +1249,11 @@ mod test {
                         BinaryOperator::Divide,
                         Box::new(Expression {
                             location: (1, 4).into(),
-                            kind: IntConstant("6", Decimal),
+                            kind: IntConstant("6".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 6).into(),
-                            kind: IntConstant("2", Decimal),
+                            kind: IntConstant("2".to_string(), Decimal),
                         }),
                     ),
                 }),
@@ -1265,7 +1271,7 @@ mod test {
                 BinaryOperator::Add,
                 Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: IntConstant("9", Decimal),
+                    kind: IntConstant("9".to_string(), Decimal),
                 }),
                 Box::new(Expression {
                     location: (1, 3).into(),
@@ -1273,11 +1279,11 @@ mod test {
                         BinaryOperator::Modulo,
                         Box::new(Expression {
                             location: (1, 3).into(),
-                            kind: IntConstant("8", Decimal),
+                            kind: IntConstant("8".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 5).into(),
-                            kind: IntConstant("5", Decimal),
+                            kind: IntConstant("5".to_string(), Decimal),
                         }),
                     ),
                 }),
@@ -1294,11 +1300,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a"),
+                    kind: Variable("a".to_string()),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,3).into(),
-                    kind: IntConstant("10", Decimal),
+                    kind: IntConstant("10".to_string(), Decimal),
                 }),
             },
         });
@@ -1313,18 +1319,18 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a"),
+                    kind: Variable("a".to_string()),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,3).into(),
                     kind: Assignment {
                         lvalue: Box::new(Expression {
                             location: (1,3).into(),
-                            kind: Variable("b"),
+                            kind: Variable("b".to_string()),
                         }),
                         rvalue: Box::new(Expression {
                             location: (1,5).into(),
-                            kind: IntConstant("10", Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         }),
                     },
                 }),
@@ -1346,17 +1352,17 @@ mod test {
                         BinaryOperator::Add,
                         Box::new(Expression {
                             location: (1, 2).into(),
-                            kind: IntConstant("2", Decimal),
+                            kind: IntConstant("2".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 4).into(),
-                            kind: IntConstant("3", Decimal),
+                            kind: IntConstant("3".to_string(), Decimal),
                         }),
                     ),
                 }),
                 Box::new(Expression {
                     location: (1, 7).into(),
-                    kind: IntConstant("4", Decimal),
+                    kind: IntConstant("4".to_string(), Decimal),
                 }),
             ),
         });
@@ -1376,7 +1382,7 @@ mod test {
                         BinaryOperator::Subtract,
                         Box::new(Expression {
                             location: (1, 2).into(),
-                            kind: IntConstant("10", Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         }),
                         Box::new(Expression {
                             location: (1, 6).into(),
@@ -1384,11 +1390,11 @@ mod test {
                                 BinaryOperator::Add,
                                 Box::new(Expression {
                                     location: (1, 6).into(),
-                                    kind: IntConstant("2", Decimal),
+                                    kind: IntConstant("2".to_string(), Decimal),
                                 }),
                                 Box::new(Expression {
                                     location: (1, 8).into(),
-                                    kind: IntConstant("3", Decimal),
+                                    kind: IntConstant("3".to_string(), Decimal),
                                 }),
                             ),
                         }),
@@ -1396,7 +1402,7 @@ mod test {
                 }),
                 Box::new(Expression {
                     location: (1, 12).into(),
-                    kind: IntConstant("2", Decimal),
+                    kind: IntConstant("2".to_string(), Decimal),
                 }),
             ),
         });
@@ -1405,7 +1411,7 @@ mod test {
 
     struct BlockTestCase<'a> {
         src: &'a str,
-        expected: Result<Block<'a>, ParserError>,
+        expected: Result<Block, ParserError>,
     }
 
     fn run_parse_block_test_case(test_case: BlockTestCase) {
@@ -1452,7 +1458,7 @@ mod test {
                     location: (2,5).into(),
                     kind: Return(Expression {
                         location: (2,12).into(),
-                        kind: IntConstant("0", Decimal),
+                        kind: IntConstant("0".to_string(), Decimal),
                     }),
                 }),
             ],
@@ -1478,11 +1484,11 @@ mod test {
                     kind: DeclarationKind::Declaration {
                         identifier: Symbol {
                             location: (2,9).into(),
-                            name: "a",
+                            name: "a".to_string(),
                         },
                         init_expression: Some(Expression {
                             location: (2,13).into(),
-                            kind: IntConstant("10", Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         }),
                     },
                 }),
@@ -1491,7 +1497,7 @@ mod test {
                     kind: DeclarationKind::Declaration {
                         identifier: Symbol {
                             location: (3,9).into(),
-                            name: "b",
+                            name: "b".to_string(),
                         },
                         init_expression: None,
                     },
@@ -1503,11 +1509,11 @@ mod test {
                         kind: Assignment {
                             lvalue: Box::new(Expression {
                                 location: (4,5).into(),
-                                kind: Variable("b"),
+                                kind: Variable("b".to_string()),
                             }),
                             rvalue: Box::new(Expression {
                                 location: (4,9).into(),
-                                kind: IntConstant("10", Decimal),
+                                kind: IntConstant("10".to_string(), Decimal),
                             }),
                         },
                     }),
@@ -1538,12 +1544,12 @@ mod test {
                     location: (2,3).into(),
                     kind: DeclarationKind::Declaration {
                         identifier: Symbol {
-                            name: "a",
+                            name: "a".to_string(),
                             location: (2,7).into(),
                         },
                         init_expression: Some(Expression {
                             location: (2,11).into(),
-                            kind: IntConstant("10", Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         }),
                     },
                 }),
@@ -1556,20 +1562,20 @@ mod test {
                             BlockItem::Declaration(Declaration {
                                 location: (4,5).into(),
                                 kind: DeclarationKind::Declaration {
-                                    identifier: Symbol {location: (4,9).into(), name: "b"},
+                                    identifier: Symbol {location: (4,9).into(), name: "b".to_string()},
                                     init_expression: Some(Expression {
                                         location: (4,13).into(),
-                                        kind: IntConstant("20", Decimal),
+                                        kind: IntConstant("20".to_string(), Decimal),
                                     }),
                                 },
                             }),
                             BlockItem::Declaration(Declaration {
                                 location: (5,5).into(),
                                 kind: DeclarationKind::Declaration {
-                                    identifier: Symbol {location: (5,9).into(), name: "c"},
+                                    identifier: Symbol {location: (5,9).into(), name: "c".to_string()},
                                     init_expression: Some(Expression {
                                         location: (5,13).into(),
-                                        kind: IntConstant("30", Decimal),
+                                        kind: IntConstant("30".to_string(), Decimal),
                                     }),
                                 },
                             }),
@@ -1580,7 +1586,7 @@ mod test {
                                     kind: Assignment {
                                         lvalue: Box::new(Expression {
                                             location: (6,5).into(),
-                                            kind: Variable("a"),
+                                            kind: Variable("a".to_string()),
                                         }),
                                         rvalue: Box::new(Expression {
                                             location: (6,9).into(),
@@ -1588,11 +1594,11 @@ mod test {
                                                 BinaryOperator::Add,
                                                 Box::new(Expression {
                                                     location: (6,9).into(),
-                                                    kind: Variable("b"),
+                                                    kind: Variable("b".to_string()),
                                                 }),
                                                 Box::new(Expression {
                                                     location: (6,13).into(),
-                                                    kind: Variable("c"),
+                                                    kind: Variable("c".to_string()),
                                                 })
                                             ),
                                         }),
@@ -1606,7 +1612,7 @@ mod test {
                     location: (8,3).into(),
                     kind: Return(Expression {
                         location: (8,10).into(),
-                        kind: IntConstant("0", Decimal),
+                        kind: IntConstant("0".to_string(), Decimal),
                     })
                 })
             ],

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Location {
     pub line: usize,
@@ -28,7 +28,7 @@ impl Location {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, Serialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Radix {
     Binary,
