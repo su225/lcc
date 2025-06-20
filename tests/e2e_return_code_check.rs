@@ -33,6 +33,15 @@ fn test_e2e_logical_binary_operator(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }
 
+#[rstest]
+#[case("localvars/simple.c")]
+#[case("localvars/declaration_and_assign.c")]
+#[case("localvars/nested_scopes.c")]
+#[case("localvars/expression_with_var.c")]
+fn test_e2e_local_variables(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
 fn run_e2e_against_clang(input_file: &str) {
     println!("current working directory: {}", env::current_dir().unwrap().display());
 
