@@ -130,14 +130,15 @@ pub fn resolve_program(program: ProgramDefinition) -> Result<ProgramDefinition, 
 }
 
 fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &FunctionDefinition) -> Result<FunctionDefinition, IdentifierResolutionError> {
-    resolve_block(ctx, &f.body).map(|resolved_block| {
-        FunctionDefinition {
-            location: f.location.clone(),
-            name: f.name.clone(),
-            body: resolved_block,
-        }
+    ctx.with_scope(|sub_ctx| {
+        resolve_block(sub_ctx, &f.body).map(|resolved_block| {
+            FunctionDefinition {
+                location: f.location.clone(),
+                name: f.name.clone(),
+                body: resolved_block,
+            }
+        })
     })
-
 }
 
 fn resolve_block<'a>(ctx: &mut IdentifierResolutionContext, block: &Block) -> Result<Block, IdentifierResolutionError> {
@@ -253,9 +254,10 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
     use indoc::indoc;
     use crate::lexer::Lexer;
-    use crate::parser::Parser;
+    use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, FunctionDefinition, Parser, ProgramDefinition, Statement, StatementKind};
     use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
 
     #[test]
@@ -389,5 +391,182 @@ mod test {
             panic!("unexpected error");
         };
         assert_eq!(location, (2,5).into());
+    }
+
+    #[test]
+    fn test_use_after_scope_exit() {
+        let program = indoc! {r#"
+        int main(void) {
+            {
+                int a = 1;
+            }
+            a = 2;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved_ast = resolve_program(parsed.unwrap());
+        assert!(resolved_ast.is_err());
+
+        let IdentifierResolutionError::NotFound { location, name } = resolved_ast.unwrap_err() else {
+            panic!("unexpected error type");
+        };
+        assert_eq!(name, "a");
+        assert_eq!(location, (5,5).into()); // location of `a = 2;`
+    }
+
+    #[test]
+    fn test_should_allow_shadowing_in_multiple_scopes() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            {
+                int a = 20;
+            }
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved = resolve_program(parsed.unwrap());
+        assert!(resolved.is_ok());
+        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+    }
+
+    #[test]
+    fn test_should_resolve_as_different_variables_in_different_scopes() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            {
+                int b = 20;
+            }
+            {
+                int b = 30;
+            }
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved = resolve_program(parsed.unwrap());
+        assert!(resolved.is_ok());
+        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+    }
+
+    #[test]
+    fn test_should_resolve_as_different_variables_in_different_functions() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            return a;
+        }
+
+        int foo(void) {
+            int a = 20;
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved = resolve_program(parsed.unwrap());
+        assert!(resolved.is_ok(), "{:#?}", resolved);
+        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+    }
+
+    #[test]
+    fn test_should_resolve_previously_seen_function_names() {
+        let program = indoc!{r#"
+        int foo(void) {
+            return 10;
+        }
+
+        int bar(void) {
+            int a = 2;
+            return a;
+        }
+
+        int main(void) {
+            foo; bar;
+            return 0;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved = resolve_program(parsed.unwrap());
+        assert!(resolved.is_ok(), "{:#?}", resolved);
+        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+    }
+
+    fn program_identifiers_are_unique(prog: &ProgramDefinition) -> bool {
+        let mut function_names = HashSet::with_capacity(prog.functions.len());
+        let mut identifiers = HashSet::new();
+        for f in prog.functions.iter() {
+            if function_names.contains(&f.name.name) {
+                return false;
+            }
+            function_names.insert(f.name.name.clone());
+            let unique_func_identifiers = function_identifiers_are_unique(&mut identifiers, f);
+            if !unique_func_identifiers {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn function_identifiers_are_unique(identifiers: &mut HashSet<String>, f: &FunctionDefinition) -> bool {
+        block_identifiers_are_unique(identifiers, &f.body)
+    }
+
+    fn block_identifiers_are_unique(identifiers: &mut HashSet<String>, b: &Block) -> bool {
+        for bi in b.items.iter() {
+            let are_unique = block_item_identifiers_are_unique(identifiers, bi);
+            if !are_unique {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn block_item_identifiers_are_unique(identifiers: &mut HashSet<String>, bi: &BlockItem) -> bool {
+        match bi {
+            BlockItem::Statement(s) => statement_identifiers_are_unique(identifiers, s),
+            BlockItem::Declaration(d) => declaration_identifiers_are_unique(identifiers, d),
+        }
+    }
+
+    fn statement_identifiers_are_unique(identifiers: &mut HashSet<String>, s: &Statement) -> bool {
+        match &s.kind {
+            StatementKind::Return(_)
+            | StatementKind::Expression(_)
+            | StatementKind::Null => true,
+            StatementKind::SubBlock(sb) => block_identifiers_are_unique(identifiers, sb),
+        }
+    }
+
+    fn declaration_identifiers_are_unique(identifiers: &mut HashSet<String>, d: &Declaration) -> bool {
+        return match &d.kind {
+            DeclarationKind::Declaration { identifier: ident, .. } => {
+                if identifiers.contains(&ident.name) {
+                    false
+                } else {
+                    identifiers.insert(ident.name.clone());
+                    true
+                }
+            },
+        }
     }
 }
