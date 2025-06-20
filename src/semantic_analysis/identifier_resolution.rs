@@ -196,7 +196,7 @@ fn resolve_declaration<'a>(ctx: &mut IdentifierResolutionContext, decl: &Declara
                 return Err(IdentifierResolutionError::AlreadyDeclared {
                     current_loc: decl_loc.clone(),
                     original_loc: prev_mapped.location.clone(),
-                    name: prev_mapped.name.clone(),
+                    name: identifier.name.clone(),
                 });
             }
             let mapped = ctx.add_identifier_mapping(identifier.clone())?;
@@ -256,7 +256,7 @@ mod test {
     use indoc::indoc;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
-    use crate::semantic_analysis::identifier_resolution::resolve_program;
+    use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
 
     #[test]
     fn test_should_error_on_use_before_declaration() {
@@ -275,5 +275,119 @@ mod test {
         let resolved_ast = resolve_program(parsed.unwrap());
         assert!(resolved_ast.is_err());
 
+        let IdentifierResolutionError::NotFound { location, name } = resolved_ast.unwrap_err() else { panic!("unexpected error") };
+        assert_eq!(name, "a".to_string());
+        assert_eq!(location, (2,5).into());
+    }
+
+    #[test]
+    fn test_should_error_on_redeclaration_in_same_scope() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 1;
+            int a = 2;
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::AlreadyDeclared { name, current_loc: _, original_loc: _ } = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+        assert_eq!(name, "a".to_string());
+    }
+
+    #[test]
+    fn test_should_resolve_simple_declaration() {
+        let program = indoc! {r#"
+        int main(void) {
+            int a;
+            a = 1;
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        assert!(resolve_program(parsed.unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_should_resolve_shadowed_variable_in_inner_scope() {
+        let program = indoc! {r#"
+        int main(void) {
+            int a = 1;
+            {
+                int a = 2;
+                return a;
+            }
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        assert!(resolve_program(parsed.unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_should_resolve_multiple_variables() {
+        let program = indoc! {r#"
+        int main(void) {
+            int a = 1;
+            int b = 2;
+            return a + b;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        assert!(resolve_program(parsed.unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_should_error_on_undeclared_variable_use() {
+        let program = indoc! {r#"
+        int main(void) {
+            return x;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::NotFound { name, location } = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+        assert_eq!(name, "x");
+        assert_eq!(location, (2,12).into());
+    }
+
+    #[test]
+    fn test_should_error_on_lvalue_expected() {
+        let program = indoc! {r#"
+        int main(void) {
+            1 = 2;
+            return 0;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::LvalueExpected(location) = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+        assert_eq!(location, (2,5).into());
     }
 }

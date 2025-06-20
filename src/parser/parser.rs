@@ -470,12 +470,12 @@ impl<'a> Parser<'a> {
                 match token_type {
                     TokenType::OpenBrace => {
                         let sub_block = self.parse_block()?;
-                        Ok(Statement { location: tok_loc, kind: StatementKind::SubBlock(sub_block)})
+                        Ok(Statement { location: tok_loc, kind: StatementKind::SubBlock(sub_block) })
                     }
                     TokenType::Semicolon => {
                         self.token_provider.next();
                         Ok(Statement { location: tok_loc, kind: StatementKind::Null })
-                    },
+                    }
                     TokenType::Keyword(KeywordIdentifier::Return) => self.parse_return_statement(),
                     _ => self.parse_expression_statement(),
                 }
@@ -690,7 +690,22 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{
+        BinaryOperator,
+        Block,
+        BlockItem,
+        Declaration,
+        DeclarationKind,
+        Expression,
+        FunctionDefinition,
+        Parser,
+        ParserError,
+        ProgramDefinition,
+        Statement,
+        StatementKind,
+        Symbol,
+        UnaryOperator,
+    };
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -837,7 +852,7 @@ mod test {
     #[test]
     fn test_parse_statement_empty() {
         let src = ";";
-        let expected = Ok(Statement { location: (1,1).into(), kind: Null });
+        let expected = Ok(Statement { location: (1, 1).into(), kind: Null });
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
 
@@ -845,9 +860,9 @@ mod test {
     fn test_parse_statement_return() {
         let src = "return 10;";
         let expected = Ok(Statement {
-            location: (1,1).into(),
+            location: (1, 1).into(),
             kind: Return(Expression {
-                location: (1,8).into(),
+                location: (1, 8).into(),
                 kind: IntConstant("10".to_string(), Decimal),
             }),
         });
@@ -858,16 +873,16 @@ mod test {
     fn test_parse_statement_simple_assignment() {
         let src = "a = 10;";
         let expected = Ok(Statement {
-            location: (1,1).into(),
+            location: (1, 1).into(),
             kind: StatementKind::Expression(Expression {
-                location: (1,1).into(),
+                location: (1, 1).into(),
                 kind: Assignment {
                     lvalue: Box::new(Expression {
-                        location: (1,1).into(),
+                        location: (1, 1).into(),
                         kind: Variable("a".to_string()),
                     }),
                     rvalue: Box::new(Expression {
-                        location: (1,5).into(),
+                        location: (1, 5).into(),
                         kind: IntConstant("10".to_string(), Decimal),
                     }),
                 },
@@ -1296,14 +1311,14 @@ mod test {
     fn test_parse_simple_assignment() {
         let src = "a=10";
         let expected = Ok(Expression {
-            location: (1,1).into(),
+            location: (1, 1).into(),
             kind: Assignment {
                 lvalue: Box::new(Expression {
-                    location: (1,1).into(),
+                    location: (1, 1).into(),
                     kind: Variable("a".to_string()),
                 }),
                 rvalue: Box::new(Expression {
-                    location: (1,3).into(),
+                    location: (1, 3).into(),
                     kind: IntConstant("10".to_string(), Decimal),
                 }),
             },
@@ -1315,21 +1330,21 @@ mod test {
     fn test_parse_simple_assignment_as_right_associative() {
         let src = "a=b=10";
         let expected = Ok(Expression {
-            location: (1,1).into(),
+            location: (1, 1).into(),
             kind: Assignment {
                 lvalue: Box::new(Expression {
-                    location: (1,1).into(),
+                    location: (1, 1).into(),
                     kind: Variable("a".to_string()),
                 }),
                 rvalue: Box::new(Expression {
-                    location: (1,3).into(),
+                    location: (1, 3).into(),
                     kind: Assignment {
                         lvalue: Box::new(Expression {
-                            location: (1,3).into(),
+                            location: (1, 3).into(),
                             kind: Variable("b".to_string()),
                         }),
                         rvalue: Box::new(Expression {
-                            location: (1,5).into(),
+                            location: (1, 5).into(),
                             kind: IntConstant("10".to_string(), Decimal),
                         }),
                     },
@@ -1409,6 +1424,53 @@ mod test {
         run_parse_expression_test_case(ExprTestCase { src, expected });
     }
 
+    struct DeclarationTestCase<'a> {
+        src: &'a str,
+        expected: Result<Declaration, ParserError>,
+    }
+
+    fn run_parse_declaration_test_case(test_case: DeclarationTestCase) {
+        let lexer = Lexer::new(test_case.src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_declaration();
+        assert_eq!(test_case.expected, actual);
+    }
+
+    #[test]
+    fn test_parse_declaration_without_initialization() {
+        let src = "int a;";
+        let expected = Ok(super::Declaration {
+            location: (1, 1).into(),
+            kind: DeclarationKind::Declaration {
+                identifier: Symbol {
+                    name: "a".to_string(),
+                    location: (1, 1).into(),
+                },
+                init_expression: None,
+            },
+        });
+        run_parse_declaration_test_case(DeclarationTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_declaration_with_initialization() {
+        let src = "int a = 10;";
+        let expected = Ok(super::Declaration {
+            location: (1, 1).into(),
+            kind: DeclarationKind::Declaration {
+                identifier: Symbol {
+                    name: "a".to_string(),
+                    location: (1, 1).into(),
+                },
+                init_expression: Some(super::Expression {
+                    location: (1, 9).into(),
+                    kind: IntConstant("10".to_string(), Decimal),
+                }),
+            },
+        });
+        run_parse_declaration_test_case(DeclarationTestCase { src, expected });
+    }
+
     struct BlockTestCase<'a> {
         src: &'a str,
         expected: Result<Block, ParserError>,
@@ -1425,8 +1487,8 @@ mod test {
     fn test_parse_block_empty() {
         let src = "{}";
         let expected = Ok(Block {
-            start_loc: (1,1).into(),
-            end_loc: (1,2).into(),
+            start_loc: (1, 1).into(),
+            end_loc: (1, 2).into(),
             items: vec![],
         });
         run_parse_block_test_case(BlockTestCase { src, expected })
@@ -1436,8 +1498,8 @@ mod test {
     fn test_parse_block_return_0() {
         let src = "{}";
         let expected = Ok(Block {
-            start_loc: (1,1).into(),
-            end_loc: (1,2).into(),
+            start_loc: (1, 1).into(),
+            end_loc: (1, 2).into(),
             items: vec![],
         });
         run_parse_block_test_case(BlockTestCase { src, expected })
@@ -1445,19 +1507,19 @@ mod test {
 
     #[test]
     fn test_parse_block_with_variable_declaration() {
-        let src = indoc!{r#"
+        let src = indoc! {r#"
         {
             return 0;
         }
         "#};
         let expected = Ok(Block {
-            start_loc: (1,1).into(),
-            end_loc: (3,1).into(),
+            start_loc: (1, 1).into(),
+            end_loc: (3, 1).into(),
             items: vec![
                 BlockItem::Statement(Statement {
-                    location: (2,5).into(),
+                    location: (2, 5).into(),
                     kind: Return(Expression {
-                        location: (2,12).into(),
+                        location: (2, 12).into(),
                         kind: IntConstant("0".to_string(), Decimal),
                     }),
                 }),
@@ -1468,7 +1530,7 @@ mod test {
 
     #[test]
     fn test_parse_block_multiple_statements_with_declarations() {
-        let src = indoc!{r#"
+        let src = indoc! {r#"
         {
             int a = 10;
             int b;
@@ -1476,43 +1538,43 @@ mod test {
         }
         "#};
         let expected = Ok(Block {
-            start_loc: (1,1).into(),
-            end_loc: (5,1).into(),
+            start_loc: (1, 1).into(),
+            end_loc: (5, 1).into(),
             items: vec![
                 BlockItem::Declaration(Declaration {
-                    location: (2,5).into(),
+                    location: (2, 5).into(),
                     kind: DeclarationKind::Declaration {
                         identifier: Symbol {
-                            location: (2,9).into(),
+                            location: (2, 9).into(),
                             name: "a".to_string(),
                         },
                         init_expression: Some(Expression {
-                            location: (2,13).into(),
+                            location: (2, 13).into(),
                             kind: IntConstant("10".to_string(), Decimal),
                         }),
                     },
                 }),
                 BlockItem::Declaration(Declaration {
-                    location: (3,5).into(), // fixed from (2,5)
+                    location: (3, 5).into(), // fixed from (2,5)
                     kind: DeclarationKind::Declaration {
                         identifier: Symbol {
-                            location: (3,9).into(),
+                            location: (3, 9).into(),
                             name: "b".to_string(),
                         },
                         init_expression: None,
                     },
                 }),
                 BlockItem::Statement(Statement {
-                    location: (4,5).into(), // fixed from (3,5)
+                    location: (4, 5).into(), // fixed from (3,5)
                     kind: StatementKind::Expression(Expression {
-                        location: (4,5).into(),
+                        location: (4, 5).into(),
                         kind: Assignment {
                             lvalue: Box::new(Expression {
-                                location: (4,5).into(),
+                                location: (4, 5).into(),
                                 kind: Variable("b".to_string()),
                             }),
                             rvalue: Box::new(Expression {
-                                location: (4,9).into(),
+                                location: (4, 9).into(),
                                 kind: IntConstant("10".to_string(), Decimal),
                             }),
                         },
@@ -1525,7 +1587,7 @@ mod test {
 
     #[test]
     fn test_parse_block_subblocks() {
-        let src = indoc!{r#"
+        let src = indoc! {r#"
         {
           int a = 10;
           {
@@ -1537,84 +1599,84 @@ mod test {
         }
         "#};
         let expected = Ok(Block {
-            start_loc: (1,1).into(),
-            end_loc: (9,1).into(),
+            start_loc: (1, 1).into(),
+            end_loc: (9, 1).into(),
             items: vec![
                 BlockItem::Declaration(Declaration {
-                    location: (2,3).into(),
+                    location: (2, 3).into(),
                     kind: DeclarationKind::Declaration {
                         identifier: Symbol {
                             name: "a".to_string(),
-                            location: (2,7).into(),
+                            location: (2, 7).into(),
                         },
                         init_expression: Some(Expression {
-                            location: (2,11).into(),
+                            location: (2, 11).into(),
                             kind: IntConstant("10".to_string(), Decimal),
                         }),
                     },
                 }),
                 BlockItem::Statement(Statement {
-                    location: (3,3).into(),
+                    location: (3, 3).into(),
                     kind: SubBlock(Block {
-                        start_loc: (3,3).into(),
-                        end_loc: (7,3).into(),
+                        start_loc: (3, 3).into(),
+                        end_loc: (7, 3).into(),
                         items: vec![
                             BlockItem::Declaration(Declaration {
-                                location: (4,5).into(),
+                                location: (4, 5).into(),
                                 kind: DeclarationKind::Declaration {
-                                    identifier: Symbol {location: (4,9).into(), name: "b".to_string()},
+                                    identifier: Symbol { location: (4, 9).into(), name: "b".to_string() },
                                     init_expression: Some(Expression {
-                                        location: (4,13).into(),
+                                        location: (4, 13).into(),
                                         kind: IntConstant("20".to_string(), Decimal),
                                     }),
                                 },
                             }),
                             BlockItem::Declaration(Declaration {
-                                location: (5,5).into(),
+                                location: (5, 5).into(),
                                 kind: DeclarationKind::Declaration {
-                                    identifier: Symbol {location: (5,9).into(), name: "c".to_string()},
+                                    identifier: Symbol { location: (5, 9).into(), name: "c".to_string() },
                                     init_expression: Some(Expression {
-                                        location: (5,13).into(),
+                                        location: (5, 13).into(),
                                         kind: IntConstant("30".to_string(), Decimal),
                                     }),
                                 },
                             }),
                             BlockItem::Statement(Statement {
-                                location: (6,5).into(),
+                                location: (6, 5).into(),
                                 kind: StatementKind::Expression(Expression {
-                                    location: (6,5).into(),
+                                    location: (6, 5).into(),
                                     kind: Assignment {
                                         lvalue: Box::new(Expression {
-                                            location: (6,5).into(),
+                                            location: (6, 5).into(),
                                             kind: Variable("a".to_string()),
                                         }),
                                         rvalue: Box::new(Expression {
-                                            location: (6,9).into(),
+                                            location: (6, 9).into(),
                                             kind: Binary(
                                                 BinaryOperator::Add,
                                                 Box::new(Expression {
-                                                    location: (6,9).into(),
+                                                    location: (6, 9).into(),
                                                     kind: Variable("b".to_string()),
                                                 }),
                                                 Box::new(Expression {
-                                                    location: (6,13).into(),
+                                                    location: (6, 13).into(),
                                                     kind: Variable("c".to_string()),
-                                                })
+                                                }),
                                             ),
                                         }),
                                     },
-                                })
-                            })
+                                }),
+                            }),
                         ],
-                    })
+                    }),
                 }),
                 BlockItem::Statement(Statement {
-                    location: (8,3).into(),
+                    location: (8, 3).into(),
                     kind: Return(Expression {
-                        location: (8,10).into(),
+                        location: (8, 10).into(),
                         kind: IntConstant("0".to_string(), Decimal),
-                    })
-                })
+                    }),
+                }),
             ],
         });
         run_parse_block_test_case(BlockTestCase { src, expected })
@@ -1982,10 +2044,10 @@ mod test {
             (Binary(binop1, op11, op12), Binary(binop2, op21, op22)) => binop1 == binop2
                 && is_equivalent_expression(&*op11, &*op21)
                 && is_equivalent_expression(&*op12, &*op22),
-            (Assignment {lvalue: lv1, rvalue: rv1},
-             Assignment {lvalue: lv2, rvalue: rv2}) =>
+            (Assignment { lvalue: lv1, rvalue: rv1 },
+                Assignment { lvalue: lv2, rvalue: rv2 }) =>
                 is_equivalent_expression(&*lv1, &*lv2)
-                && is_equivalent_expression(&*rv1, &*rv2),
+                    && is_equivalent_expression(&*rv1, &*rv2),
             _ => false,
         }
     }
