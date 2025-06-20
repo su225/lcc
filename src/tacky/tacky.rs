@@ -455,11 +455,18 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
 
 #[cfg(test)]
 mod test {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use insta::assert_snapshot;
+    use rstest::rstest;
     use crate::common::Radix;
-    use crate::parser::{BinaryOperator, Expression, UnaryOperator};
-    use crate::parser::ExpressionKind::{Binary, IntConstant, Unary};
+    use crate::common::Radix::Decimal;
+    use crate::lexer::Lexer;
+    use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
+    use crate::parser::ExpressionKind::{Assignment, Binary, IntConstant, Unary};
+    use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::tacky::*;
-    use crate::tacky::tacky::{emit_tacky_for_expression, TackyContext};
+    use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, TackyContext};
     use crate::tacky::TackyInstruction::*;
     use crate::tacky::TackyValue::*;
 
@@ -613,19 +620,51 @@ mod test {
             Label(TackySymbol("_L.or_end.1".to_string())),
         ]);
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::path::{Path, PathBuf};
+    #[test]
+    fn test_emit_tacky_for_simple_assignment() {
+        let expr = Expression {
+            location: (0,0).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: ExpressionKind::Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: IntConstant("10".to_string(), Decimal),
+                }),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, tinstrs) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol("a".into())));
+        assert_eq!(tinstrs, vec![
+            Copy { src: Int32(10), dst: TackySymbol::from("a") },
+        ]);
+    }
 
-    use insta::assert_snapshot;
-    use rstest::rstest;
-
-    use crate::lexer::Lexer;
-    use crate::parser::Parser;
-    use crate::tacky::emit;
+    #[test]
+    fn test_emit_tacky_for_declaration_and_assignment() {
+        let decl = Declaration {
+            location: (0,0).into(),
+            kind: DeclarationKind::Declaration {
+                identifier: Symbol {
+                    location: (0, 0).into(),
+                    name: "a".to_string(),
+                },
+                init_expression: Some(Expression {
+                    location: (0,0).into(),
+                    kind: IntConstant("10".to_string(), Decimal)
+                }),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let tinstrs = emit_tacky_for_declaration(&mut ctx, &decl).unwrap();
+        assert_eq!(tinstrs, vec![
+            Copy { src: Int32(10), dst: TackySymbol::from("a") },
+        ]);
+    }
 
     #[rstest]
     #[case("multifunc/simple.c")]
@@ -667,6 +706,15 @@ mod tests {
         run_ir_generation_snapshot_test("logical operators", input_path)
     }
 
+    #[rstest]
+    #[case("localvars/simple.c")]
+    #[case("localvars/declaration_and_assign.c")]
+    #[case("localvars/nested_scopes.c")]
+    #[case("localvars/expression_with_var.c")]
+    fn test_generation_with_local_variables(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("local variables", input_path)
+    }
+
     fn run_ir_generation_snapshot_test(suite_description: &str, src_file: &str) {
         let base_dir = file!();
         let src_path = Path::new(base_dir).parent().unwrap().join("input").join(src_file);
@@ -676,8 +724,9 @@ mod tests {
         let src = source.unwrap();
         let lexer = Lexer::new(&src);
         let mut parser = Parser::new(lexer);
-        let ast = parser.parse().unwrap();
-        let tacky = emit(&ast).unwrap();
+        let ast = parser.parse().expect("parsing must be successful");
+        let resolved_ast = resolve_program(ast).expect("identity resolution must be successful");
+        let tacky = emit(&resolved_ast).expect("tacky IR generation must be successful");
 
         let (out_dir, snapshot_file) = output_path_parts(src_file);
         insta::with_settings!({

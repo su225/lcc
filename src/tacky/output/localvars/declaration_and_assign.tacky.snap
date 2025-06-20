@@ -1,0 +1,12 @@
+---
+source: src/tacky/tacky.rs
+description: local variables
+expression: tacky
+info: localvars/declaration_and_assign.c
+---
+int main(void) {
+    b$2 = (int32 10);
+    <t>.0 = b$2 + (int32 2);
+    a$1 = <t>.0;
+    return a$1;
+}

@@ -1,0 +1,14 @@
+---
+source: src/tacky/tacky.rs
+description: local variables
+expression: tacky
+info: localvars/expression_with_var.c
+---
+int main(void) {
+    a$1 = (int32 10);
+    b$2 = (int32 20);
+    c$3 = (int32 30);
+    <t>.0 = a$1 + b$2;
+    <t>.1 = <t>.0 + c$3;
+    return <t>.1;
+}

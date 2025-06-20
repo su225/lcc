@@ -759,6 +759,7 @@ mod test {
     use crate::codegen::x86_64::codegen::generate_instruction_assembly;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::tacky::{emit, TackyInstruction, TackyUnaryOperator, TackyValue};
     use crate::tacky::TackyBinaryOperator::*;
     use crate::tacky::TackyInstruction::*;
@@ -1515,7 +1516,8 @@ mod test {
         let lexer = Lexer::new(source_code);
         let mut parser = Parser::new(lexer);
         let ast = parser.parse().expect("Parsing should be successful");
-        let ir = emit(&ast).expect("IR generation must be successful");
+        let resolved_ast = resolve_program(ast).expect("Identity resolution must be successful");
+        let ir = emit(&resolved_ast).expect("IR generation must be successful");
         let actual_asm = generate_assembly(ir).expect("Assembly generation must be successful");
         assert_eq!(expected_asm, actual_asm, "expected:{:#?}\nactual:{:#?}", expected_asm, actual_asm);
     }
