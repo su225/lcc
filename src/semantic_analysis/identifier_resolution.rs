@@ -250,3 +250,30 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
         },
     })
 }
+
+#[cfg(test)]
+mod test {
+    use indoc::indoc;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::semantic_analysis::identifier_resolution::resolve_program;
+
+    #[test]
+    fn test_should_error_on_use_before_declaration() {
+        let program = indoc!{r#"
+        int main(void) {
+            a = 1;
+            int a;
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+
+        let resolved_ast = resolve_program(parsed.unwrap());
+        assert!(resolved_ast.is_err());
+
+    }
+}

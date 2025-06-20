@@ -197,6 +197,15 @@ pub enum TackyInstruction {
     Label(TackySymbol),
 }
 
+impl TackyInstruction {
+    fn is_return(&self) -> bool {
+        match self {
+            Return(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl Display for TackyInstruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -273,6 +282,9 @@ fn emit_tacky_for_function(ctx: &mut TackyContext, f: &FunctionDefinition) -> Re
     for blk_item in f.body.items.iter() {
         let instrs = emit_tacky_for_block_item(ctx, blk_item)?;
         instructions.extend(instrs);
+    }
+    if instructions.is_empty() || !instructions.last().unwrap().is_return() {
+        instructions.push(Return(Int32(0)));
     }
     Ok(TackyFunction {
         identifier: TackySymbol(f.name.name.clone()),
