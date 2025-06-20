@@ -4,7 +4,7 @@ use crate::common::Location;
 use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol};
 
 #[derive(Debug, Error)]
-enum IdentifierResolutionError {
+pub enum IdentifierResolutionError {
     #[error("{location:?}: identifier '{name:?}' not found")]
     NotFound { location: Location, name: String },
 
@@ -118,7 +118,7 @@ impl IdentifierResolutionContext {
     }
 }
 
-fn resolve_program(program: ProgramDefinition) -> Result<ProgramDefinition, IdentifierResolutionError> {
+pub fn resolve_program(program: ProgramDefinition) -> Result<ProgramDefinition, IdentifierResolutionError> {
     let mut ctx = IdentifierResolutionContext::new();
     let mut resolved_funcs = Vec::with_capacity(program.functions.len());
     for f in program.functions.iter() {

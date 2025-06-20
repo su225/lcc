@@ -8,6 +8,7 @@ use thiserror::Error;
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
 use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
+use lcc::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
 use lcc::tacky;
 use lcc::tacky::TackyError;
 
@@ -31,6 +32,10 @@ struct Args {
     /// (Runs Lexer and Parser)
     #[arg(short = 'P', long = "parse", long, default_value_t = false)]
     parse: bool,
+
+    /// Stop compiler at validation/semantic analysis phase
+    #[arg(short = 'I', long = "validate", long, default_value_t = false)]
+    validate: bool,
 
     /// Tacky is the intermediate representation
     /// The compiler stops at intermediate-representation generation
@@ -60,6 +65,9 @@ enum CompilerDriverError {
 
     #[error("error in parser: {0}")]
     ParserError(#[from] ParserError),
+
+    #[error("error during semantic-analysis/identifier-resolution: {0}")]
+    IdentifierResolutionError(#[from] IdentifierResolutionError),
 
     #[error("error in tacky generation: {0}")]
     TackyGenerationError(#[from] TackyError),
@@ -93,7 +101,12 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", ast);
         return Ok(());
     }
-    let tacky = tacky::emit(&ast)?;
+    let ident_resolved_ast = resolve_program(ast)?;
+    if args.validate {
+        println!("{:#?}", ident_resolved_ast);
+        return Ok(())
+    }
+    let tacky = tacky::emit(&ident_resolved_ast)?;
     if args.tacky {
         println!("{:#?}", tacky);
         return Ok(());

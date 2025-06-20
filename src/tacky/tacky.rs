@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
-
 use derive_more::Display;
 use thiserror::Error;
 
@@ -16,6 +15,12 @@ pub struct TackySymbol(pub String);
 
 impl From<&str> for TackySymbol {
     fn from(value: &str) -> Self {
+        TackySymbol(value.to_string())
+    }
+}
+
+impl From<&String> for TackySymbol {
+    fn from(value: &String) -> Self {
         TackySymbol(value.to_string())
     }
 }
@@ -308,7 +313,10 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             }
             Ok(instrs)
         }
-        StatementKind::Expression(_) => todo!(),
+        StatementKind::Expression(e) => {
+            let (_, expr_instrs) = emit_tacky_for_expression(ctx, e)?;
+            Ok(expr_instrs)
+        },
         StatementKind::Null => Ok(vec![]),
     }
 }
@@ -319,7 +327,7 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             let n = i32::from_str_radix(c, radix.value())?;
             Ok((Int32(n), vec![]))
         }
-        ExpressionKind::Variable(_) => todo!(),
+        ExpressionKind::Variable(v) => Ok((Variable(TackySymbol::from(v)), vec![])),
         ExpressionKind::Unary(unary_op, src) => {
             let (src_tacky, mut tacky_instrs) = emit_tacky_for_expression(ctx, src)?;
             let dst_tacky_identifier = ctx.next_temporary_identifier();
@@ -417,7 +425,19 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             });
             Ok((result, tacky_instrs))
         },
-        ExpressionKind::Assignment {..} => todo!(),
+        ExpressionKind::Assignment { lvalue, rvalue} => {
+            debug_assert!(lvalue.kind.is_lvalue_expression());
+            let (rhs_tacky, mut instrs) = emit_tacky_for_expression(ctx, rvalue)?;
+            let final_result = match &lvalue.kind {
+                ExpressionKind::Variable(v) => TackySymbol::from(v),
+                _ => panic!("must be lvalue")
+            };
+            instrs.push(Copy {
+                src: rhs_tacky,
+                dst: final_result.clone(),
+            });
+            Ok((Variable(final_result), instrs))
+        },
     }
 }
 
