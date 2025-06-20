@@ -51,6 +51,7 @@ pub enum TokenTag {
     OperatorMinus,
     OperatorUnaryComplement,
     OperatorUnaryDecrement,
+    OperatorUnaryIncrement,
     OperatorPlus,
     OperatorAsterisk,
     OperatorModulo,
@@ -89,6 +90,7 @@ pub enum TokenType<'a> {
     IntConstant(&'a str, Radix),
 
     OperatorUnaryComplement,
+    OperatorUnaryIncrement,
     OperatorUnaryDecrement,
     OperatorPlus,
     OperatorMinus,
@@ -127,8 +129,11 @@ impl<'a> TokenType<'a> {
             TokenType::IntConstant(_, _) => TokenTag::IntConstant,
 
             TokenType::OperatorUnaryComplement => TokenTag::OperatorUnaryComplement,
-            TokenType::OperatorDiv => TokenTag::OperatorDiv,
             TokenType::OperatorUnaryDecrement => TokenTag::OperatorUnaryDecrement,
+            TokenType::OperatorUnaryIncrement => TokenTag::OperatorUnaryIncrement,
+
+            TokenType::OperatorDiv => TokenTag::OperatorDiv,
+
             TokenType::OperatorMinus => TokenTag::OperatorMinus,
             TokenType::OperatorPlus => TokenTag::OperatorPlus,
             TokenType::OperatorAsterisk => TokenTag::OperatorAsterisk,
@@ -158,6 +163,7 @@ impl<'a> TokenType<'a> {
         match self {
             TokenType::OperatorUnaryComplement
             | TokenType::OperatorUnaryDecrement
+            | TokenType::OperatorUnaryIncrement
             | TokenType::OperatorMinus
             | TokenType::OperatorUnaryLogicalNot => true,
             _ => false,
@@ -232,6 +238,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorDiv => f.write_str("/"),
             TokenType::OperatorUnaryComplement => f.write_str("~"),
             TokenType::OperatorUnaryDecrement => f.write_str("--"),
+            TokenType::OperatorUnaryIncrement => f.write_str("--"),
             TokenType::OperatorMinus => f.write_str("-"),
             TokenType::OperatorPlus => f.write_str("+"),
             TokenType::OperatorAsterisk => f.write_str("*"),
@@ -429,8 +436,22 @@ impl<'a> Lexer<'a> {
                             return Ok(Some(token));
                         }
                         '+' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorPlus);
-                            return Ok(Some(token));
+                            let start_loc = self.cur_location;
+                            self.next_char();
+
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '+' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorUnaryIncrement,
+                                        location: start_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorPlus,
+                                location: start_loc,
+                            }));
                         }
                         '-' => {
                             let start_loc = self.cur_location;
@@ -750,6 +771,16 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: OperatorUnaryComplement, location: Location { line: 1, column: 1 } },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_increment() {
+        let source = "++";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: OperatorUnaryIncrement, location: Location { line: 1, column: 1 } },
         ]));
     }
 

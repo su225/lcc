@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
+
 use derive_more::Display;
 use thiserror::Error;
 
@@ -457,12 +458,13 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
 mod test {
     use std::fs;
     use std::path::{Path, PathBuf};
+
     use insta::assert_snapshot;
     use rstest::rstest;
-    use crate::common::Radix;
+
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{Assignment, Binary, IntConstant, Unary};
     use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::tacky::*;
@@ -474,7 +476,7 @@ mod test {
     fn test_emit_tacky_for_int_constant() {
         let expr = Expression {
             location: (0,0).into(),
-            kind: IntConstant("10".to_string(), Radix::Decimal),
+            kind: IntConstant("10".to_string(), Decimal),
         };
         let mut ctx = TackyContext::new();
         let (tval, tinstrs) = emit_tacky_for_expression(&mut ctx, &expr)
@@ -490,7 +492,7 @@ mod test {
             kind: Unary(UnaryOperator::Complement,
                 Box::new(Expression {
                     location: (0,0).into(),
-                    kind: IntConstant("10".to_string(), Radix::Decimal),
+                    kind: IntConstant("10".to_string(), Decimal),
                 })),
         };
         let mut ctx = TackyContext::new();
@@ -512,7 +514,7 @@ mod test {
             kind: Unary(UnaryOperator::Negate,
                         Box::new(Expression {
                             location: (0,0).into(),
-                            kind: IntConstant("10".to_string(), Radix::Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         })),
         };
         let mut ctx = TackyContext::new();
@@ -534,7 +536,7 @@ mod test {
             kind: Unary(UnaryOperator::Not,
                         Box::new(Expression {
                             location: (0,0).into(),
-                            kind: IntConstant("10".to_string(), Radix::Decimal),
+                            kind: IntConstant("10".to_string(), Decimal),
                         })),
         };
         let mut ctx = TackyContext::new();
@@ -556,11 +558,11 @@ mod test {
             kind: Binary(BinaryOperator::And,
                          Box::new(Expression {
                              location: (0, 0).into(),
-                             kind: IntConstant("0".to_string(), Radix::Decimal),
+                             kind: IntConstant("0".to_string(), Decimal),
                          }),
                          Box::new(Expression {
                              location: (0, 0).into(),
-                             kind: IntConstant("1".to_string(), Radix::Decimal),
+                             kind: IntConstant("1".to_string(), Decimal),
                          })),
         };
         let mut ctx = TackyContext::new();
@@ -592,11 +594,11 @@ mod test {
             kind: Binary(BinaryOperator::Or,
                          Box::new(Expression {
                              location: (0, 0).into(),
-                             kind: IntConstant("0".to_string(), Radix::Decimal),
+                             kind: IntConstant("0".to_string(), Decimal),
                          }),
                          Box::new(Expression {
                              location: (0, 0).into(),
-                             kind: IntConstant("1".to_string(), Radix::Decimal),
+                             kind: IntConstant("1".to_string(), Decimal),
                          })),
         };
         let mut ctx = TackyContext::new();
