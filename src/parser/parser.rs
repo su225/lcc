@@ -1439,12 +1439,12 @@ mod test {
     #[test]
     fn test_parse_declaration_without_initialization() {
         let src = "int a;";
-        let expected = Ok(super::Declaration {
+        let expected = Ok(Declaration {
             location: (1, 1).into(),
             kind: DeclarationKind::Declaration {
                 identifier: Symbol {
                     name: "a".to_string(),
-                    location: (1, 1).into(),
+                    location: (1, 5).into(),
                 },
                 init_expression: None,
             },
@@ -1455,12 +1455,12 @@ mod test {
     #[test]
     fn test_parse_declaration_with_initialization() {
         let src = "int a = 10;";
-        let expected = Ok(super::Declaration {
+        let expected = Ok(Declaration {
             location: (1, 1).into(),
             kind: DeclarationKind::Declaration {
                 identifier: Symbol {
                     name: "a".to_string(),
-                    location: (1, 1).into(),
+                    location: (1, 5).into(),
                 },
                 init_expression: Some(super::Expression {
                     location: (1, 9).into(),
