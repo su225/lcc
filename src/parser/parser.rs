@@ -889,6 +889,44 @@ mod test {
         });
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
+    
+    #[test]
+    fn test_parse_statement_increment() {
+        let src = "a++;";
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            kind: StatementKind::Expression(Expression {
+                location: (1,1).into(),
+                kind: Increment {
+                    is_post: true,
+                    e: Box::new(Expression {
+                        location: (1,1).into(),
+                        kind: Variable("a".into()),
+                    }),
+                },
+            }),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_decrement() {
+        let src = "a--;";
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            kind: StatementKind::Expression(Expression {
+                location: (1,1).into(),
+                kind: Decrement {
+                    is_post: true,
+                    e: Box::new(Expression {
+                        location: (1,1).into(),
+                        kind: Variable("a".into()),
+                    }),
+                },
+            }),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
 
     #[test]
     fn test_parse_statement_simple_assignment() {

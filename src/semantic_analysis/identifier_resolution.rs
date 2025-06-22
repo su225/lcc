@@ -437,6 +437,63 @@ mod test {
     }
 
     #[test]
+    fn test_increment_nonlvalue_int_is_not_allowed() {
+        let program = indoc! {r#"
+        int main(void) {
+            10++;
+        }
+        "#};
+
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+    }
+
+    #[test]
+    fn test_increment_nonlvalue_expression_is_not_allowed() {
+        let program = indoc! {r#"
+        int main(void) {
+            int a = 10;
+            int b = 20;
+            (a+b)++;
+            return a+b;
+        }
+        "#};
+
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+    }
+
+    #[test]
+    fn test_increment_nonlvalue_unary_expression_is_not_allowed() {
+        let program = indoc! {r#"
+        int main(void) {
+            (!10)++;
+        }
+        "#};
+
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+    }
+
+    #[test]
     fn test_should_allow_shadowing_in_multiple_scopes() {
         let program = indoc!{r#"
         int main(void) {
