@@ -1977,13 +1977,14 @@ mod test {
     #[case("increment_pre_with_unary_neg", "-++a")]
     #[case("increment_post_with_unary_neg", "-a++")]
     #[case("decrement_pre_with_unary_neg", "-(--a)")] // yeah. ---a is illegal
-    #[case("decrement_post_with_unary_not", "-a--")]
+    #[case("decrement_post_with_unary_neg", "-a--")]
     #[case("increment_pre_with_unary_complement", "~++a")]
     #[case("increment_post_with_unary_complement", "~a++")]
     #[case("decrement_pre_with_unary_complement", "~--a")]
     #[case("decrement_post_with_unary_complement", "~a--")]
     #[case("horrible_seq_1", "~a++ + -++a")]
     #[case("horrible_seq_2", "~-a++ - -~a--")]
+    #[case("sadistic_seq_1", "~a++*-++b/~c--")] // don't be this person
     fn test_should_parse_increment_and_decrement_with_correct_precendence(#[case] description: &str, #[case] src: &str) {
         run_snapshot_test_for_parse_expression("increment and decrement with correct precedence", description, "expr/incrdecr", src);
     }

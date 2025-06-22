@@ -1,0 +1,72 @@
+---
+source: src/parser/parser.rs
+description: increment and decrement with correct precedence
+expression: actual.unwrap()
+info: ~a++*-++b/~c--
+---
+location:
+  line: 1
+  column: 1
+kind:
+  binary:
+    - divide
+    - location:
+        line: 1
+        column: 1
+      kind:
+        binary:
+          - multiply
+          - location:
+              line: 1
+              column: 1
+            kind:
+              unary:
+                - complement
+                - location:
+                    line: 1
+                    column: 2
+                  kind:
+                    increment:
+                      is_post: true
+                      e:
+                        location:
+                          line: 1
+                          column: 2
+                        kind:
+                          variable: a
+          - location:
+              line: 1
+              column: 6
+            kind:
+              unary:
+                - negate
+                - location:
+                    line: 1
+                    column: 7
+                  kind:
+                    increment:
+                      is_post: false
+                      e:
+                        location:
+                          line: 1
+                          column: 9
+                        kind:
+                          variable: b
+    - location:
+        line: 1
+        column: 11
+      kind:
+        unary:
+          - complement
+          - location:
+              line: 1
+              column: 12
+            kind:
+              decrement:
+                is_post: true
+                e:
+                  location:
+                    line: 1
+                    column: 12
+                  kind:
+                    variable: c
