@@ -1,0 +1,12 @@
+---
+source: src/tacky/tacky.rs
+description: increment and decrement operators
+expression: tacky
+info: unary/increment.c
+---
+int main(void) {
+    a$1 = (int32 10);
+    <t>.0 = a$1;
+    a$1 = a$1 + (int32 1);
+    return a$1;
+}

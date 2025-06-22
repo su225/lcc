@@ -507,7 +507,7 @@ mod test {
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
     use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
-    use crate::parser::ExpressionKind::{Assignment, Binary, IntConstant, Unary};
+    use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
     use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::tacky::*;
     use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, TackyContext};
@@ -591,6 +591,116 @@ mod test {
                 dst: Variable(TackySymbol("<t>.0".into())),
             },
         ]);
+    }
+
+    #[test]
+    fn test_emit_tacky_post_increment() {
+        let expr = Expression {
+            location: (0,0).into(),
+            kind: Increment {
+                is_post: true,
+                e: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: ExpressionKind::Variable("a".to_string()),
+                }),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, actual) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol::from("<t>.0")));
+        let expected = vec![
+            Copy { src: Variable(TackySymbol::from("a")), dst: TackySymbol::from("<t>.0") },
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: Variable(TackySymbol::from("a")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("a")),
+            }
+        ];
+        assert_eq!(tval, Variable(TackySymbol::from("<t>.0")));
+        assert_eq!(actual, expected, "expected:{:#?}\nactual:{:#?}\n", expected, actual);
+    }
+
+    #[test]
+    fn test_emit_tacky_for_post_decrement() {
+        let expr = Expression {
+            location: (0,0).into(),
+            kind: Decrement {
+                is_post: true,
+                e: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: ExpressionKind::Variable("a".to_string()),
+                }),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, actual) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol::from("<t>.0")));
+        let expected = vec![
+            Copy { src: Variable(TackySymbol::from("a")), dst: TackySymbol::from("<t>.0") },
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Subtract,
+                src1: Variable(TackySymbol::from("a")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("a")),
+            }
+        ];
+        assert_eq!(tval, Variable(TackySymbol::from("<t>.0")));
+        assert_eq!(actual, expected, "expected:{:#?}\nactual:{:#?}\n", expected, actual);
+    }
+
+    #[test]
+    fn test_emit_tacky_for_pre_increment() {
+        let expr = Expression {
+            location: (0,0).into(),
+            kind: Increment {
+                is_post: false,
+                e: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: ExpressionKind::Variable("a".to_string()),
+                }),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, actual) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol::from("a")));
+        let expected = vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: Variable(TackySymbol::from("a")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("a")),
+            }
+        ];
+        assert_eq!(tval, Variable(TackySymbol::from("a")));
+        assert_eq!(actual, expected, "expected:{:#?}\nactual:{:#?}\n", expected, actual);
+    }
+
+    #[test]
+    fn test_emit_tacky_for_pre_decrement() {
+        let expr = Expression {
+            location: (0,0).into(),
+            kind: Decrement {
+                is_post: false,
+                e: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: ExpressionKind::Variable("a".to_string()),
+                }),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let (tval, actual) = emit_tacky_for_expression(&mut ctx, &expr).unwrap();
+        assert_eq!(tval, Variable(TackySymbol::from("a")));
+        let expected = vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Subtract,
+                src1: Variable(TackySymbol::from("a")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("a")),
+            }
+        ];
+        assert_eq!(tval, Variable(TackySymbol::from("a")));
+        assert_eq!(actual, expected, "expected:{:#?}\nactual:{:#?}\n", expected, actual);
     }
     
     #[test]
@@ -722,6 +832,15 @@ mod test {
     #[case("unary/not.c")]
     fn test_generation_for_unary_operators(#[case] input_path: &str) {
         run_ir_generation_snapshot_test("unary operators", input_path)
+    }
+
+    #[rstest]
+    #[case("unary/increment.c")]
+    #[case("unary/decrement.c")]
+    #[case("unary/pre_increment.c")]
+    #[case("unary/pre_decrement.c")]
+    fn test_generation_for_increment_and_decrement_operators(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("increment and decrement operators", input_path)
     }
 
     #[rstest]
