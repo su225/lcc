@@ -513,26 +513,6 @@ impl<'a> Parser<'a> {
         let mut left = self.parse_factor()?;
         while let Some(next_token) = self.token_provider.peek() {
             match &next_token {
-                Ok(token) if token.token_type.tag() == TokenTag::OperatorUnaryIncrement => {
-                    self.token_provider.next();
-                    return Ok(Expression {
-                        location: left.location.clone(),
-                        kind: ExpressionKind::Increment {
-                            is_post: true,
-                            e: Box::new(left),
-                        }
-                    })
-                }
-                Ok(token) if token.token_type.tag() == TokenTag::OperatorUnaryDecrement => {
-                    self.token_provider.next();
-                    return Ok(Expression {
-                        location: left.location.clone(),
-                        kind: ExpressionKind::Decrement {
-                            is_post: true,
-                            e: Box::new(left),
-                        }
-                    })
-                }
                 Ok(token) if token.token_type.is_binary_operator() => {
                     let binary_op = self.peek_binary_operator_token()?;
                     let binary_op_precedence = binary_op.precedence();
@@ -577,7 +557,7 @@ impl<'a> Parser<'a> {
 
     fn parse_factor(&mut self) -> Result<Expression, ParserError> {
         let next_token = self.token_provider.peek();
-        match &next_token {
+        let f = match &next_token {
             Some(Ok(Token { token_type, location })) => {
                 let tok_location = location.clone();
                 match token_type {
@@ -590,21 +570,9 @@ impl<'a> Parser<'a> {
                             kind: match unary_op {
                                 UnaryOperator::Complement |
                                 UnaryOperator::Negate |
-                                UnaryOperator::Not => {
-                                    ExpressionKind::Unary(unary_op, Box::new(factor))
-                                }
-                                UnaryOperator::Increment => {
-                                    ExpressionKind::Increment {
-                                        is_post: false,
-                                        e: Box::new(factor),
-                                    }
-                                }
-                                UnaryOperator::Decrement => {
-                                    ExpressionKind::Decrement {
-                                        is_post: false,
-                                        e: Box::new(factor),
-                                    }
-                                }
+                                UnaryOperator::Not => ExpressionKind::Unary(unary_op, Box::new(factor)),
+                                UnaryOperator::Increment => ExpressionKind::Increment { is_post: false, e: Box::new(factor) },
+                                UnaryOperator::Decrement => ExpressionKind::Decrement { is_post: false, e: Box::new(factor) },
                             },
                         })
                     }
@@ -615,12 +583,12 @@ impl<'a> Parser<'a> {
                         Ok(expr)
                     }
                     TokenType::Identifier(identifier) => {
-                        let expr = Expression {
+                        let res = Ok(Expression {
                             location: tok_location,
                             kind: ExpressionKind::Variable(identifier.to_string()),
-                        };
+                        });
                         self.token_provider.next();
-                        Ok(expr)
+                        res
                     }
                     _ => Err(UnexpectedToken {
                         location: location.clone(),
@@ -635,6 +603,31 @@ impl<'a> Parser<'a> {
             }
             Some(Err(e)) => Err(TokenizationError(e.clone())),
             None => Err(UnexpectedEnd(vec![TokenTag::IntConstant])),
+        }?;
+        
+        // Check if we have a postfix increment or decrement operators.
+        // If yes, then the factor previously parsed has to be bound to it
+        let next_token = self.token_provider.peek();
+        match &next_token {
+            None => Ok(f),
+            Some(Ok(Token { token_type, .. })) => {
+                if token_type.tag() == TokenTag::OperatorUnaryIncrement {
+                    self.token_provider.next();
+                    Ok(Expression {
+                        location: f.location.clone(),
+                        kind: ExpressionKind::Increment { is_post: true, e: Box::new(f) },
+                    })    
+                } else if token_type.tag() == TokenTag::OperatorUnaryDecrement {
+                    self.token_provider.next();
+                     Ok(Expression {
+                         location: f.location.clone(),
+                         kind: ExpressionKind::Decrement { is_post: true, e: Box::new(f) },
+                     })
+                } else {
+                    Ok(f)
+                }
+            },
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
         }
     }
 
@@ -733,22 +726,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{
-        BinaryOperator,
-        Block,
-        BlockItem,
-        Declaration,
-        DeclarationKind,
-        Expression,
-        FunctionDefinition,
-        Parser,
-        ParserError,
-        ProgramDefinition,
-        Statement,
-        StatementKind,
-        Symbol,
-        UnaryOperator,
-    };
+    use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -1467,6 +1445,130 @@ mod test {
         run_parse_expression_test_case(ExprTestCase { src, expected });
     }
 
+    #[test]
+    fn test_parse_expression_post_increment() {
+        let src = "a++";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Increment {
+                is_post: true,
+                e: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string())
+                })
+            }
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_post_decrement() {
+        let src = "a--";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Decrement {
+                is_post: true,
+                e: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string())
+                })
+            }
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_pre_decrement() {
+        let src = "--a";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Decrement {
+                is_post: false,
+                e: Box::new(Expression {
+                    location: (1,3).into(),
+                    kind: Variable("a".to_string())
+                })
+            }
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_pre_increment() {
+        let src = "++a";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Increment {
+                is_post: false,
+                e: Box::new(Expression {
+                    location: (1,3).into(),
+                    kind: Variable("a".to_string())
+                })
+            }
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parenthesized_increment_expressions() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "(a)++",
+            expected: Ok(Expression {
+                location: (1,2).into(),
+                kind: Increment {
+                    is_post: true,
+                    e: Box::new(Expression {
+                        location: (1,2).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                },
+            }),
+        });
+        run_parse_expression_test_case(ExprTestCase {
+            src: "++(a)",
+            expected: Ok(Expression {
+                location: (1,1).into(),
+                kind: Increment {
+                    is_post: false,
+                    e: Box::new(Expression {
+                        location: (1,4).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                },
+            }),
+        });
+    }
+
+    #[test]
+    fn test_parenthesized_decrement_expressions() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "(a)--",
+            expected: Ok(Expression {
+                location: (1,2).into(),
+                kind: Decrement {
+                    is_post: true,
+                    e: Box::new(Expression {
+                        location: (1,2).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                },
+            }),
+        });
+        run_parse_expression_test_case(ExprTestCase {
+            src: "--(a)",
+            expected: Ok(Expression {
+                location: (1,1).into(),
+                kind: Decrement {
+                    is_post: false,
+                    e: Box::new(Expression {
+                        location: (1,4).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                },
+            }),
+        });
+    }
+
     struct DeclarationTestCase<'a> {
         src: &'a str,
         expected: Result<Declaration, ParserError>,
@@ -1857,6 +1959,33 @@ mod test {
     #[case("precedence_and_or", "1 && 0 || 1")]          // && before ||
     fn test_should_parse_relational_expressions_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
         run_snapshot_test_for_parse_expression("relational expressions with correct precedence", description, "expr/relational", src);
+    }
+
+    #[rstest]
+    #[case("increment_pre", "++a")]
+    #[case("increment_post", "a++")]
+    #[case("decrement_pre", "--a")]
+    #[case("decrement_post", "a--")]
+    #[case("increment_pre_paren", "++(a)")]
+    #[case("increment_post_paren", "(a)++")]
+    #[case("decrement_pre_paren", "--(a)")]
+    #[case("decrement_post_paren", "(a)--")]
+    #[case("increment_pre_with_unary_not", "!++a")]
+    #[case("increment_post_with_unary_not", "!a++")]
+    #[case("decrement_pre_with_unary_not", "!--a")]
+    #[case("decrement_post_with_unary_not", "!a--")]
+    #[case("increment_pre_with_unary_neg", "-++a")]
+    #[case("increment_post_with_unary_neg", "-a++")]
+    #[case("decrement_pre_with_unary_neg", "-(--a)")] // yeah. ---a is illegal
+    #[case("decrement_post_with_unary_not", "-a--")]
+    #[case("increment_pre_with_unary_complement", "~++a")]
+    #[case("increment_post_with_unary_complement", "~a++")]
+    #[case("decrement_pre_with_unary_complement", "~--a")]
+    #[case("decrement_post_with_unary_complement", "~a--")]
+    #[case("horrible_seq_1", "~a++ + -++a")]
+    #[case("horrible_seq_2", "~-a++ - -~a--")]
+    fn test_should_parse_increment_and_decrement_with_correct_precendence(#[case] description: &str, #[case] src: &str) {
+        run_snapshot_test_for_parse_expression("increment and decrement with correct precedence", description, "expr/incrdecr", src);
     }
 
     fn run_snapshot_test_for_parse_expression(suite_description: &str, description: &str, snapshot_path: &str, src: &str) {
