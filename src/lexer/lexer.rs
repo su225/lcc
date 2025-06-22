@@ -70,6 +70,16 @@ pub enum TokenTag {
     OperatorRelationalGreaterThan,
     OperatorRelationalGreaterThanEqualTo,
     OperatorAssignment,
+    OperatorCompoundAssignmentAdd,
+    OperatorCompoundAssignmentSubtract,
+    OperatorCompoundAssignmentMultiply,
+    OperatorCompoundAssignmentDivide,
+    OperatorCompoundAssignmentModulo,
+    OperatorCompoundAssignmentLeftShift,
+    OperatorCompoundAssignmentRightShift,
+    OperatorCompoundAssignmentBitwiseAnd,
+    OperatorCompoundAssignmentBitwiseOr,
+    OperatorCompoundAssignmentBitwiseXor,
 }
 
 impl Display for TokenTag {
@@ -114,6 +124,16 @@ pub enum TokenType<'a> {
     OperatorRelationalGreaterThanEqualTo,
 
     OperatorAssignment,
+    OperatorCompoundAssignmentAdd,
+    OperatorCompoundAssignmentSubtract,
+    OperatorCompoundAssignmentMultiply,
+    OperatorCompoundAssignmentDivide,
+    OperatorCompoundAssignmentModulo,
+    OperatorCompoundAssignmentLeftShift,
+    OperatorCompoundAssignmentRightShift,
+    OperatorCompoundAssignmentBitwiseAnd,
+    OperatorCompoundAssignmentBitwiseOr,
+    OperatorCompoundAssignmentBitwiseXor,
 }
 
 impl<'a> TokenType<'a> {
@@ -156,6 +176,16 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorRelationalGreaterThanEqualTo => TokenTag::OperatorRelationalGreaterThanEqualTo,
 
             TokenType::OperatorAssignment => TokenTag::OperatorAssignment,
+            TokenType::OperatorCompoundAssignmentAdd => TokenTag::OperatorCompoundAssignmentAdd,
+            TokenType::OperatorCompoundAssignmentSubtract => TokenTag::OperatorCompoundAssignmentSubtract,
+            TokenType::OperatorCompoundAssignmentMultiply => TokenTag::OperatorCompoundAssignmentMultiply,
+            TokenType::OperatorCompoundAssignmentDivide => TokenTag::OperatorCompoundAssignmentDivide,
+            TokenType::OperatorCompoundAssignmentModulo => TokenTag::OperatorCompoundAssignmentModulo,
+            TokenType::OperatorCompoundAssignmentLeftShift => TokenTag::OperatorCompoundAssignmentLeftShift,
+            TokenType::OperatorCompoundAssignmentRightShift => TokenTag::OperatorCompoundAssignmentRightShift,
+            TokenType::OperatorCompoundAssignmentBitwiseAnd => TokenTag::OperatorCompoundAssignmentBitwiseAnd,
+            TokenType::OperatorCompoundAssignmentBitwiseOr => TokenTag::OperatorCompoundAssignmentBitwiseOr,
+            TokenType::OperatorCompoundAssignmentBitwiseXor => TokenTag::OperatorCompoundAssignmentBitwiseXor,
         }
     }
 
@@ -258,6 +288,16 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorRelationalGreaterThan => f.write_str(">"),
             TokenType::OperatorRelationalGreaterThanEqualTo => f.write_str(">="),
             TokenType::OperatorAssignment => f.write_str("="),
+            TokenType::OperatorCompoundAssignmentAdd => f.write_str("+="),
+            TokenType::OperatorCompoundAssignmentSubtract => f.write_str("-="),
+            TokenType::OperatorCompoundAssignmentMultiply => f.write_str("*="),
+            TokenType::OperatorCompoundAssignmentDivide => f.write_str("/="),
+            TokenType::OperatorCompoundAssignmentModulo => f.write_str("%="),
+            TokenType::OperatorCompoundAssignmentLeftShift => f.write_str("<<="),
+            TokenType::OperatorCompoundAssignmentRightShift => f.write_str(">>="),
+            TokenType::OperatorCompoundAssignmentBitwiseAnd => f.write_str("&="),
+            TokenType::OperatorCompoundAssignmentBitwiseOr => f.write_str("|="),
+            TokenType::OperatorCompoundAssignmentBitwiseXor => f.write_str("^="),
         }
     }
 }
@@ -446,6 +486,12 @@ impl<'a> Lexer<'a> {
                                         token_type: TokenType::OperatorUnaryIncrement,
                                         location: start_loc,
                                     }));
+                                } else if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentAdd,
+                                        location: start_loc,
+                                    }));
                                 }
                             }
                             return Ok(Some(Token {
@@ -464,6 +510,12 @@ impl<'a> Lexer<'a> {
                                         token_type: TokenType::OperatorUnaryDecrement,
                                         location: start_loc,
                                     }));
+                                } else if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentSubtract,
+                                        location: start_loc,
+                                    }));
                                 }
                             }
                             return Ok(Some(Token {
@@ -472,12 +524,39 @@ impl<'a> Lexer<'a> {
                             }));
                         }
                         '*' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorAsterisk);
-                            return Ok(Some(token));
+                            let start_loc = self.cur_location;
+                            self.next_char();
+
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentMultiply,
+                                        location: start_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorAsterisk,
+                                location: start_loc,
+                            }))
                         }
                         '%' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorModulo);
-                            return Ok(Some(token));
+                            let start_loc = self.cur_location;
+                            self.next_char();
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentModulo,
+                                        location: start_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorModulo,
+                                location: start_loc,
+                            }));
                         }
                         '!' => {
                             let loc = self.cur_location;
@@ -515,6 +594,13 @@ impl<'a> Lexer<'a> {
                                     self.next_char();
                                     continue;
                                 }
+                                if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentDivide,
+                                        location: div_loc,
+                                    }));
+                                }
                             }
                             return Ok(Some(Token {
                                 token_type: TokenType::OperatorDiv,
@@ -529,6 +615,12 @@ impl<'a> Lexer<'a> {
                                     self.next_char();
                                     return Ok(Some(Token {
                                         token_type: TokenType::OperatorLogicalAnd,
+                                        location: op_loc,
+                                    }));
+                                } else if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentBitwiseAnd,
                                         location: op_loc,
                                     }));
                                 }
@@ -548,6 +640,12 @@ impl<'a> Lexer<'a> {
                                         token_type: TokenType::OperatorLogicalOr,
                                         location: op_loc,
                                     }));
+                                } else if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentBitwiseOr,
+                                        location: op_loc,
+                                    }));
                                 }
                             }
                             return Ok(Some(Token {
@@ -556,8 +654,21 @@ impl<'a> Lexer<'a> {
                             }))
                         }
                         '^' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorBitwiseXor);
-                            return Ok(Some(token));
+                            let xor_loc = self.cur_location;
+                            self.next_char();
+                            if let Some(&nxt) = self.char_stream.peek() {
+                                if nxt == '=' {
+                                    self.next_char();
+                                    return Ok(Some(Token {
+                                        token_type: TokenType::OperatorCompoundAssignmentBitwiseXor,
+                                        location: xor_loc,
+                                    }));
+                                }
+                            }
+                            return Ok(Some(Token {
+                                token_type: TokenType::OperatorBitwiseXor,
+                                location: xor_loc,
+                            }))
                         }
                         '<' => {
                             let loc = self.cur_location;
@@ -566,6 +677,15 @@ impl<'a> Lexer<'a> {
                                 match nxt {
                                     '<' => {
                                         self.next_char();
+                                        if let Some(&nxt2) = self.char_stream.peek() {
+                                            if nxt2 == '=' {
+                                                self.next_char();
+                                                return Ok(Some(Token {
+                                                    token_type: TokenType::OperatorCompoundAssignmentLeftShift,
+                                                    location: loc,
+                                                }));
+                                            }
+                                        }
                                         return Ok(Some(Token {
                                             token_type: TokenType::OperatorLeftShift,
                                             location: loc,
@@ -592,6 +712,15 @@ impl<'a> Lexer<'a> {
                             return match &self.char_stream.peek() {
                                 Some('>') => {
                                     self.next_char();
+                                    if let Some(&nxt2) = self.char_stream.peek() {
+                                        if nxt2 == '=' {
+                                            self.next_char();
+                                            return Ok(Some(Token {
+                                                token_type: TokenType::OperatorCompoundAssignmentRightShift,
+                                                location: loc,
+                                            }));
+                                        }
+                                    }
                                     Ok(Some(Token {
                                         token_type: TokenType::OperatorRightShift,
                                         location: loc,
@@ -941,6 +1070,25 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: OperatorRelationalGreaterThanEqualTo, location: (1, 1).into() },
+        ]));
+    }
+
+    #[rstest]
+    #[case("+=", TokenType::OperatorCompoundAssignmentAdd)]
+    #[case("-=", TokenType::OperatorCompoundAssignmentSubtract)]
+    #[case("*=", TokenType::OperatorCompoundAssignmentMultiply)]
+    #[case("/=", TokenType::OperatorCompoundAssignmentDivide)]
+    #[case("%=", TokenType::OperatorCompoundAssignmentModulo)]
+    #[case("<<=", TokenType::OperatorCompoundAssignmentLeftShift)]
+    #[case(">>=", TokenType::OperatorCompoundAssignmentRightShift)]
+    #[case("&=", TokenType::OperatorCompoundAssignmentBitwiseAnd)]
+    #[case("|=", TokenType::OperatorCompoundAssignmentBitwiseOr)]
+    #[case("^=", TokenType::OperatorCompoundAssignmentBitwiseXor)]
+    fn test_tokenizing_compound_assignment(#[case] source: &str, #[case] token_type: TokenType) {
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type, location: (1, 1).into() },
         ]));
     }
 
