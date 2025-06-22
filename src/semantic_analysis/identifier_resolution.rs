@@ -248,6 +248,24 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                 }?;
                 result
             },
+            ExpressionKind::Increment { is_post, e } => {
+                if !e.kind.is_lvalue_expression() {
+                    return Err(IdentifierResolutionError::LvalueExpected(e.location));
+                }
+                ExpressionKind::Increment {
+                    is_post: is_post.clone(),
+                    e: Box::new(resolve_expression(ctx, e)?),
+                }
+            },
+            ExpressionKind::Decrement { is_post, e } => {
+                if !e.kind.is_lvalue_expression() {
+                    return Err(IdentifierResolutionError::LvalueExpected(e.location));
+                }
+                ExpressionKind::Decrement {
+                    is_post: is_post.clone(),
+                    e: Box::new(resolve_expression(ctx, e)?),
+                }
+            },
         },
     })
 }

@@ -956,6 +956,50 @@ mod test {
         ]));
     }
 
+    #[test]
+    fn test_tokenizing_post_increment() {
+        let source = "a++";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: Identifier("a"), location: (1,1).into() },
+            Token { token_type: OperatorUnaryIncrement, location: (1,2).into() }
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_pre_increment() {
+        let source = "++a";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: OperatorUnaryIncrement, location: (1,1).into() },
+            Token { token_type: Identifier("a"), location: (1,3).into() },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_post_decrement() {
+        let source = "a--";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: Identifier("a"), location: (1,1).into() },
+            Token { token_type: OperatorUnaryDecrement, location: (1,2).into() }
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_pre_decrement() {
+        let source = "--a";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: OperatorUnaryDecrement, location: (1,1).into() },
+            Token { token_type: Identifier("a"), location: (1,3).into() },
+        ]));
+    }
+
     #[rstest]
     #[case("abcde")]
     #[case("abcde123")]

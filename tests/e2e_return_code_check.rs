@@ -42,6 +42,16 @@ fn test_e2e_local_variables(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }
 
+#[rstest]
+#[case("unary/complement.c")]
+#[case("unary/negation.c")]
+#[case("unary/not.c")]
+#[case("unary/decr_statement.c")]
+#[case("unary/incr_statement.c")]
+fn test_e2e_unary_operator(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
 fn run_e2e_against_clang(input_file: &str) {
     println!("current working directory: {}", env::current_dir().unwrap().display());
 

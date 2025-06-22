@@ -76,6 +76,8 @@ impl From<&UnaryOperator> for TackyUnaryOperator {
             UnaryOperator::Complement => TackyUnaryOperator::Complement,
             UnaryOperator::Negate => TackyUnaryOperator::Negate,
             UnaryOperator::Not => TackyUnaryOperator::Not,
+            UnaryOperator::Increment | UnaryOperator::Decrement =>
+                panic!("++ and -- must be desugared before IR generation")
         }
     }
 }
@@ -451,6 +453,46 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             });
             Ok((Variable(final_result), instrs))
         },
+        ExpressionKind::Increment { e, is_post } => {
+            debug_assert!(e.kind.is_lvalue_expression());
+            let (e_tacky, mut instrs) = emit_tacky_for_expression(ctx, e)?;
+            let incr_tacky_instr = Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: e_tacky.clone(),
+                src2: Int32(1),
+                dst: e_tacky.clone(),
+            };
+            // In case of post increment, we have to return the original value
+            // and then increment whatever is left.
+            if *is_post {
+                let tmp_cur_val = ctx.next_temporary_identifier();
+                instrs.push(Copy { dst: tmp_cur_val.clone(), src: e_tacky.clone() });
+                instrs.push(incr_tacky_instr);
+                Ok((Variable(tmp_cur_val), instrs))
+            } else {
+                instrs.push(incr_tacky_instr);
+                Ok((e_tacky, instrs))
+            }
+        }
+        ExpressionKind::Decrement { e, is_post } => {
+            debug_assert!(e.kind.is_lvalue_expression());
+            let (e_tacky, mut instrs) = emit_tacky_for_expression(ctx, e)?;
+            let decr_tacky_instr = Binary {
+                operator: TackyBinaryOperator::Subtract,
+                src1: e_tacky.clone(),
+                src2: Int32(1),
+                dst: e_tacky.clone(),
+            };
+            if *is_post {
+                let tmp_cur_val = ctx.next_temporary_identifier();
+                instrs.push(Copy { dst: tmp_cur_val.clone(), src: e_tacky.clone() });
+                instrs.push(decr_tacky_instr);
+                Ok((Variable(tmp_cur_val), instrs))
+            } else {
+                instrs.push(decr_tacky_instr);
+                Ok((e_tacky, instrs))
+            }
+        }
     }
 }
 

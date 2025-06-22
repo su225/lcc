@@ -10,7 +10,6 @@ use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
-use crate::parser::ExpressionKind::Variable;
 use crate::parser::ParserError::*;
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Clone)]
@@ -26,6 +25,8 @@ pub enum UnaryOperator {
     Complement,
     Negate,
     Not,
+    Increment,
+    Decrement,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -130,12 +131,14 @@ pub enum ExpressionKind {
     Unary(UnaryOperator, Box<Expression>),
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Assignment { lvalue: Box<Expression>, rvalue: Box<Expression> },
+    Increment { is_post: bool, e: Box<Expression> },
+    Decrement { is_post: bool, e: Box<Expression> },
 }
 
 impl ExpressionKind {
     pub fn is_lvalue_expression(&self) -> bool {
         match self {
-            Variable(_) => true,
+            ExpressionKind::Variable(_) => true,
             _ => false,
         }
     }
@@ -510,6 +513,26 @@ impl<'a> Parser<'a> {
         let mut left = self.parse_factor()?;
         while let Some(next_token) = self.token_provider.peek() {
             match &next_token {
+                Ok(token) if token.token_type.tag() == TokenTag::OperatorUnaryIncrement => {
+                    self.token_provider.next();
+                    return Ok(Expression {
+                        location: left.location.clone(),
+                        kind: ExpressionKind::Increment {
+                            is_post: true,
+                            e: Box::new(left),
+                        }
+                    })
+                }
+                Ok(token) if token.token_type.tag() == TokenTag::OperatorUnaryDecrement => {
+                    self.token_provider.next();
+                    return Ok(Expression {
+                        location: left.location.clone(),
+                        kind: ExpressionKind::Decrement {
+                            is_post: true,
+                            e: Box::new(left),
+                        }
+                    })
+                }
                 Ok(token) if token.token_type.is_binary_operator() => {
                     let binary_op = self.peek_binary_operator_token()?;
                     let binary_op_precedence = binary_op.precedence();
@@ -564,7 +587,25 @@ impl<'a> Parser<'a> {
                         let factor = self.parse_factor()?;
                         Ok(Expression {
                             location: tok_location,
-                            kind: ExpressionKind::Unary(unary_op, Box::new(factor)),
+                            kind: match unary_op {
+                                UnaryOperator::Complement |
+                                UnaryOperator::Negate |
+                                UnaryOperator::Not => {
+                                    ExpressionKind::Unary(unary_op, Box::new(factor))
+                                }
+                                UnaryOperator::Increment => {
+                                    ExpressionKind::Increment {
+                                        is_post: false,
+                                        e: Box::new(factor),
+                                    }
+                                }
+                                UnaryOperator::Decrement => {
+                                    ExpressionKind::Decrement {
+                                        is_post: false,
+                                        e: Box::new(factor),
+                                    }
+                                }
+                            },
                         })
                     }
                     TokenType::OpenParentheses => {
@@ -576,7 +617,7 @@ impl<'a> Parser<'a> {
                     TokenType::Identifier(identifier) => {
                         let expr = Expression {
                             location: tok_location,
-                            kind: Variable(identifier.to_string()),
+                            kind: ExpressionKind::Variable(identifier.to_string()),
                         };
                         self.token_provider.next();
                         Ok(expr)
@@ -606,6 +647,8 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorUnaryComplement => Ok(UnaryOperator::Complement),
                     TokenType::OperatorMinus => Ok(UnaryOperator::Negate),
                     TokenType::OperatorUnaryLogicalNot => Ok(UnaryOperator::Not),
+                    TokenType::OperatorUnaryIncrement => Ok(UnaryOperator::Increment),
+                    TokenType::OperatorUnaryDecrement => Ok(UnaryOperator::Decrement),
                     tok_type => Err(ExpectedUnaryOperator { location, actual_token: tok_type.tag() })
                 }
             }
