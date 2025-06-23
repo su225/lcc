@@ -289,7 +289,7 @@ mod test {
     use std::collections::HashSet;
     use indoc::indoc;
     use crate::lexer::Lexer;
-    use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, FunctionDefinition, Parser, ProgramDefinition, Statement, StatementKind};
+    use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, Parser, ProgramDefinition, Statement, StatementKind};
     use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
 
     #[test]
@@ -525,7 +525,10 @@ mod test {
 
         let resolved = resolve_program(parsed.unwrap());
         assert!(resolved.is_ok());
-        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+
+        let resolved_program = resolved.unwrap();
+        assert!(program_identifiers_are_unique(&resolved_program));
+        assert!(desugared_compound_assignment(&resolved_program));
     }
 
     #[test]
@@ -549,7 +552,10 @@ mod test {
 
         let resolved = resolve_program(parsed.unwrap());
         assert!(resolved.is_ok());
-        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+
+        let resolved_program = resolved.unwrap();
+        assert!(program_identifiers_are_unique(&resolved_program));
+        assert!(desugared_compound_assignment(&resolved_program));
     }
 
     #[test]
@@ -571,7 +577,10 @@ mod test {
         assert!(parsed.is_ok());
         let resolved = resolve_program(parsed.unwrap());
         assert!(resolved.is_ok(), "{:#?}", resolved);
-        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+
+        let resolved_program = resolved.unwrap();
+        assert!(program_identifiers_are_unique(&resolved_program));
+        assert!(desugared_compound_assignment(&resolved_program));
     }
 
     #[test]
@@ -597,7 +606,74 @@ mod test {
         assert!(parsed.is_ok());
         let resolved = resolve_program(parsed.unwrap());
         assert!(resolved.is_ok(), "{:#?}", resolved);
-        assert!(program_identifiers_are_unique(&resolved.unwrap()));
+
+        let resolved_program = resolved.unwrap();
+        assert!(program_identifiers_are_unique(&resolved_program));
+        assert!(desugared_compound_assignment(&resolved_program));
+    }
+
+    #[test]
+    fn test_should_desugar_compound_assignment_add() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            a += 10;
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved = resolve_program(parsed.unwrap());
+        assert!(resolved.is_ok(), "{:#?}", resolved);
+
+        let resolved_program = resolved.unwrap();
+        assert!(program_identifiers_are_unique(&resolved_program));
+        assert!(desugared_compound_assignment(&resolved_program));
+    }
+    
+    fn desugared_compound_assignment(prog: &ProgramDefinition) -> bool {
+        prog.functions.iter().all(|f| desugared_compound_assignment_in_functions(f))
+    }
+
+    fn desugared_compound_assignment_in_functions(func: &FunctionDefinition) -> bool {
+        desugared_compound_assignment_in_blocks(&func.body)
+    }
+
+    fn desugared_compound_assignment_in_blocks(block: &Block) -> bool {
+        block.items.iter().all(|blk_item| desugared_compound_assignment_in_block_items(blk_item))
+    }
+
+    fn desugared_compound_assignment_in_block_items(block_item: &BlockItem) -> bool {
+        match block_item {
+            BlockItem::Statement(stmt) => desugared_compound_assignment_in_statement(stmt),
+            BlockItem::Declaration(decl) => desugared_compound_assignment_in_declaration(decl),
+        }
+    }
+
+    fn desugared_compound_assignment_in_statement(stmt: &Statement) -> bool {
+        match &stmt.kind {
+            StatementKind::Return(ret_expr) => desugared_compound_assignment_in_expression(ret_expr),
+            StatementKind::Expression(expr) => desugared_compound_assignment_in_expression(expr),
+            StatementKind::SubBlock(blk) => desugared_compound_assignment_in_blocks(blk),
+            StatementKind::Null => true,
+        }
+    }
+
+    fn desugared_compound_assignment_in_declaration(decl: &Declaration) -> bool {
+        match &decl.kind {
+            DeclarationKind::Declaration { init_expression: Some(init_expr), .. } =>
+                desugared_compound_assignment_in_expression(init_expr),
+            _ => false,
+        }
+    }
+
+    fn desugared_compound_assignment_in_expression(expr: &Expression) -> bool {
+        match &expr.kind {
+            ExpressionKind::Assignment { op: Some(_), .. } => false,
+            _ => true,
+        }
     }
 
     fn program_identifiers_are_unique(prog: &ProgramDefinition) -> bool {

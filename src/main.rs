@@ -133,6 +133,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
     OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(true)
         .open(&output_asm_file)
         .and_then(|f| asmgen::emit_assembly(asm_code, f))
         .map_err(|e| CompilerDriverError::CodeEmitError(output_asm_file.clone(), e))?;

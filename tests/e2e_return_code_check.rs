@@ -76,8 +76,8 @@ fn run_e2e_against_clang(input_file: &str) {
     println!("compile and run with lcc (our compiler)");
     let lcc_res = compile_and_run_with_learning_c_compiler(input_file);
 
-    println!("clang output: {:?}", clang_res.clone());
-    println!("lcc output: {:?}", lcc_res.clone());
+    println!("CLANG STDOUT:\n {}", clang_res.clone().compile_stdout);
+    println!("LCC STDOUT:\n {}", lcc_res.clone().compile_stdout);
     assert_eq!(clang_res.exit_code, lcc_res.exit_code,
                "{}: clang and lcc generated binary execution should return the same code. clang={:?}, lcc={:?}",
                input_file, clang_res, lcc_res);
@@ -121,6 +121,7 @@ fn compile_and_run_with_learning_c_compiler(input_file: &str) -> CompileRunResul
     let mut compiler_bin = Command::new(cargo_bin("lcc"));
     let compiler_cmd = compiler_bin
         .arg(&input_path)
+        // .arg("--emit-assembly")
         .arg("-o").arg(&binary_path);
     println!("running command: {:?}", &compiler_cmd);
     let compiler_output = compiler_cmd.output().unwrap();
