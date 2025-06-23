@@ -13,6 +13,9 @@ pub enum KeywordIdentifier {
     TypeInt,
     TypeVoid,
     Return,
+
+    If,
+    Else,
 }
 
 impl Radix {
@@ -80,6 +83,8 @@ pub enum TokenTag {
     OperatorCompoundAssignmentBitwiseAnd,
     OperatorCompoundAssignmentBitwiseOr,
     OperatorCompoundAssignmentBitwiseXor,
+    OperatorTernaryThen,
+    OperatorTernaryElse,
 }
 
 impl Display for TokenTag {
@@ -134,6 +139,9 @@ pub enum TokenType<'a> {
     OperatorCompoundAssignmentBitwiseAnd,
     OperatorCompoundAssignmentBitwiseOr,
     OperatorCompoundAssignmentBitwiseXor,
+
+    OperatorTernaryThen,
+    OperatorTernaryElse,
 }
 
 impl<'a> TokenType<'a> {
@@ -186,6 +194,9 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorCompoundAssignmentBitwiseAnd => TokenTag::OperatorCompoundAssignmentBitwiseAnd,
             TokenType::OperatorCompoundAssignmentBitwiseOr => TokenTag::OperatorCompoundAssignmentBitwiseOr,
             TokenType::OperatorCompoundAssignmentBitwiseXor => TokenTag::OperatorCompoundAssignmentBitwiseXor,
+
+            TokenType::OperatorTernaryThen => TokenTag::OperatorTernaryThen,
+            TokenType::OperatorTernaryElse => TokenTag::OperatorTernaryElse,
         }
     }
 
@@ -253,6 +264,9 @@ static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
         ("int", KeywordIdentifier::TypeInt),
         ("void", KeywordIdentifier::TypeVoid),
         ("return", KeywordIdentifier::Return),
+
+        ("if", KeywordIdentifier::If),
+        ("else", KeywordIdentifier::Else),
     ])
 });
 
@@ -261,6 +275,9 @@ static KEYWORD_STRINGS: Lazy<HashMap<KeywordIdentifier, &'static str>> = Lazy::n
         (KeywordIdentifier::TypeInt, "int"),
         (KeywordIdentifier::TypeVoid, "void"),
         (KeywordIdentifier::Return, "return"),
+
+        (KeywordIdentifier::If, "if"),
+        (KeywordIdentifier::Else, "else"),
     ])
 });
 
@@ -308,6 +325,8 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorCompoundAssignmentBitwiseAnd => f.write_str("&="),
             TokenType::OperatorCompoundAssignmentBitwiseOr => f.write_str("|="),
             TokenType::OperatorCompoundAssignmentBitwiseXor => f.write_str("^="),
+            TokenType::OperatorTernaryThen => f.write_str("?"),
+            TokenType::OperatorTernaryElse => f.write_str(":"),
         }
     }
 }
@@ -766,6 +785,14 @@ impl<'a> Lexer<'a> {
                                 }))
                             }
                         }
+                        '?' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorTernaryThen);
+                            return Ok(Some(token));
+                        }
+                        ':' => {
+                            let token = self.tokenize_single_char(TokenType::OperatorTernaryElse);
+                            return Ok(Some(token));
+                        }
                         '0'..='9' => {
                             let token = self.tokenize_integer_constant()?;
                             return Ok(Some(token));
@@ -1080,6 +1107,26 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
             Token { token_type: OperatorRelationalGreaterThanEqualTo, location: (1, 1).into() },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_ternary_then() {
+        let source = "?";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: OperatorTernaryThen, location: (1, 1).into() },
+        ]));
+    }
+
+    #[test]
+    fn test_tokenizing_ternary_else() {
+        let source = "?";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![
+            Token { token_type: OperatorTernaryElse, location: (1, 1).into() },
         ]));
     }
 
