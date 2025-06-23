@@ -43,6 +43,21 @@ fn test_e2e_local_variables(#[case] input_file: &str) {
 }
 
 #[rstest]
+#[case("compound_assign/add.c")]
+#[case("compound_assign/subtract.c")]
+#[case("compound_assign/multiply.c")]
+#[case("compound_assign/divide.c")]
+#[case("compound_assign/modulo.c")]
+#[case("compound_assign/bitwise_and.c")]
+#[case("compound_assign/bitwise_or.c")]
+#[case("compound_assign/bitwise_xor.c")]
+#[case("compound_assign/left_shift.c")]
+#[case("compound_assign/right_shift.c")]
+fn test_e2e_compound_assignment(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
+#[rstest]
 #[case("unary/complement.c")]
 #[case("unary/negation.c")]
 #[case("unary/not.c")]
