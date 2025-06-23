@@ -160,6 +160,7 @@ impl From<&BinaryOperator> for TackyBinaryOperator {
             BinaryOperator::GreaterThanOrEqual => TackyBinaryOperator::GreaterOrEqual,
 
             BinaryOperator::Assignment => panic!("Assignment cannot be translated as binary operator"),
+            BinaryOperator::CompoundAssignment(_) => panic!("Compound assignment operator cannot be translated as binary operator"),
         }
     }
 }
@@ -440,7 +441,8 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             });
             Ok((result, tacky_instrs))
         },
-        ExpressionKind::Assignment { lvalue, rvalue} => {
+        ExpressionKind::Assignment { lvalue, rvalue, op} => {
+            debug_assert!(op.is_none(), "compound assignment not desugared before IR generation");
             debug_assert!(lvalue.kind.is_lvalue_expression());
             let (rhs_tacky, mut instrs) = emit_tacky_for_expression(ctx, rvalue)?;
             let final_result = match &lvalue.kind {
@@ -788,6 +790,7 @@ mod test {
                     location: (0,0).into(),
                     kind: IntConstant("10".to_string(), Decimal),
                 }),
+                op: None,
             },
         };
         let mut ctx = TackyContext::new();

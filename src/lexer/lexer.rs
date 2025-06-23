@@ -220,7 +220,17 @@ impl<'a> TokenType<'a> {
             | TokenType::OperatorRelationalLessThanEqualTo
             | TokenType::OperatorLogicalAnd
             | TokenType::OperatorLogicalOr
-            | TokenType::OperatorAssignment => true,
+            | TokenType::OperatorAssignment
+            | TokenType::OperatorCompoundAssignmentAdd
+            | TokenType::OperatorCompoundAssignmentSubtract
+            | TokenType::OperatorCompoundAssignmentMultiply
+            | TokenType::OperatorCompoundAssignmentDivide
+            | TokenType::OperatorCompoundAssignmentModulo
+            | TokenType::OperatorCompoundAssignmentLeftShift
+            | TokenType::OperatorCompoundAssignmentRightShift
+            | TokenType::OperatorCompoundAssignmentBitwiseXor
+            | TokenType::OperatorCompoundAssignmentBitwiseOr
+            | TokenType::OperatorCompoundAssignmentBitwiseAnd => true,
             _ => false,
         }
     }

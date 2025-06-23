@@ -61,7 +61,41 @@ pub enum BinaryOperator {
     GreaterThanOrEqual,
 
     Assignment,
+    CompoundAssignment(CompoundAssignmentType),
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompoundAssignmentType {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    LeftShift,
+    RightShift,
+}
+
+impl Into<BinaryOperator> for CompoundAssignmentType {
+    fn into(self) -> BinaryOperator {
+        match self {
+            CompoundAssignmentType::Add => BinaryOperator::Add,
+            CompoundAssignmentType::Subtract => BinaryOperator::Subtract,
+            CompoundAssignmentType::Multiply => BinaryOperator::Multiply,
+            CompoundAssignmentType::Divide => BinaryOperator::Divide,
+            CompoundAssignmentType::Modulo => BinaryOperator::Modulo,
+            CompoundAssignmentType::BitwiseAnd => BinaryOperator::BitwiseAnd,
+            CompoundAssignmentType::BitwiseOr => BinaryOperator::BitwiseOr,
+            CompoundAssignmentType::BitwiseXor => BinaryOperator::BitwiseXor,
+            CompoundAssignmentType::LeftShift => BinaryOperator::LeftShift,
+            CompoundAssignmentType::RightShift => BinaryOperator::RightShift,
+        }
+    }
+}
+
 
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Add, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -90,7 +124,8 @@ impl BinaryOperator {
             | BinaryOperator::GreaterThan
             | BinaryOperator::GreaterThanOrEqual => BinaryOperatorAssociativity::Left,
 
-            BinaryOperator::Assignment => BinaryOperatorAssociativity::Right,
+            BinaryOperator::Assignment
+            | BinaryOperator::CompoundAssignment(_) => BinaryOperatorAssociativity::Right,
         }
     }
 
@@ -118,7 +153,8 @@ impl BinaryOperator {
             BinaryOperator::And => BinaryOperatorPrecedence(30),
             BinaryOperator::Or => BinaryOperatorPrecedence(28),
 
-            BinaryOperator::Assignment => BinaryOperatorPrecedence(10),
+            BinaryOperator::Assignment
+            | BinaryOperator::CompoundAssignment(_) => BinaryOperatorPrecedence(10),
         }
     }
 }
@@ -130,7 +166,7 @@ pub enum ExpressionKind {
     Variable(String),
     Unary(UnaryOperator, Box<Expression>),
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
-    Assignment { lvalue: Box<Expression>, rvalue: Box<Expression> },
+    Assignment { lvalue: Box<Expression>, rvalue: Box<Expression>, op: Option<CompoundAssignmentType> },
     Increment { is_post: bool, e: Box<Expression> },
     Decrement { is_post: bool, e: Box<Expression> },
 }
@@ -530,10 +566,18 @@ impl<'a> Parser<'a> {
                     };
                     let rhs = self.parse_expression_with_precedence(next_min_precedence)?;
                     let left_loc = left.location.clone();
-                    let expr_kind = if binary_op == BinaryOperator::Assignment {
-                        ExpressionKind::Assignment { lvalue: Box::new(left), rvalue: Box::new(rhs) }
-                    } else {
-                        ExpressionKind::Binary(binary_op, Box::new(left), Box::new(rhs))
+                    let expr_kind = match binary_op {
+                        BinaryOperator::Assignment => ExpressionKind::Assignment {
+                            lvalue: Box::new(left),
+                            rvalue: Box::new(rhs),
+                            op: None,
+                        },
+                        BinaryOperator::CompoundAssignment(cat) => ExpressionKind::Assignment {
+                            lvalue: Box::new(left),
+                            rvalue: Box::new(rhs),
+                            op: Some(cat),
+                        },
+                        op => ExpressionKind::Binary(op, Box::new(left), Box::new(rhs))
                     };
                     left = Expression {
                         location: left_loc,
@@ -675,6 +719,16 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorRelationalLessThan => Ok(BinaryOperator::LessThan),
                     TokenType::OperatorRelationalLessThanEqualTo => Ok(BinaryOperator::LessThanOrEqual),
                     TokenType::OperatorAssignment => Ok(BinaryOperator::Assignment),
+                    TokenType::OperatorCompoundAssignmentAdd => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Add)),
+                    TokenType::OperatorCompoundAssignmentSubtract => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Subtract)),
+                    TokenType::OperatorCompoundAssignmentMultiply => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Multiply)),
+                    TokenType::OperatorCompoundAssignmentDivide => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Divide)),
+                    TokenType::OperatorCompoundAssignmentModulo => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Modulo)),
+                    TokenType::OperatorCompoundAssignmentLeftShift => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::LeftShift)),
+                    TokenType::OperatorCompoundAssignmentRightShift => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::RightShift)),
+                    TokenType::OperatorCompoundAssignmentBitwiseAnd => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::BitwiseAnd)),
+                    TokenType::OperatorCompoundAssignmentBitwiseOr => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::BitwiseOr)),
+                    TokenType::OperatorCompoundAssignmentBitwiseXor => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::BitwiseXor)),
                     tok_type => Err(ExpectedBinaryOperator { location: location.clone(), actual_token: tok_type.tag() })
                 }
             }
@@ -726,7 +780,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -944,6 +998,7 @@ mod test {
                         location: (1, 5).into(),
                         kind: IntConstant("10".to_string(), Decimal),
                     }),
+                    op: None,
                 },
             }),
         });
@@ -1380,6 +1435,7 @@ mod test {
                     location: (1, 3).into(),
                     kind: IntConstant("10".to_string(), Decimal),
                 }),
+                op: None,
             },
         });
         run_parse_expression_test_case(ExprTestCase { src, expected });
@@ -1406,8 +1462,10 @@ mod test {
                             location: (1, 5).into(),
                             kind: IntConstant("10".to_string(), Decimal),
                         }),
+                        op: None,
                     },
                 }),
+                op: None,
             },
         });
         run_parse_expression_test_case(ExprTestCase { src, expected });
@@ -1479,6 +1537,206 @@ mod test {
                     kind: IntConstant("2".to_string(), Decimal),
                 }),
             ),
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_add() {
+        let src = "a += b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::Add),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_subtract() {
+        let src = "a -= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::Subtract),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_multiply() {
+        let src = "a *= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::Multiply),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_divide() {
+        let src = "a /= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::Divide),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_modulo() {
+        let src = "a %= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::Modulo),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_bitwise_and() {
+        let src = "a &= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::BitwiseAnd),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_bitwise_or() {
+        let src = "a |= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::BitwiseOr),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_bitwise_xor() {
+        let src = "a ^= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,6).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::BitwiseXor),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_left_shift() {
+        let src = "a <<= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,7).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::LeftShift),
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_expression_compound_assignment_right_shift() {
+        let src = "a >>= b";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: Assignment {
+                lvalue: Box::new(Expression {
+                    location: (1,1).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                rvalue: Box::new(Expression {
+                    location: (1,7).into(),
+                    kind: Variable("b".to_string()),
+                }),
+                op: Some(CompoundAssignmentType::RightShift),
+            },
         });
         run_parse_expression_test_case(ExprTestCase { src, expected });
     }
@@ -1760,6 +2018,7 @@ mod test {
                                 location: (4, 9).into(),
                                 kind: IntConstant("10".to_string(), Decimal),
                             }),
+                            op: None,
                         },
                     }),
                 }),
@@ -1847,6 +2106,7 @@ mod test {
                                                 }),
                                             ),
                                         }),
+                                        op: None,
                                     },
                                 }),
                             }),
@@ -1997,6 +2257,23 @@ mod test {
     #[case("precedence_and_or", "1 && 0 || 1")]          // && before ||
     fn test_should_parse_relational_expressions_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
         run_snapshot_test_for_parse_expression("relational expressions with correct precedence", description, "expr/relational", src);
+    }
+
+    #[rstest]
+    #[case("assignment_simple", "a = 1")]
+    #[case("assignment_multi", "a = b = 10")]
+    #[case("compound_assign_add", "a += 10")]
+    #[case("compound_assign_subtract", "a -= 10")]
+    #[case("compound_assign_multiply", "a *= 10")]
+    #[case("compound_assign_divide", "a /= 10")]
+    #[case("compound_assign_modulo", "a %= 10")]
+    #[case("compound_assign_left_shift", "a <<= 2")]
+    #[case("compound_assign_right_shift", "a >>= 2")]
+    #[case("compound_assign_bitwise_and", "a &= 10")]
+    #[case("compound_assign_bitwise_or", "a |= 10")]
+    #[case("compound_assign_bitwise_xor", "a ^= 10")]
+    fn test_should_parse_assignment_operator_with_correct_precedence(#[case] description: &str, #[case] src: &str) {
+        run_snapshot_test_for_parse_expression("assignment expression with correct precedence", description, "expr/assignment", src);
     }
 
     #[rstest]
@@ -2227,6 +2504,26 @@ mod test {
     #[case("a = b = c", "a = (b = c)")]
     #[case("a = b + 10", "a = (b + 10)")]
     #[case("a = b = c = d + 10", "a = (b = (c = (d + 10)))")]
+    #[case("a += b += c", "a += (b += c)")]
+    #[case("a -= b -= c", "a -= (b -= c)")]
+    #[case("a *= b *= c", "a *= (b *= c)")]
+    #[case("a /= b /= c", "a /= (b /= c)")]
+    #[case("a %= b %= c", "a %= (b %= c)")]
+    #[case("a &= b &= c", "a &= (b &= c)")]
+    #[case("a |= b |= c", "a |= (b |= c)")]
+    #[case("a ^= b ^= c", "a ^= (b ^= c)")]
+    #[case("a >>= b >>= c", "a >>= (b >>= c)")]
+    #[case("a <<= b <<= c", "a <<= (b <<= c)")]
+    #[case("a += b + 10", "a += (b + 10)")]
+    #[case("a -= b + 10", "a -= (b + 10)")]
+    #[case("a *= b + 10", "a *= (b + 10)")]
+    #[case("a /= b + 10", "a /= (b + 10)")]
+    #[case("a %= b + 10", "a %= (b + 10)")]
+    #[case("a <<= b + 10", "a <<= (b + 10)")]
+    #[case("a >>= b + 10", "a >>= (b + 10)")]
+    #[case("a &= b + 10", "a &= (b + 10)")]
+    #[case("a |= b + 10", "a |= (b + 10)")]
+    #[case("a ^= b + 10", "a ^= (b + 10)")]
     fn test_assignment_operator_precedence_and_associativity(#[case] src1: &str, #[case] src2: &str) {
         run_expression_equivalence_test(src1, src2);
     }
@@ -2255,10 +2552,11 @@ mod test {
             (Binary(binop1, op11, op12), Binary(binop2, op21, op22)) => binop1 == binop2
                 && is_equivalent_expression(&*op11, &*op21)
                 && is_equivalent_expression(&*op12, &*op22),
-            (Assignment { lvalue: lv1, rvalue: rv1 },
-                Assignment { lvalue: lv2, rvalue: rv2 }) =>
+            (Assignment { lvalue: lv1, rvalue: rv1, op: op1 },
+                Assignment { lvalue: lv2, rvalue: rv2, op: op2 }) =>
                 is_equivalent_expression(&*lv1, &*lv2)
-                    && is_equivalent_expression(&*rv1, &*rv2),
+                    && is_equivalent_expression(&*rv1, &*rv2)
+                    && op1 == op2,
             _ => false,
         }
     }

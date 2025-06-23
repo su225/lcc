@@ -90,6 +90,7 @@ functions:
                                   int_constant:
                                     - "20"
                                     - decimal
+                              op: ~
                   - statement:
                       location:
                         line: 5
@@ -124,6 +125,7 @@ functions:
                                         column: 17
                                       kind:
                                         variable: b
+                              op: ~
         - statement:
             location:
               line: 7

@@ -1,0 +1,26 @@
+---
+source: src/parser/parser.rs
+description: assignment expression with correct precedence
+expression: actual.unwrap()
+info: a += 10
+---
+location:
+  line: 1
+  column: 1
+kind:
+  assignment:
+    lvalue:
+      location:
+        line: 1
+        column: 1
+      kind:
+        variable: a
+    rvalue:
+      location:
+        line: 1
+        column: 6
+      kind:
+        int_constant:
+          - "10"
+          - decimal
+    op: add

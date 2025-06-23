@@ -235,15 +235,29 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                 let resolved_right_oper = resolve_expression(ctx, right_oper)?;
                 ExpressionKind::Binary(*binary_op, Box::new(resolved_left_oper), Box::new(resolved_right_oper))
             },
-            ExpressionKind::Assignment { lvalue, rvalue } => {
+            ExpressionKind::Assignment { lvalue, rvalue, op } => {
                 let result = if !lvalue.kind.is_lvalue_expression() {
                     Err(IdentifierResolutionError::LvalueExpected(loc.clone()))
                 } else {
-                    let resolved_lhs = resolve_expression(ctx, lvalue)?;
-                    let resolved_rhs = resolve_expression(ctx, rvalue)?;
+                    let resolved_rhs = {
+                        let raw_rhs = resolve_expression(ctx, rvalue)?;
+                        let rhs_loc = raw_rhs.location.clone();
+                        match op {
+                            None => raw_rhs,
+                            Some(cat) => {
+                                // todo: clean up double resolution of the same lvalue expression
+                                //  This is done this way to make borrow-checker happy and not to
+                                //  implement Clone on Expression type.
+                                let desugared_rhs = ExpressionKind::Binary(
+                                    (*cat).into(), Box::new(resolve_expression(ctx, lvalue)?), Box::new(raw_rhs));
+                                Expression { location: rhs_loc, kind: desugared_rhs }
+                            },
+                        }
+                    };
                     Ok(ExpressionKind::Assignment {
-                        lvalue: Box::new(resolved_lhs),
+                        lvalue: Box::new(resolve_expression(ctx, lvalue)?),
                         rvalue: Box::new(resolved_rhs),
+                        op: None,
                     })
                 }?;
                 result
