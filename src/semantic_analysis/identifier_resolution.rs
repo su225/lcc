@@ -281,6 +281,7 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                     e: Box::new(resolve_expression(ctx, e)?),
                 }
             },
+            ExpressionKind::Conditional { .. } => todo!("implement identifier resolution and desugar for ternary")
         },
     })
 }

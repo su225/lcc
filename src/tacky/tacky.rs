@@ -161,6 +161,7 @@ impl From<&BinaryOperator> for TackyBinaryOperator {
 
             BinaryOperator::Assignment => panic!("Assignment cannot be translated as binary operator"),
             BinaryOperator::CompoundAssignment(_) => panic!("Compound assignment operator cannot be translated as binary operator"),
+            BinaryOperator::TernaryThen => panic!("Ternary then cannot be translated as binary operator")
         }
     }
 }
@@ -496,6 +497,7 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
                 Ok((e_tacky, instrs))
             }
         }
+        ExpressionKind::Conditional { .. } => todo!("implement tacky emission for ?:")
     }
 }
 

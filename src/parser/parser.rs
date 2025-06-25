@@ -10,6 +10,7 @@ use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
+use crate::parser::ExpressionKind::Conditional;
 use crate::parser::ParserError::*;
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Clone)]
@@ -62,6 +63,7 @@ pub enum BinaryOperator {
 
     Assignment,
     CompoundAssignment(CompoundAssignmentType),
+    TernaryThen, // actually a ternary operator
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize)]
@@ -125,6 +127,7 @@ impl BinaryOperator {
             | BinaryOperator::GreaterThanOrEqual => BinaryOperatorAssociativity::Left,
 
             BinaryOperator::Assignment
+            | BinaryOperator::TernaryThen
             | BinaryOperator::CompoundAssignment(_) => BinaryOperatorAssociativity::Right,
         }
     }
@@ -153,6 +156,8 @@ impl BinaryOperator {
             BinaryOperator::And => BinaryOperatorPrecedence(30),
             BinaryOperator::Or => BinaryOperatorPrecedence(28),
 
+            BinaryOperator::TernaryThen => BinaryOperatorPrecedence(15),
+
             BinaryOperator::Assignment
             | BinaryOperator::CompoundAssignment(_) => BinaryOperatorPrecedence(10),
         }
@@ -166,6 +171,11 @@ pub enum ExpressionKind {
     Variable(String),
     Unary(UnaryOperator, Box<Expression>),
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
+    Conditional {
+        condition: Box<Expression>,
+        then_expr: Box<Expression>,
+        else_expr: Box<Expression>,
+    },
     Assignment { lvalue: Box<Expression>, rvalue: Box<Expression>, op: Option<CompoundAssignmentType> },
     Increment { is_post: bool, e: Box<Expression> },
     Decrement { is_post: bool, e: Box<Expression> },
@@ -593,6 +603,22 @@ impl<'a> Parser<'a> {
             match &next_token {
                 Ok(token) if token.token_type.is_binary_operator() => {
                     let binary_op = self.peek_binary_operator_token()?;
+                    let left_loc = left.location.clone();
+                    if binary_op == BinaryOperator::TernaryThen {
+                        self.token_provider.next();
+                        let then_expr = self.parse_expression()?;
+                        self.expect_token_with_tag(TokenTag::OperatorTernaryElse)?;
+                        let else_expr = self.parse_expression()?;
+                        left = Expression {
+                            location: left_loc,
+                            kind: Conditional {
+                                condition: Box::new(left),
+                                then_expr: Box::new(then_expr),
+                                else_expr: Box::new(else_expr),
+                            },
+                        };
+                        continue
+                    }
                     let binary_op_precedence = binary_op.precedence();
                     let binary_op_associativity = binary_op.associativity();
                     if binary_op_precedence < min_precedence {
@@ -607,7 +633,6 @@ impl<'a> Parser<'a> {
                         BinaryOperatorAssociativity::Right => binary_op_precedence,
                     };
                     let rhs = self.parse_expression_with_precedence(next_min_precedence)?;
-                    let left_loc = left.location.clone();
                     let expr_kind = match binary_op {
                         BinaryOperator::Assignment => ExpressionKind::Assignment {
                             lvalue: Box::new(left),
@@ -760,6 +785,7 @@ impl<'a> Parser<'a> {
                     TokenType::OperatorRelationalGreaterThanEqualTo => Ok(BinaryOperator::GreaterThanOrEqual),
                     TokenType::OperatorRelationalLessThan => Ok(BinaryOperator::LessThan),
                     TokenType::OperatorRelationalLessThanEqualTo => Ok(BinaryOperator::LessThanOrEqual),
+                    TokenType::OperatorTernaryThen => Ok(BinaryOperator::TernaryThen),
                     TokenType::OperatorAssignment => Ok(BinaryOperator::Assignment),
                     TokenType::OperatorCompoundAssignmentAdd => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Add)),
                     TokenType::OperatorCompoundAssignmentSubtract => Ok(BinaryOperator::CompoundAssignment(CompoundAssignmentType::Subtract)),

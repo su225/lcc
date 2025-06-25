@@ -231,6 +231,7 @@ impl<'a> TokenType<'a> {
             | TokenType::OperatorRelationalLessThanEqualTo
             | TokenType::OperatorLogicalAnd
             | TokenType::OperatorLogicalOr
+            | TokenType::OperatorTernaryThen
             | TokenType::OperatorAssignment
             | TokenType::OperatorCompoundAssignmentAdd
             | TokenType::OperatorCompoundAssignmentSubtract
