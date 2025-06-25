@@ -2999,6 +2999,22 @@ mod test {
         run_expression_equivalence_test(src1, src2);
     }
 
+    #[rstest]
+    #[case("a ? b : c", "a ? (b) : (c)")]
+    #[case("a && b ? c : d", "(a && b) ? (c) : (d)")]
+    #[case("a && b ? c + d : c - d", "(a && b)?(c+d):(c-d)")]
+    #[case("a = b ? 1 : 2", "a = (b ? 1 : 2)")]
+    #[case("a ? x : y = 10", "(a ? x : y) = 10")]
+    #[case("a ? b ? 1 : 2 : 3", "a ? (b ? 1: 2): 3")]
+    #[case("a ? 1 : b ? 2 : c ? 3 : 4", "a ? 1 : (b ? 2 : (c ? 3 : 4))")]
+    #[case("a ? 1 : b + 1", "a ? 1 : (b+1)")]
+    #[case("a ? x = y : z", "a ? (x = y) : z")]
+    #[case("a ? b : c || d", "a ? b : (c || d)")]
+    #[case("a ? x : y += 10", "(a ? x : y) += 10")]
+    fn test_ternary_operator_precedence_and_associativity(#[case] src1: &str, #[case] src2: &str) {
+        run_expression_equivalence_test(src1, src2);
+    }
+
     fn run_expression_equivalence_test(expr1_src: &str, expr2_src: &str) {
         let lex1 = Lexer::new(expr1_src);
         let mut parser1 = Parser::new(lex1);
@@ -3028,6 +3044,11 @@ mod test {
                 is_equivalent_expression(&*lv1, &*lv2)
                     && is_equivalent_expression(&*rv1, &*rv2)
                     && op1 == op2,
+            (Conditional { condition: c1, then_expr: t1, else_expr: e1 },
+             Conditional { condition: c2, then_expr: t2, else_expr: e2 }) =>
+                is_equivalent_expression(&*c1, &*c2)
+                    && is_equivalent_expression(&*t1, &*t2)
+                    && is_equivalent_expression(&*e1, &*e2),
             _ => false,
         }
     }
