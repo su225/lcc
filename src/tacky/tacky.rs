@@ -333,6 +333,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             let (_, expr_instrs) = emit_tacky_for_expression(ctx, e)?;
             Ok(expr_instrs)
         },
+        StatementKind::If { .. } => todo!(),
         StatementKind::Null => Ok(vec![]),
     }
 }

@@ -214,6 +214,11 @@ pub enum StatementKind {
     Return(Expression),
     Expression(Expression),
     SubBlock(Block),
+    If {
+        condition: Box<Expression>,
+        then_statement: Box<Statement>,
+        else_statement: Option<Box<Statement>>,
+    },
     Null,
 }
 
@@ -516,6 +521,7 @@ impl<'a> Parser<'a> {
                         Ok(Statement { location: tok_loc, kind: StatementKind::Null })
                     }
                     TokenType::Keyword(KeywordIdentifier::Return) => self.parse_return_statement(),
+                    TokenType::Keyword(KeywordIdentifier::If) => self.parse_if_statement(),
                     _ => self.parse_expression_statement(),
                 }
             }
@@ -528,6 +534,42 @@ impl<'a> Parser<'a> {
         let return_code_expr = self.parse_expression()?;
         self.expect_semicolon()?;
         Ok(Statement { location: kloc, kind: StatementKind::Return(return_code_expr) })
+    }
+
+    fn parse_if_statement(&mut self) -> Result<Statement, ParserError> {
+        let kloc = self.expect_keyword(KeywordIdentifier::If)?;
+        
+        self.expect_open_parentheses()?;
+        let cond_expr = self.parse_expression()?;
+        self.expect_close_parentheses()?;
+
+        let then_stmt = self.parse_statement()?;
+        
+        // peek and see if it is else.
+        let next_tok = self.token_provider.peek();
+        match next_tok {
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
+            Some(Ok(Token { token_type: TokenType::Keyword(KeywordIdentifier::Else), .. })) => {
+                self.token_provider.next(); // consume else
+                let else_stmt = self.parse_statement()?;
+                Ok(Statement {
+                    location: kloc.clone(),
+                    kind: StatementKind::If {
+                        condition: Box::new(cond_expr),
+                        then_statement: Box::new(then_stmt),
+                        else_statement: Some(Box::new(else_stmt)),
+                    },
+                })
+            }
+            _ => Ok(Statement {
+                location: kloc.clone(),
+                kind: StatementKind::If {
+                    condition: Box::new(cond_expr),
+                    then_statement: Box::new(then_stmt),
+                    else_statement: None,
+                },
+            }),
+        }
     }
 
     fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
@@ -780,7 +822,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -1004,6 +1046,191 @@ mod test {
         });
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
+    
+    #[test]
+    fn test_parse_statement_simple_if_block() {
+        let src = "if (a) b;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            kind: If {
+                condition: Box::new(Expression {
+                    location: (1,5).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                then_statement: Box::new(Statement {
+                    location: (1,8).into(),
+                    kind: StatementKind::Expression(Expression {
+                        location: (1,8).into(),
+                        kind: Variable("b".to_string()),
+                    }),
+                }),
+                else_statement: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_simple_if_block_with_else() {
+        let src = "if (a) b; else c;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            kind: If {
+                condition: Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                then_statement: Box::new(Statement {
+                    location: (1, 8).into(),
+                    kind: StatementKind::Expression(Expression {
+                        location: (1, 8).into(),
+                        kind: Variable("b".to_string()),
+                    }),
+                }),
+                else_statement: Some(Box::new(Statement {
+                    location: (1, 15).into(),
+                    kind: StatementKind::Expression(Expression {
+                        location: (1, 15).into(),
+                        kind: Variable("c".to_string()),
+                    }),
+                })),
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+
+    #[test]
+    fn test_parse_statement_if_with_multiple_statements_in_else() {
+        let src = "if (a) { return b; } else { b += 10; return b; }";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            kind: If {
+                condition: Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                then_statement: Box::new(Statement {
+                    location: (1, 8).into(),
+                    kind: SubBlock(Block {
+                        start_loc: (1, 8).into(),
+                        end_loc: (1, 20).into(),
+                        items: vec![
+                            BlockItem::Statement(Statement {
+                                location: (1, 10).into(),
+                                kind: Return(Expression {
+                                    location: (1, 17).into(),
+                                    kind: Variable("b".to_string()),
+                                }),
+                            })
+                        ],
+                    }),
+                }),
+                else_statement: Some(Box::new(Statement {
+                    location: (1, 27).into(),
+                    kind: SubBlock(Block {
+                        start_loc: (1, 27).into(),
+                        end_loc: (1, 45).into(),
+                        items: vec![
+                            BlockItem::Statement(Statement {
+                                location: (1, 29).into(),
+                                kind: StatementKind::Expression(Expression {
+                                    location: (1, 29).into(),
+                                    kind: Assignment {
+                                        lvalue: Box::new(Expression {
+                                            location: (1, 29).into(),
+                                            kind: Variable("b".to_string()),
+                                        }),
+                                        rvalue: Box::new(Expression {
+                                            location: (1, 34).into(),
+                                            kind: IntConstant("10".to_string(), Decimal),
+                                        }),
+                                        op: Some(CompoundAssignmentType::Add),
+                                    }
+                                }),
+                            }),
+                            BlockItem::Statement(Statement {
+                                location: (1, 39).into(),
+                                kind: Return(Expression {
+                                    location: (1, 46).into(),
+                                    kind: Variable("b".to_string()),
+                                }),
+                            }),
+                        ],
+                    }),
+                })),
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+
+    #[test]
+    fn test_parse_statement_if_else_ladder() {
+        let src = indoc! {r#"
+        if (a < 10)
+            return 0;
+        else if (a < 20)
+            return 1;
+        else
+            return 2;
+    "#};
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            kind: If {
+                condition: Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression { location: (1, 5).into(), kind: Variable("a".to_string()) }),
+                        Box::new(Expression { location: (1, 9).into(), kind: IntConstant("10".to_string(), Decimal)}),
+                    ),
+                }),
+                then_statement: Box::new(Statement {
+                    location: (2, 13).into(),
+                    kind: Return(Expression {
+                        location: (2, 20).into(),
+                        kind: IntConstant("0".to_string(), Decimal),
+                    }),
+                }),
+                else_statement: Some(Box::new(Statement {
+                    location: (3, 9).into(),
+                    kind: If {
+                        condition: Box::new(Expression {
+                            location: (3, 13).into(),
+                            kind: Binary(
+                                BinaryOperator::LessThan,
+                                Box::new(Expression {
+                                    location: (3, 13).into(),
+                                    kind: Variable("a".to_string()),
+                                }),
+                                Box::new(Expression {
+                                    location: (3, 17).into(),
+                                    kind: IntConstant("20".to_string(), Decimal),
+                                })
+                            ),
+                        }),
+                        then_statement: Box::new(Statement {
+                            location: (4, 13).into(),
+                            kind: Return(Expression {
+                                location: (4, 20).into(),
+                                kind: IntConstant("1".to_string(), Decimal),
+                            }),
+                        }),
+                        else_statement: Some(Box::new(Statement {
+                            location: (5, 9).into(),
+                            kind: Return(Expression {
+                                location: (6, 16).into(),
+                                kind: IntConstant("2".to_string(), Decimal),
+                            }),
+                        })),
+                    },
+                })),
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
 
     struct ExprTestCase<'a> {
         src: &'a str,

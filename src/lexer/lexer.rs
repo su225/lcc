@@ -1122,7 +1122,7 @@ mod test {
 
     #[test]
     fn test_tokenizing_ternary_else() {
-        let source = "?";
+        let source = ":";
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![

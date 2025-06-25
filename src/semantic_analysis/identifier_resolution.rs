@@ -184,6 +184,7 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
                 Ok(Statement { location: loc.clone(), kind: StatementKind::SubBlock(resolved_subblock) })
             })
         },
+        StatementKind::If { .. } => todo!(),
         StatementKind::Null => Ok(Statement { location: loc.clone(), kind: StatementKind::Null })
     }
 }
@@ -657,6 +658,7 @@ mod test {
             StatementKind::Return(ret_expr) => desugared_compound_assignment_in_expression(ret_expr),
             StatementKind::Expression(expr) => desugared_compound_assignment_in_expression(expr),
             StatementKind::SubBlock(blk) => desugared_compound_assignment_in_blocks(blk),
+            StatementKind::If {..} => todo!(),
             StatementKind::Null => true,
         }
     }
@@ -718,6 +720,7 @@ mod test {
             StatementKind::Return(_)
             | StatementKind::Expression(_)
             | StatementKind::Null => true,
+            StatementKind::If {..} => todo!(),
             StatementKind::SubBlock(sb) => block_identifiers_are_unique(identifiers, sb),
         }
     }
