@@ -822,7 +822,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -1082,15 +1082,15 @@ mod test {
                 }),
                 then_statement: Box::new(Statement {
                     location: (1, 8).into(),
-                    kind: StatementKind::Expression(Expression {
+                    kind: Expression(Expression {
                         location: (1, 8).into(),
                         kind: Variable("b".to_string()),
                     }),
                 }),
                 else_statement: Some(Box::new(Statement {
-                    location: (1, 15).into(),
-                    kind: StatementKind::Expression(Expression {
-                        location: (1, 15).into(),
+                    location: (1, 16).into(),
+                    kind: Expression(Expression {
+                        location: (1, 16).into(),
                         kind: Variable("c".to_string()),
                     }),
                 })),
@@ -1115,26 +1115,24 @@ mod test {
                     kind: SubBlock(Block {
                         start_loc: (1, 8).into(),
                         end_loc: (1, 20).into(),
-                        items: vec![
-                            BlockItem::Statement(Statement {
-                                location: (1, 10).into(),
-                                kind: Return(Expression {
-                                    location: (1, 17).into(),
-                                    kind: Variable("b".to_string()),
-                                }),
-                            })
-                        ],
+                        items: vec![BlockItem::Statement(Statement {
+                            location: (1, 10).into(),
+                            kind: Return(Expression {
+                                location: (1, 17).into(),
+                                kind: Variable("b".to_string()),
+                            }),
+                        })],
                     }),
                 }),
                 else_statement: Some(Box::new(Statement {
                     location: (1, 27).into(),
                     kind: SubBlock(Block {
                         start_loc: (1, 27).into(),
-                        end_loc: (1, 45).into(),
+                        end_loc: (1, 48).into(),
                         items: vec![
                             BlockItem::Statement(Statement {
                                 location: (1, 29).into(),
-                                kind: StatementKind::Expression(Expression {
+                                kind: Expression(Expression {
                                     location: (1, 29).into(),
                                     kind: Assignment {
                                         lvalue: Box::new(Expression {
@@ -1146,13 +1144,13 @@ mod test {
                                             kind: IntConstant("10".to_string(), Decimal),
                                         }),
                                         op: Some(CompoundAssignmentType::Add),
-                                    }
+                                    },
                                 }),
                             }),
                             BlockItem::Statement(Statement {
-                                location: (1, 39).into(),
+                                location: (1, 38).into(),
                                 kind: Return(Expression {
-                                    location: (1, 46).into(),
+                                    location: (1, 45).into(),
                                     kind: Variable("b".to_string()),
                                 }),
                             }),
@@ -1174,7 +1172,7 @@ mod test {
             return 1;
         else
             return 2;
-    "#};
+        "#};
         let expected = Ok(Statement {
             location: (1, 1).into(),
             kind: If {
@@ -1182,45 +1180,51 @@ mod test {
                     location: (1, 5).into(),
                     kind: Binary(
                         BinaryOperator::LessThan,
-                        Box::new(Expression { location: (1, 5).into(), kind: Variable("a".to_string()) }),
-                        Box::new(Expression { location: (1, 9).into(), kind: IntConstant("10".to_string(), Decimal)}),
+                        Box::new(Expression {
+                            location: (1, 5).into(),
+                            kind: Variable("a".to_string()),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 9).into(),
+                            kind: IntConstant("10".to_string(), Decimal),
+                        }),
                     ),
                 }),
                 then_statement: Box::new(Statement {
-                    location: (2, 13).into(),
+                    location: (2, 5).into(),
                     kind: Return(Expression {
-                        location: (2, 20).into(),
+                        location: (2, 12).into(),
                         kind: IntConstant("0".to_string(), Decimal),
                     }),
                 }),
                 else_statement: Some(Box::new(Statement {
-                    location: (3, 9).into(),
+                    location: (3, 6).into(),
                     kind: If {
                         condition: Box::new(Expression {
-                            location: (3, 13).into(),
+                            location: (3, 10).into(),
                             kind: Binary(
                                 BinaryOperator::LessThan,
                                 Box::new(Expression {
-                                    location: (3, 13).into(),
+                                    location: (3, 10).into(),
                                     kind: Variable("a".to_string()),
                                 }),
                                 Box::new(Expression {
-                                    location: (3, 17).into(),
+                                    location: (3, 14).into(),
                                     kind: IntConstant("20".to_string(), Decimal),
-                                })
+                                }),
                             ),
                         }),
                         then_statement: Box::new(Statement {
-                            location: (4, 13).into(),
+                            location: (4, 5).into(),
                             kind: Return(Expression {
-                                location: (4, 20).into(),
+                                location: (4, 12).into(),
                                 kind: IntConstant("1".to_string(), Decimal),
                             }),
                         }),
                         else_statement: Some(Box::new(Statement {
-                            location: (5, 9).into(),
+                            location: (6, 5).into(),
                             kind: Return(Expression {
-                                location: (6, 16).into(),
+                                location: (6, 12).into(),
                                 kind: IntConstant("2".to_string(), Decimal),
                             }),
                         })),
@@ -1228,6 +1232,54 @@ mod test {
                 })),
             },
         });
+
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+
+    #[test]
+    fn test_parse_statement_dangling_else_binds_to_nearest_if() {
+        let src = indoc! {r#"
+        if (a)
+            if (b)
+                return 1;
+            else
+                return 2;
+        "#};
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            kind: If {
+                condition: Box::new(Expression {
+                    location: (1, 5).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                then_statement: Box::new(Statement {
+                    location: (2, 5).into(),
+                    kind: If {
+                        condition: Box::new(Expression {
+                            location: (2, 9).into(),
+                            kind: Variable("b".to_string()),
+                        }),
+                        then_statement: Box::new(Statement {
+                            location: (3, 9).into(),
+                            kind: Return(Expression {
+                                location: (3, 16).into(),
+                                kind: IntConstant("1".to_string(), Decimal),
+                            }),
+                        }),
+                        else_statement: Some(Box::new(Statement {
+                            location: (5, 9).into(),
+                            kind: Return(Expression {
+                                location: (5, 16).into(),
+                                kind: IntConstant("2".to_string(), Decimal),
+                            }),
+                        })),
+                    },
+                }),
+                else_statement: None,
+            },
+        });
+
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
 
