@@ -604,11 +604,22 @@ impl<'a> Parser<'a> {
                 Ok(token) if token.token_type.is_binary_operator() => {
                     let binary_op = self.peek_binary_operator_token()?;
                     let left_loc = left.location.clone();
+                    let binary_op_precedence = binary_op.precedence();
+                    let binary_op_associativity = binary_op.associativity();
+                    if binary_op_precedence < min_precedence {
+                        break;
+                    }
+                    // Only if we pass the token precedence test, we can advance
+                    // the pointer further to parse the next expression
+                    self.token_provider.next();
+                    let next_min_precedence = match binary_op_associativity {
+                        BinaryOperatorAssociativity::Left => binary_op_precedence + BinaryOperatorPrecedence(1),
+                        BinaryOperatorAssociativity::Right => binary_op_precedence,
+                    };
                     if binary_op == BinaryOperator::TernaryThen {
-                        self.token_provider.next();
                         let then_expr = self.parse_expression()?;
                         self.expect_token_with_tag(TokenTag::OperatorTernaryElse)?;
-                        let else_expr = self.parse_expression()?;
+                        let else_expr = self.parse_expression_with_precedence(next_min_precedence)?;
                         left = Expression {
                             location: left_loc,
                             kind: Conditional {
@@ -619,19 +630,6 @@ impl<'a> Parser<'a> {
                         };
                         continue
                     }
-                    let binary_op_precedence = binary_op.precedence();
-                    let binary_op_associativity = binary_op.associativity();
-                    if binary_op_precedence < min_precedence {
-                        break;
-                    }
-                    // Only if we pass the token precedence test, we can advance
-                    // the pointer further to parse the next expression
-                    self.token_provider.next();
-
-                    let next_min_precedence = match binary_op_associativity {
-                        BinaryOperatorAssociativity::Left => binary_op_precedence + BinaryOperatorPrecedence(1),
-                        BinaryOperatorAssociativity::Right => binary_op_precedence,
-                    };
                     let rhs = self.parse_expression_with_precedence(next_min_precedence)?;
                     let expr_kind = match binary_op {
                         BinaryOperator::Assignment => ExpressionKind::Assignment {
@@ -2168,6 +2166,174 @@ mod test {
                 },
             }),
         });
+    }
+    
+    #[test]
+    fn test_simple_ternary_expression_parsing() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "is_expected ? 0 : 1",
+            expected: Ok(Expression {
+                location: (1,1).into(),
+                kind: Conditional {
+                    condition: Box::new(Expression {
+                        location: (1,1).into(),
+                        kind: Variable("is_expected".to_string()),
+                    }),
+                    then_expr: Box::new(Expression {
+                        location: (1,15).into(),
+                        kind: IntConstant("0".to_string(), Decimal),
+                    }),
+                    else_expr: Box::new(Expression {
+                        location: (1,19).into(),
+                        kind: IntConstant("1".to_string(), Decimal),
+                    }),
+                },
+            }),
+        })
+    }
+
+    #[test]
+    fn test_assign_after_eval_ternary_expression() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "a = b ? 1 : 2",
+            expected: Ok(Expression {
+                location: (1, 1).into(),
+                kind: Assignment {
+                    lvalue: Box::new(Expression {
+                        location: (1, 1).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                    rvalue: Box::new(Expression {
+                        location: (1, 5).into(),
+                        kind: Conditional {
+                            condition: Box::new(Expression {
+                                location: (1, 5).into(),
+                                kind: Variable("b".to_string()),
+                            }),
+                            then_expr: Box::new(Expression {
+                                location: (1, 9).into(),
+                                kind: IntConstant("1".to_string(), Decimal),
+                            }),
+                            else_expr: Box::new(Expression {
+                                location: (1, 13).into(),
+                                kind: IntConstant("2".to_string(), Decimal),
+                            }),
+                        },
+                    }),
+                    op: None,
+                },
+            }),
+        })
+    }
+
+
+    #[test]
+    fn test_logical_operator_in_condition_with_ternary() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "a && b ? 1 : 2",
+            expected: Ok(Expression {
+                location: (1, 1).into(),
+                kind: Conditional {
+                    condition: Box::new(Expression {
+                        location: (1, 1).into(),
+                        kind: Binary(
+                            BinaryOperator::And,
+                            Box::new(Expression {
+                                location: (1, 1).into(),
+                                kind: Variable("a".to_string()),
+                            }),
+                            Box::new(Expression {
+                                location: (1, 6).into(),
+                                kind: Variable("b".to_string()),
+                            }),
+                        ),
+                    }),
+                    then_expr: Box::new(Expression {
+                        location: (1, 10).into(),
+                        kind: IntConstant("1".to_string(), Decimal),
+                    }),
+                    else_expr: Box::new(Expression {
+                        location: (1, 14).into(),
+                        kind: IntConstant("2".to_string(), Decimal),
+                    }),
+                },
+            }),
+        })
+    }
+
+
+    #[test]
+    fn test_ternary_operator_associativity_with_if_else_ladder() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "a ? 1 : b ? 2 : 3",
+            expected: Ok(Expression {
+                location: (1, 1).into(),
+                kind: Conditional {
+                    condition: Box::new(Expression {
+                        location: (1, 1).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                    then_expr: Box::new(Expression {
+                        location: (1, 5).into(),
+                        kind: IntConstant("1".to_string(), Decimal),
+                    }),
+                    else_expr: Box::new(Expression {
+                        location: (1, 9).into(),
+                        kind: Conditional {
+                            condition: Box::new(Expression {
+                                location: (1, 9).into(),
+                                kind: Variable("b".to_string()),
+                            }),
+                            then_expr: Box::new(Expression {
+                                location: (1, 13).into(),
+                                kind: IntConstant("2".to_string(), Decimal),
+                            }),
+                            else_expr: Box::new(Expression {
+                                location: (1, 17).into(),
+                                kind: IntConstant("3".to_string(), Decimal),
+                            }),
+                        },
+                    }),
+                },
+            }),
+        })
+    }
+
+    #[test]
+    fn test_ternary_operator_with_ternary_in_the_middle() {
+        run_parse_expression_test_case(ExprTestCase {
+            src: "a ? b ? 0 : 1 : 2",
+            expected: Ok(Expression {
+                location: (1, 1).into(),
+                kind: Conditional {
+                    condition: Box::new(Expression {
+                        location: (1, 1).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                    then_expr: Box::new(Expression {
+                        location: (1, 5).into(),
+                        kind: Conditional {
+                            condition: Box::new(Expression {
+                                location: (1, 5).into(),
+                                kind: Variable("b".to_string()),
+                            }),
+                            then_expr: Box::new(Expression {
+                                location: (1, 9).into(),
+                                kind: IntConstant("0".to_string(), Decimal),
+                            }),
+                            else_expr: Box::new(Expression {
+                                location: (1, 13).into(),
+                                kind: IntConstant("1".to_string(), Decimal),
+                            }),
+                        },
+                    }),
+                    else_expr: Box::new(Expression {
+                        location: (1, 17).into(),
+                        kind: IntConstant("2".to_string(), Decimal),
+                    }),
+                },
+            }),
+        })
     }
 
     struct DeclarationTestCase<'a> {
