@@ -185,6 +185,9 @@ impl ExpressionKind {
     pub fn is_lvalue_expression(&self) -> bool {
         match self {
             ExpressionKind::Variable(_) => true,
+            ExpressionKind::Conditional { then_expr, else_expr, .. } =>
+                then_expr.kind.is_lvalue_expression()
+                    && else_expr.kind.is_lvalue_expression(),
             _ => false,
         }
     }

@@ -184,7 +184,25 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
                 Ok(Statement { location: loc.clone(), kind: StatementKind::SubBlock(resolved_subblock) })
             })
         },
-        StatementKind::If { .. } => todo!(),
+        StatementKind::If { condition, then_statement, else_statement } => {
+            let resolved_condition = resolve_expression(ctx, &*condition)?;
+            let resolved_then = resolve_statement(ctx, &*then_statement)?;
+            let resolved_else = match else_statement {
+                None => None,
+                Some(else_stmt) => {
+                    let resolved_stmt = resolve_statement(ctx, &*else_stmt)?;
+                    Some(Box::new(resolved_stmt))
+                },
+            };
+            Ok(Statement {
+                location: loc.clone(),
+                kind: StatementKind::If {
+                    condition: Box::new(resolved_condition),
+                    then_statement: Box::new(resolved_then),
+                    else_statement: resolved_else,
+                },
+            })
+        },
         StatementKind::Null => Ok(Statement { location: loc.clone(), kind: StatementKind::Null })
     }
 }
@@ -281,7 +299,16 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                     e: Box::new(resolve_expression(ctx, e)?),
                 }
             },
-            ExpressionKind::Conditional { .. } => todo!("implement identifier resolution and desugar for ternary")
+            ExpressionKind::Conditional { condition, then_expr, else_expr } => {
+                let resolved_condition = resolve_expression(ctx, condition)?;
+                let resolved_then_expr = resolve_expression(ctx, then_expr)?;
+                let resolved_else_expr = resolve_expression(ctx, else_expr)?;
+                ExpressionKind::Conditional {
+                    condition: Box::new(resolved_condition),
+                    then_expr: Box::new(resolved_then_expr),
+                    else_expr: Box::new(resolved_else_expr),
+                }
+            },
         },
     })
 }
@@ -346,11 +373,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        assert!(resolve_program(parsed.unwrap()).is_ok());
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -364,11 +387,7 @@ mod test {
             }
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        assert!(resolve_program(parsed.unwrap()).is_ok());
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -380,11 +399,7 @@ mod test {
             return a + b;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        assert!(resolve_program(parsed.unwrap()).is_ok());
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -520,17 +535,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved = resolve_program(parsed.unwrap());
-        assert!(resolved.is_ok());
-
-        let resolved_program = resolved.unwrap();
-        assert!(program_identifiers_are_unique(&resolved_program));
-        assert!(desugared_compound_assignment(&resolved_program));
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -547,17 +552,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved = resolve_program(parsed.unwrap());
-        assert!(resolved.is_ok());
-
-        let resolved_program = resolved.unwrap();
-        assert!(program_identifiers_are_unique(&resolved_program));
-        assert!(desugared_compound_assignment(&resolved_program));
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -573,16 +568,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved = resolve_program(parsed.unwrap());
-        assert!(resolved.is_ok(), "{:#?}", resolved);
-
-        let resolved_program = resolved.unwrap();
-        assert!(program_identifiers_are_unique(&resolved_program));
-        assert!(desugared_compound_assignment(&resolved_program));
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -602,16 +588,7 @@ mod test {
             return 0;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved = resolve_program(parsed.unwrap());
-        assert!(resolved.is_ok(), "{:#?}", resolved);
-
-        let resolved_program = resolved.unwrap();
-        assert!(program_identifiers_are_unique(&resolved_program));
-        assert!(desugared_compound_assignment(&resolved_program));
+        assert_successful_identifier_resolution(program);
     }
 
     #[test]
@@ -623,6 +600,83 @@ mod test {
             return a;
         }
         "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_error_if_any_one_arm_of_ternary_is_not_lvalue() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            int b = 20;
+            a > b ? a : a+b = 100;
+            return a;
+        }
+        "#};
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
+            panic!("unexpected error");
+        };
+    }
+
+    #[test]
+    fn test_should_resolve_correctly_if_both_arms_of_ternary_in_assignment_are_lvalue() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            int b = 20;
+            a > b ? a : b = 100;
+            return a;
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_resolve_identifiers_in_if_blocks_correctly() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            if (a > 10) {
+                int b = 20;
+                return a + b;
+            } else {
+                int c = 10;
+                return a + c;
+            }
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_resolve_shadowing_in_different_arms_of_if_statement_correctly() {
+        let program = indoc!{r#"
+        int main(void) {
+            int a = 10;
+            if ( a > 10 ) {
+                int a = 20;
+                int x = 20;
+                return a + x + 1;
+            }
+            if (a >= 10) {
+                int a = 2;
+                return a;
+            } else {
+                int b = 2;
+                a += b;
+            }
+            return a;
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    fn assert_successful_identifier_resolution(program: &str) {
         let lexer = Lexer::new(program);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();
@@ -659,7 +713,13 @@ mod test {
             StatementKind::Return(ret_expr) => desugared_compound_assignment_in_expression(ret_expr),
             StatementKind::Expression(expr) => desugared_compound_assignment_in_expression(expr),
             StatementKind::SubBlock(blk) => desugared_compound_assignment_in_blocks(blk),
-            StatementKind::If {..} => todo!(),
+            StatementKind::If { condition, then_statement, else_statement } => {
+                desugared_compound_assignment_in_expression(condition)
+                    && desugared_compound_assignment_in_statement(then_statement)
+                    && else_statement.as_ref().map(
+                        |else_stmt| desugared_compound_assignment_in_statement(else_stmt))
+                        .unwrap_or(true)
+            }
             StatementKind::Null => true,
         }
     }
@@ -668,7 +728,7 @@ mod test {
         match &decl.kind {
             DeclarationKind::Declaration { init_expression: Some(init_expr), .. } =>
                 desugared_compound_assignment_in_expression(init_expr),
-            _ => false,
+            _ => true,
         }
     }
 
@@ -721,7 +781,14 @@ mod test {
             StatementKind::Return(_)
             | StatementKind::Expression(_)
             | StatementKind::Null => true,
-            StatementKind::If {..} => todo!(),
+            StatementKind::If {then_statement, else_statement, ..} => {
+                let then_uniq = statement_identifiers_are_unique(identifiers, then_statement);
+                let else_uniq = match else_statement {
+                    None => true,
+                    Some(e) => statement_identifiers_are_unique(identifiers, e),
+                };
+                then_uniq && else_uniq
+            },
             StatementKind::SubBlock(sb) => block_identifiers_are_unique(identifiers, sb),
         }
     }

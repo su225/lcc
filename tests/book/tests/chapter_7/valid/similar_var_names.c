@@ -1,8 +1,3 @@
-#ifdef SUPPRESS_WARNINGS
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#endif
-/* Test that naming scheme does not result in conflicting variable names after alpha conversion */
-
 int main(void) {
     int a; // a0
     int result;
