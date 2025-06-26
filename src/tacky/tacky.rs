@@ -339,7 +339,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             let then_stmts = emit_tacky_for_statement(ctx, then_statement)?;
             let else_stmts = else_statement.as_ref()
                 .map(|else_stmt| emit_tacky_for_statement(ctx, else_stmt))
-                .unwrap_or_else(|_| Ok(vec![]))?;
+                .unwrap_or_else(|| Ok(vec![]))?;
             let end_lbl = ctx.next_temporary_label("if_end");
             if else_stmts.is_empty() {
                 let tmp_cond_res = ctx.next_temporary_identifier();
@@ -355,7 +355,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
                 instructions.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
                 instructions.push(JumpIfZero {
                     condition: Variable(tmp_cond_res),
-                    target: else_lbl,
+                    target: else_lbl.clone(),
                 });
                 instructions.extend(then_stmts);
                 instructions.push(Jump { target: end_lbl.clone() });
@@ -363,7 +363,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
                 instructions.push(Label(else_lbl.clone()));
                 instructions.extend(else_stmts);
             }
-            instructions.push(Label(end_lbl.clone()));
+            instructions.push(Label(end_lbl));
             Ok(instructions)
         },
         StatementKind::Null => Ok(vec![]),
@@ -528,7 +528,34 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
                 Ok((e_tacky, instrs))
             }
         }
-        ExpressionKind::Conditional { .. } => todo!("implement tacky emission for ?:")
+        ExpressionKind::Conditional { condition, then_expr, else_expr } => {
+            let (cond_res, mut instructions) = emit_tacky_for_expression(ctx, condition)?;
+            let (then_res, then_instrs) = emit_tacky_for_expression(ctx, then_expr)?;
+            let (else_res, else_instrs) = emit_tacky_for_expression(ctx, else_expr)?;
+
+            let tmp_cond_res = ctx.next_temporary_identifier();
+            let tmp_final_res = ctx.next_temporary_identifier();
+
+            let cond_else_lbl = ctx.next_temporary_label("cond_else");
+            let cond_end_lbl = ctx.next_temporary_label("cond_end");
+
+            instructions.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+            instructions.push(JumpIfZero {
+                condition: Variable(tmp_cond_res.clone()),
+                target: cond_else_lbl.clone(),
+            });
+
+            instructions.extend(then_instrs);
+            instructions.push(Copy { src: then_res, dst: tmp_final_res.clone() });
+            instructions.push(Jump { target: cond_end_lbl.clone() });
+
+            instructions.push(Label(cond_else_lbl.clone()));
+            instructions.extend(else_instrs);
+            instructions.push(Copy { src: else_res, dst: tmp_final_res.clone() });
+
+            instructions.push(Label(cond_end_lbl));
+            Ok((Variable(tmp_final_res), instructions))
+        }
     }
 }
 
