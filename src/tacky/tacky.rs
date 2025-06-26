@@ -4,7 +4,7 @@ use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
 
-use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, UnaryOperator};
+use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
 use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::{Int32, Variable};
 
@@ -23,6 +23,12 @@ impl From<&str> for TackySymbol {
 impl From<&String> for TackySymbol {
     fn from(value: &String) -> Self {
         TackySymbol(value.to_string())
+    }
+}
+
+impl From<&Symbol> for TackySymbol {
+    fn from(value: &Symbol) -> Self {
+        TackySymbol(value.name.to_string())
     }
 }
 
@@ -366,6 +372,10 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             instructions.push(Label(end_lbl));
             Ok(instructions)
         },
+        StatementKind::Goto {target} => {
+            let instructions = vec![Jump {target: TackySymbol::from(target) }];
+            Ok(instructions)
+        }
         StatementKind::Null => Ok(vec![]),
     }
 }
@@ -571,7 +581,6 @@ mod test {
     use crate::lexer::Lexer;
     use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
-    use crate::parser::StatementKind::If;
     use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::tacky::*;
     use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, TackyContext};

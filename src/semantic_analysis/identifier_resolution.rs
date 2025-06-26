@@ -172,16 +172,16 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
     match &stmt.kind {
         StatementKind::Return(ret_val_expr) => {
             let resolved_ret_val_expr = resolve_expression(ctx, ret_val_expr)?;
-            Ok(Statement { location: loc.clone(), kind: StatementKind::Return(resolved_ret_val_expr) })
+            Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::Return(resolved_ret_val_expr) })
         },
         StatementKind::Expression(expr) => {
             let resolved_expr = resolve_expression(ctx, expr)?;
-            Ok(Statement { location: loc.clone(), kind: StatementKind::Expression(resolved_expr) })
+            Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::Expression(resolved_expr) })
         },
         StatementKind::SubBlock(sub_block) => {
             ctx.with_scope(|sub_ctx| {
                 let resolved_subblock = resolve_block(sub_ctx, sub_block)?;
-                Ok(Statement { location: loc.clone(), kind: StatementKind::SubBlock(resolved_subblock) })
+                Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::SubBlock(resolved_subblock) })
             })
         },
         StatementKind::If { condition, then_statement, else_statement } => {
@@ -196,6 +196,7 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
             };
             Ok(Statement {
                 location: loc.clone(),
+                label: None,
                 kind: StatementKind::If {
                     condition: Box::new(resolved_condition),
                     then_statement: Box::new(resolved_then),
@@ -203,7 +204,8 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
                 },
             })
         },
-        StatementKind::Null => Ok(Statement { location: loc.clone(), kind: StatementKind::Null })
+        StatementKind::Goto { .. } => todo!("label must be defined within the function"),
+        StatementKind::Null => Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::Null })
     }
 }
 
@@ -720,6 +722,7 @@ mod test {
                         |else_stmt| desugared_compound_assignment_in_statement(else_stmt))
                         .unwrap_or(true)
             }
+            StatementKind::Goto {..} => true,
             StatementKind::Null => true,
         }
     }
@@ -789,6 +792,7 @@ mod test {
                 };
                 then_uniq && else_uniq
             },
+            StatementKind::Goto {..} => true,
             StatementKind::SubBlock(sb) => block_identifiers_are_unique(identifiers, sb),
         }
     }
