@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
 use std::str::Chars;
@@ -85,7 +85,7 @@ pub enum TokenTag {
     OperatorCompoundAssignmentBitwiseOr,
     OperatorCompoundAssignmentBitwiseXor,
     OperatorTernaryThen,
-    OperatorTernaryElse,
+    OperatorColon,
 }
 
 impl Display for TokenTag {
@@ -142,7 +142,7 @@ pub enum TokenType<'a> {
     OperatorCompoundAssignmentBitwiseXor,
 
     OperatorTernaryThen,
-    OperatorTernaryElse,
+    OperatorColon,
 }
 
 impl<'a> TokenType<'a> {
@@ -197,7 +197,7 @@ impl<'a> TokenType<'a> {
             TokenType::OperatorCompoundAssignmentBitwiseXor => TokenTag::OperatorCompoundAssignmentBitwiseXor,
 
             TokenType::OperatorTernaryThen => TokenTag::OperatorTernaryThen,
-            TokenType::OperatorTernaryElse => TokenTag::OperatorTernaryElse,
+            TokenType::OperatorColon => TokenTag::OperatorColon,
         }
     }
 
@@ -332,7 +332,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorCompoundAssignmentBitwiseOr => f.write_str("|="),
             TokenType::OperatorCompoundAssignmentBitwiseXor => f.write_str("^="),
             TokenType::OperatorTernaryThen => f.write_str("?"),
-            TokenType::OperatorTernaryElse => f.write_str(":"),
+            TokenType::OperatorColon => f.write_str(":"),
         }
     }
 }
@@ -356,6 +356,8 @@ pub struct Lexer<'a> {
     char_stream: Peekable<Chars<'a>>,
     cur_stream_pos: usize,
     cur_location: Location,
+
+    token_peek_buffer: VecDeque<Result<Token<'a>, LexerError>>,
 }
 
 impl<'a> Lexer<'a> {
@@ -366,6 +368,7 @@ impl<'a> Lexer<'a> {
             char_stream: input.chars().peekable(),
             cur_stream_pos: 0,
             cur_location: Location { line: 1, column: 1 },
+            token_peek_buffer: VecDeque::new(),
         }
     }
 
@@ -796,7 +799,7 @@ impl<'a> Lexer<'a> {
                             return Ok(Some(token));
                         }
                         ':' => {
-                            let token = self.tokenize_single_char(TokenType::OperatorTernaryElse);
+                            let token = self.tokenize_single_char(TokenType::OperatorColon);
                             return Ok(Some(token));
                         }
                         '0'..='9' => {
@@ -845,17 +848,38 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+
+    pub fn peek_n(&mut self, n: usize) -> Option<&Result<Token<'a>, LexerError>> {
+        while self.token_peek_buffer.len() < n+1 {
+            let next_token = self.next_token();
+            match next_token {
+                Ok(None) => { break; }
+                Ok(Some(tok)) => { self.token_peek_buffer.push_back(Ok(tok)); }
+                Err(e) => { self.token_peek_buffer.push_back(Err(e)); }
+            }
+        }
+        self.token_peek_buffer.get(n)
+    }
+
+    #[inline]
+    pub fn peek(&mut self) -> Option<&Result<Token<'a>, LexerError>> {
+        self.peek_n(0)
+    }
 }
 
 impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Token<'a>, LexerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_tok = self.next_token();
-        match next_tok {
-            Ok(Some(tok)) => Some(Ok(tok)),
-            Ok(None) => None,
-            Err(e) => Some(Err(e)),
+        if let Some(tok) = self.token_peek_buffer.pop_front() {
+            Some(tok)
+        } else {
+            let next_token = self.next_token();
+            match next_token {
+                Ok(None) => None,
+                Ok(Some(tok)) => Some(Ok(tok)),
+                Err(e) => Some(Err(e)),
+            }
         }
     }
 }
@@ -863,6 +887,7 @@ impl<'a> Iterator for Lexer<'a> {
 #[cfg(test)]
 mod test {
     use rstest::rstest;
+
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::{Lexer, LexerError, Token, TokenType};
@@ -1132,7 +1157,7 @@ mod test {
         let lexer = Lexer::new(source);
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         assert_eq!(tokens, Ok(vec![
-            Token { token_type: OperatorTernaryElse, location: (1, 1).into() },
+            Token { token_type: OperatorColon, location: (1, 1).into() },
         ]));
     }
 

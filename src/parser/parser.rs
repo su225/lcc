@@ -2,8 +2,6 @@
 //! features in C programming language. A simple Recursive Descent
 //! Parsing is used. It is handwritten.
 
-use std::iter::Peekable;
-
 use derive_more::Add;
 use serde::Serialize;
 use thiserror::Error;
@@ -324,12 +322,12 @@ pub enum ParserError {
 }
 
 pub struct Parser<'a> {
-    token_provider: Peekable<Lexer<'a>>,
+    token_provider: Lexer<'a>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(token_provider: Lexer<'a>) -> Parser<'a> {
-        Parser { token_provider: token_provider.peekable() }
+        Parser { token_provider }
     }
 
     /// parse parses the given source file and returns the
@@ -537,6 +535,23 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::Keyword(KeywordIdentifier::Return) => self.parse_return_statement(),
                     TokenType::Keyword(KeywordIdentifier::If) => self.parse_if_statement(),
+                    TokenType::Identifier(maybe_label) => {
+                        let statement_label = maybe_label.to_string();
+                        let tok_2 = self.token_provider.peek_n(1);
+                        match tok_2 {
+                            Some(Ok(t2)) if t2.token_type == TokenType::OperatorColon => {
+                                self.token_provider.next();
+                                self.expect_token_with_tag(TokenTag::OperatorColon)?;
+                                let labeled_stmt = self.parse_statement()?;
+                                Ok(Statement {
+                                    location: tok_loc,
+                                    label: Some(statement_label),
+                                    kind: labeled_stmt.kind,
+                                })
+                            },
+                            _ => self.parse_expression_statement(),
+                        }
+                    }
                     _ => self.parse_expression_statement(),
                 }
             }
@@ -625,7 +640,7 @@ impl<'a> Parser<'a> {
                     };
                     if binary_op == BinaryOperator::TernaryThen {
                         let then_expr = self.parse_expression()?;
-                        self.expect_token_with_tag(TokenTag::OperatorTernaryElse)?;
+                        self.expect_token_with_tag(TokenTag::OperatorColon)?;
                         let else_expr = self.parse_expression_with_precedence(next_min_precedence)?;
                         left = Expression {
                             location: left_loc,
@@ -1339,6 +1354,65 @@ mod test {
             },
         });
 
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_labeled_simple() {
+        let src = "x: a = 10;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            label: Some("x".to_string()),
+            kind: StatementKind::Expression(Expression {
+                location: (1, 4).into(),
+                kind: Assignment {
+                    lvalue: Box::new(Expression {
+                        location: (1, 4).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                    rvalue: Box::new(Expression {
+                        location: (1, 8).into(),
+                        kind: IntConstant("10".to_string(), Decimal),
+                    }),
+                    op: None,
+                },
+            }),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_labeled_if() {
+        let src = indoc!{r#"
+        lbl1:
+            if (a) b; else c;
+        "#};
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            label: Some("lbl1".to_string()),
+            kind: If {
+                condition: Box::new(Expression {
+                    location: (2, 9).into(),
+                    kind: Variable("a".to_string()),
+                }),
+                then_statement: Box::new(Statement {
+                    location: (2, 12).into(),
+                    label: None,
+                    kind: StatementKind::Expression(Expression {
+                        location: (2, 12).into(),
+                        kind: Variable("b".to_string()),
+                    }),
+                }),
+                else_statement: Some(Box::new(Statement {
+                    location: (2, 20).into(),
+                    label: None,
+                    kind: StatementKind::Expression(Expression {
+                        location: (2, 20).into(),
+                        kind: Variable("c".to_string()),
+                    }),
+                })),
+            },
+        });
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
 
@@ -2432,17 +2506,6 @@ mod test {
 
     #[test]
     fn test_parse_block_empty() {
-        let src = "{}";
-        let expected = Ok(Block {
-            start_loc: (1, 1).into(),
-            end_loc: (1, 2).into(),
-            items: vec![],
-        });
-        run_parse_block_test_case(BlockTestCase { src, expected })
-    }
-
-    #[test]
-    fn test_parse_block_return_0() {
         let src = "{}";
         let expected = Ok(Block {
             start_loc: (1, 1).into(),
