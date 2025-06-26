@@ -53,6 +53,7 @@ impl Scope {
 
 struct IdentifierResolutionContext {
     scopes: Vec<Scope>,
+    labels: Scope,
     next_num_id: u64,
 }
 
@@ -60,6 +61,7 @@ impl IdentifierResolutionContext {
     fn new() -> Self {
         return IdentifierResolutionContext {
             scopes: vec![Scope::new()],
+            labels: Scope::new(),
             next_num_id: 0,
         }
     }
