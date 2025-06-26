@@ -230,7 +230,7 @@ pub enum StatementKind {
         then_statement: Box<Statement>,
         else_statement: Option<Box<Statement>>,
     },
-    Goto { target: Symbol },
+    Goto { target: String },
     Null,
 }
 
@@ -535,6 +535,24 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::Keyword(KeywordIdentifier::Return) => self.parse_return_statement(),
                     TokenType::Keyword(KeywordIdentifier::If) => self.parse_if_statement(),
+                    TokenType::Keyword(KeywordIdentifier::Goto) => {
+                        self.token_provider.next();
+                        let target_label = self.get_token_with_tag(TokenTag::Identifier)?;
+                        let res = match target_label.token_type {
+                            TokenType::Identifier(target_lbl) => {
+                                Ok(Statement {
+                                    location: tok_loc,
+                                    label: None,
+                                    kind: StatementKind::Goto {
+                                        target: target_lbl.to_string(),
+                                    },
+                                })
+                            }
+                            _ => panic!("non-identifier should have errored")
+                        };
+                        self.expect_semicolon()?;
+                        res
+                    }
                     TokenType::Identifier(maybe_label) => {
                         let statement_label = maybe_label.to_string();
                         let tok_2 = self.token_provider.peek_n(1);
@@ -1306,6 +1324,16 @@ mod test {
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
 
+    #[test]
+    fn test_parse_statement_goto() {
+        let src = "goto x;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            label: None,
+            kind: Goto { target: "x".to_string() },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
 
     #[test]
     fn test_parse_statement_dangling_else_binds_to_nearest_if() {
