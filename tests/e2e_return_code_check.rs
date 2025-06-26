@@ -67,6 +67,16 @@ fn test_e2e_unary_operator(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }
 
+#[rstest]
+#[case("conditional/if.c")]
+#[case("conditional/if_else.c")]
+#[case("conditional/if_else_if.c")]
+#[case("conditional/dangling_if.c")]
+#[case("conditional/ternary.c")]
+fn test_e2e_conditional(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
 fn run_e2e_against_clang(input_file: &str) {
     println!("current working directory: {}", env::current_dir().unwrap().display());
 

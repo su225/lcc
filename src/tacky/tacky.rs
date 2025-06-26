@@ -571,6 +571,7 @@ mod test {
     use crate::lexer::Lexer;
     use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
+    use crate::parser::StatementKind::If;
     use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::tacky::*;
     use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, TackyContext};
@@ -940,6 +941,16 @@ mod test {
     #[case("localvars/expression_with_var.c")]
     fn test_generation_with_local_variables(#[case] input_path: &str) {
         run_ir_generation_snapshot_test("local variables", input_path)
+    }
+
+    #[rstest]
+    #[case("conditional/if.c")]
+    #[case("conditional/if_else.c")]
+    #[case("conditional/if_else_if.c")]
+    #[case("conditional/dangling_if.c")]
+    #[case("conditional/ternary.c")]
+    fn test_generation_with_conditional(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("if statement", input_path)
     }
 
     fn run_ir_generation_snapshot_test(suite_description: &str, src_file: &str) {

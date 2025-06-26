@@ -1,0 +1,15 @@
+---
+source: src/tacky/tacky.rs
+description: if statement
+expression: tacky
+info: conditional/if.c
+---
+int main(void) {
+    a$1 = (int32 10);
+    <t>.0 = a$1 > (int32 5);
+    <t>.1 = <t>.0;
+    jump_if_zero (<t>.1) _L.if_end.0;
+    a$1 = (int32 20);
+_L.if_end.0:
+    return a$1;
+}

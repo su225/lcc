@@ -1,0 +1,23 @@
+---
+source: src/tacky/tacky.rs
+description: if statement
+expression: tacky
+info: conditional/dangling_if.c
+---
+int main(void) {
+    a$1 = (int32 9);
+    b$2 = (int32 10);
+    <t>.0 = a$1 < (int32 10);
+    <t>.3 = <t>.0;
+    jump_if_zero (<t>.3) _L.if_end.2;
+    <t>.1 = a$1 < (int32 5);
+    <t>.2 = <t>.1;
+    jump_if_zero (<t>.2) _L.if_else.1;
+    b$2 = (int32 1);
+    jump _L.if_end.0;
+_L.if_else.1:
+    b$2 = (int32 2);
+_L.if_end.0:
+_L.if_end.2:
+    return b$2;
+}
