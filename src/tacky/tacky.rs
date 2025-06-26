@@ -334,7 +334,38 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             let (_, expr_instrs) = emit_tacky_for_expression(ctx, e)?;
             Ok(expr_instrs)
         },
-        StatementKind::If { .. } => todo!(),
+        StatementKind::If { condition, then_statement, else_statement } => {
+            let (cond_res, mut instructions) = emit_tacky_for_expression(ctx, condition)?;
+            let then_stmts = emit_tacky_for_statement(ctx, then_statement)?;
+            let else_stmts = else_statement.as_ref()
+                .map(|else_stmt| emit_tacky_for_statement(ctx, else_stmt))
+                .unwrap_or_else(|_| Ok(vec![]))?;
+            let end_lbl = ctx.next_temporary_label("if_end");
+            if else_stmts.is_empty() {
+                let tmp_cond_res = ctx.next_temporary_identifier();
+                instructions.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+                instructions.push(JumpIfZero {
+                    condition: Variable(tmp_cond_res),
+                    target: end_lbl.clone(),
+                });
+                instructions.extend(then_stmts);
+            } else {
+                let else_lbl = ctx.next_temporary_label("if_else");
+                let tmp_cond_res = ctx.next_temporary_identifier();
+                instructions.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+                instructions.push(JumpIfZero {
+                    condition: Variable(tmp_cond_res),
+                    target: else_lbl,
+                });
+                instructions.extend(then_stmts);
+                instructions.push(Jump { target: end_lbl.clone() });
+
+                instructions.push(Label(else_lbl.clone()));
+                instructions.extend(else_stmts);
+            }
+            instructions.push(Label(end_lbl.clone()));
+            Ok(instructions)
+        },
         StatementKind::Null => Ok(vec![]),
     }
 }
