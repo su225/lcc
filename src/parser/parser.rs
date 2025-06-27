@@ -238,7 +238,7 @@ pub enum StatementKind {
 #[serde(rename_all = "snake_case")]
 pub struct Statement {
     pub location: Location,
-    pub label: Option<String>,
+    pub labels: Vec<String>,
     pub kind: StatementKind,
 }
 
@@ -516,7 +516,49 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_statement_labels(&mut self) -> Result<(Vec<String>, Option<Location>), ParserError> {
+        let mut labels = vec![];
+        let mut first_loc = None;
+        loop {
+            let tok1 = self.token_provider.peek_n(0);
+            if tok1.is_none() {
+                break;
+            }
+            match tok1.unwrap() {
+                Ok(lbl_tok) => {
+                    let tok_loc = lbl_tok.location.clone();
+                    match &lbl_tok.token_type {
+                        TokenType::Identifier(lbl) => {
+                            let label = lbl.to_string();
+
+                            let tok2 = self.token_provider.peek_n(1);
+                            if tok2.is_none() {
+                                break;
+                            }
+                            match tok2.unwrap() {
+                                Err(e) => { return Err(TokenizationError(e.clone())) }
+                                Ok(Token { token_type: TokenType::OperatorColon, .. }) => {
+                                    // we have a valid label after performing all this
+                                    // gymnastics. Hence, it is time to celebrate
+                                    labels.push(label);
+                                    first_loc.get_or_insert(tok_loc);
+                                    self.token_provider.next();
+                                    self.token_provider.next();
+                                }
+                                Ok(_) => { break; }
+                            }
+                        }
+                        _ => { break; }
+                    }
+                }
+                Err(e) => { return Err(TokenizationError(e.clone())) }
+            }
+        }
+        Ok((labels, first_loc))
+    }
+
     fn parse_statement(&mut self) -> Result<Statement, ParserError> {
+        let (stmt_labels, first_loc) = self.parse_statement_labels()?;
         let tok = self.token_provider.peek();
         if tok.is_none() {
             return Err(UnexpectedEnd(vec![TokenTag::Semicolon]));
@@ -527,50 +569,63 @@ impl<'a> Parser<'a> {
                 match token_type {
                     TokenType::OpenBrace => {
                         let sub_block = self.parse_block()?;
-                        Ok(Statement { location: tok_loc, label: None, kind: StatementKind::SubBlock(sub_block) })
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(tok_loc),
+                            labels: stmt_labels,
+                            kind: StatementKind::SubBlock(sub_block),
+                        })
                     }
                     TokenType::Semicolon => {
                         self.token_provider.next();
-                        Ok(Statement { location: tok_loc, label: None, kind: StatementKind::Null })
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(tok_loc),
+                            labels: stmt_labels,
+                            kind: StatementKind::Null,
+                        })
                     }
-                    TokenType::Keyword(KeywordIdentifier::Return) => self.parse_return_statement(),
-                    TokenType::Keyword(KeywordIdentifier::If) => self.parse_if_statement(),
+                    TokenType::Keyword(KeywordIdentifier::Return) => {
+                        let unlabeled = self.parse_return_statement()?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(unlabeled.location.clone()),
+                            labels: stmt_labels,
+                            kind: unlabeled.kind,
+                        })
+                    },
+                    TokenType::Keyword(KeywordIdentifier::If) => {
+                        let unlabeled = self.parse_if_statement()?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(unlabeled.location.clone()),
+                            labels: stmt_labels,
+                            kind: unlabeled.kind,
+                        })
+                    },
                     TokenType::Keyword(KeywordIdentifier::Goto) => {
                         self.token_provider.next();
                         let target_label = self.get_token_with_tag(TokenTag::Identifier)?;
                         let res = match target_label.token_type {
                             TokenType::Identifier(target_lbl) => {
                                 Ok(Statement {
-                                    location: tok_loc,
-                                    label: None,
+                                    location: first_loc.unwrap_or(tok_loc),
+                                    labels: stmt_labels,
                                     kind: StatementKind::Goto {
                                         target: target_lbl.to_string(),
                                     },
                                 })
                             }
-                            _ => panic!("non-identifier should have errored")
+                            _ => unreachable!("non-identifier should have errored")
                         };
                         self.expect_semicolon()?;
                         res
                     }
-                    TokenType::Identifier(maybe_label) => {
-                        let statement_label = maybe_label.to_string();
-                        let tok_2 = self.token_provider.peek_n(1);
-                        match tok_2 {
-                            Some(Ok(t2)) if t2.token_type == TokenType::OperatorColon => {
-                                self.token_provider.next();
-                                self.expect_token_with_tag(TokenTag::OperatorColon)?;
-                                let labeled_stmt = self.parse_statement()?;
-                                Ok(Statement {
-                                    location: tok_loc,
-                                    label: Some(statement_label),
-                                    kind: labeled_stmt.kind,
-                                })
-                            },
-                            _ => self.parse_expression_statement(),
-                        }
-                    }
-                    _ => self.parse_expression_statement(),
+                    _ => {
+                        let expr = self.parse_expression()?;
+                        self.expect_semicolon()?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(expr.location.clone()),
+                            labels: stmt_labels,
+                            kind: StatementKind::Expression(expr),
+                        })
+                    },
                 }
             }
             Err(e) => Err(TokenizationError(e.clone())),
@@ -581,7 +636,7 @@ impl<'a> Parser<'a> {
         let kloc = self.expect_keyword(KeywordIdentifier::Return)?;
         let return_code_expr = self.parse_expression()?;
         self.expect_semicolon()?;
-        Ok(Statement { location: kloc, label: None, kind: StatementKind::Return(return_code_expr) })
+        Ok(Statement { location: kloc, labels: vec![], kind: StatementKind::Return(return_code_expr) })
     }
 
     fn parse_if_statement(&mut self) -> Result<Statement, ParserError> {
@@ -602,7 +657,7 @@ impl<'a> Parser<'a> {
                 let else_stmt = self.parse_statement()?;
                 Ok(Statement {
                     location: kloc.clone(),
-                    label: None,
+                    labels: vec![],
                     kind: StatementKind::If {
                         condition: Box::new(cond_expr),
                         then_statement: Box::new(then_stmt),
@@ -612,7 +667,7 @@ impl<'a> Parser<'a> {
             }
             _ => Ok(Statement {
                 location: kloc.clone(),
-                label: None,
+                labels: vec![],
                 kind: StatementKind::If {
                     condition: Box::new(cond_expr),
                     then_statement: Box::new(then_stmt),
@@ -620,12 +675,6 @@ impl<'a> Parser<'a> {
                 },
             }),
         }
-    }
-
-    fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
-        let expr_stmt = self.parse_expression()?;
-        self.expect_semicolon()?;
-        Ok(Statement { location: expr_stmt.location.clone(), label: None, kind: StatementKind::Expression(expr_stmt) })
     }
 
     fn parse_expression(&mut self) -> Result<Expression, ParserError> {
@@ -911,7 +960,7 @@ mod test {
                             BlockItem::Statement(
                                 Statement {
                                     location: Location { line: 1, column: 40 },
-                                    label: None,
+                                    labels: vec![],
                                     kind: Return(Expression {
                                         location: Location { line: 1, column: 48 },
                                         kind: IntConstant("0".to_string(), Decimal),
@@ -950,7 +999,7 @@ mod test {
                         items: vec![
                             BlockItem::Statement(Statement {
                                 location: (2, 5).into(),
-                                label: None,
+                                labels: vec![],
                                 kind: Return(Expression {
                                     location: (2, 12).into(),
                                     kind: IntConstant("2".to_string(), Decimal),
@@ -968,7 +1017,7 @@ mod test {
                         items: vec![
                             BlockItem::Statement(Statement {
                                 location: (6, 5).into(),
-                                label: None,
+                                labels: vec![],
                                 kind: Return(Expression {
                                     location: (6, 12).into(),
                                     kind: IntConstant("3".to_string(), Decimal),
@@ -1003,7 +1052,7 @@ mod test {
                             BlockItem::Statement(
                                 Statement {
                                     location: (2, 5).into(),
-                                    label: None,
+                                    labels: vec![],
                                     kind: Return(Expression {
                                         location: (2, 12).into(),
                                         kind: Binary(
@@ -1037,7 +1086,7 @@ mod test {
     #[test]
     fn test_parse_statement_empty() {
         let src = ";";
-        let expected = Ok(Statement { location: (1, 1).into(), label: None, kind: Null });
+        let expected = Ok(Statement { location: (1, 1).into(), labels: vec![], kind: Null });
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
 
@@ -1046,7 +1095,7 @@ mod test {
         let src = "return 10;";
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: None,
+            labels: vec![],
             kind: Return(Expression {
                 location: (1, 8).into(),
                 kind: IntConstant("10".to_string(), Decimal),
@@ -1060,7 +1109,7 @@ mod test {
         let src = "a++;";
         let expected = Ok(Statement {
             location: (1,1).into(),
-            label: None,
+            labels: vec![],
             kind: StatementKind::Expression(Expression {
                 location: (1,1).into(),
                 kind: Increment {
@@ -1080,7 +1129,7 @@ mod test {
         let src = "a--;";
         let expected = Ok(Statement {
             location: (1,1).into(),
-            label: None,
+            labels: vec![],
             kind: StatementKind::Expression(Expression {
                 location: (1,1).into(),
                 kind: Decrement {
@@ -1100,7 +1149,7 @@ mod test {
         let src = "a = 10;";
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: None,
+            labels: vec![],
             kind: StatementKind::Expression(Expression {
                 location: (1, 1).into(),
                 kind: Assignment {
@@ -1124,7 +1173,7 @@ mod test {
         let src = "if (a) b;";
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: None,
+            labels: vec![],
             kind: If {
                 condition: Box::new(Expression {
                     location: (1,5).into(),
@@ -1132,7 +1181,7 @@ mod test {
                 }),
                 then_statement: Box::new(Statement {
                     location: (1,8).into(),
-                    label: None,
+                    labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (1,8).into(),
                         kind: Variable("b".to_string()),
@@ -1148,7 +1197,7 @@ mod test {
     fn test_parse_statement_simple_if_block_with_else() {
         let src = "if (a) b; else c;";
         let expected = Ok(Statement {
-            label: None,
+            labels: vec![],
             location: (1, 1).into(),
             kind: If {
                 condition: Box::new(Expression {
@@ -1157,7 +1206,7 @@ mod test {
                 }),
                 then_statement: Box::new(Statement {
                     location: (1, 8).into(),
-                    label: None,
+                    labels: vec![],
                     kind: Expression(Expression {
                         location: (1, 8).into(),
                         kind: Variable("b".to_string()),
@@ -1165,7 +1214,7 @@ mod test {
                 }),
                 else_statement: Some(Box::new(Statement {
                     location: (1, 16).into(),
-                    label: None,
+                    labels: vec![],
                     kind: Expression(Expression {
                         location: (1, 16).into(),
                         kind: Variable("c".to_string()),
@@ -1181,7 +1230,7 @@ mod test {
     fn test_parse_statement_if_with_multiple_statements_in_else() {
         let src = "if (a) { return b; } else { b += 10; return b; }";
         let expected = Ok(Statement {
-            label: None,
+            labels: vec![],
             location: (1, 1).into(),
             kind: If {
                 condition: Box::new(Expression {
@@ -1189,13 +1238,13 @@ mod test {
                     kind: Variable("a".to_string()),
                 }),
                 then_statement: Box::new(Statement {
-                    label: None,
+                    labels: vec![],
                     location: (1, 8).into(),
                     kind: SubBlock(Block {
                         start_loc: (1, 8).into(),
                         end_loc: (1, 20).into(),
                         items: vec![BlockItem::Statement(Statement {
-                            label: None,
+                            labels: vec![],
                             location: (1, 10).into(),
                             kind: Return(Expression {
                                 location: (1, 17).into(),
@@ -1205,14 +1254,14 @@ mod test {
                     }),
                 }),
                 else_statement: Some(Box::new(Statement {
-                    label: None,
+                    labels: vec![],
                     location: (1, 27).into(),
                     kind: SubBlock(Block {
                         start_loc: (1, 27).into(),
                         end_loc: (1, 48).into(),
                         items: vec![
                             BlockItem::Statement(Statement {
-                                label: None,
+                                labels: vec![],
                                 location: (1, 29).into(),
                                 kind: Expression(Expression {
                                     location: (1, 29).into(),
@@ -1230,7 +1279,7 @@ mod test {
                                 }),
                             }),
                             BlockItem::Statement(Statement {
-                                label: None,
+                                labels: vec![],
                                 location: (1, 38).into(),
                                 kind: Return(Expression {
                                     location: (1, 45).into(),
@@ -1258,7 +1307,7 @@ mod test {
         "#};
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: None,
+            labels: vec![],
             kind: If {
                 condition: Box::new(Expression {
                     location: (1, 5).into(),
@@ -1276,7 +1325,7 @@ mod test {
                 }),
                 then_statement: Box::new(Statement {
                     location: (2, 5).into(),
-                    label: None,
+                    labels: vec![],
                     kind: Return(Expression {
                         location: (2, 12).into(),
                         kind: IntConstant("0".to_string(), Decimal),
@@ -1284,7 +1333,7 @@ mod test {
                 }),
                 else_statement: Some(Box::new(Statement {
                     location: (3, 6).into(),
-                    label: None,
+                    labels: vec![],
                     kind: If {
                         condition: Box::new(Expression {
                             location: (3, 10).into(),
@@ -1302,7 +1351,7 @@ mod test {
                         }),
                         then_statement: Box::new(Statement {
                             location: (4, 5).into(),
-                            label: None,
+                            labels: vec![],
                             kind: Return(Expression {
                                 location: (4, 12).into(),
                                 kind: IntConstant("1".to_string(), Decimal),
@@ -1310,7 +1359,7 @@ mod test {
                         }),
                         else_statement: Some(Box::new(Statement {
                             location: (6, 5).into(),
-                            label: None,
+                            labels: vec![],
                             kind: Return(Expression {
                                 location: (6, 12).into(),
                                 kind: IntConstant("2".to_string(), Decimal),
@@ -1329,7 +1378,7 @@ mod test {
         let src = "goto x;";
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: None,
+            labels: vec![],
             kind: Goto { target: "x".to_string() },
         });
         run_parse_statement_test_case(StatementTestCase { src, expected });
@@ -1346,14 +1395,14 @@ mod test {
         "#};
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: None,
+            labels: vec![],
             kind: If {
                 condition: Box::new(Expression {
                     location: (1, 5).into(),
                     kind: Variable("a".to_string()),
                 }),
                 then_statement: Box::new(Statement {
-                    label: None,
+                    labels: vec![],
                     location: (2, 5).into(),
                     kind: If {
                         condition: Box::new(Expression {
@@ -1361,7 +1410,7 @@ mod test {
                             kind: Variable("b".to_string()),
                         }),
                         then_statement: Box::new(Statement {
-                            label: None,
+                            labels: vec![],
                             location: (3, 9).into(),
                             kind: Return(Expression {
                                 location: (3, 16).into(),
@@ -1370,7 +1419,7 @@ mod test {
                         }),
                         else_statement: Some(Box::new(Statement {
                             location: (5, 9).into(),
-                            label: None,
+                            labels: vec![],
                             kind: Return(Expression {
                                 location: (5, 16).into(),
                                 kind: IntConstant("2".to_string(), Decimal),
@@ -1390,7 +1439,7 @@ mod test {
         let src = "x: a = 10;";
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: Some("x".to_string()),
+            labels: vec!["x".to_string()],
             kind: StatementKind::Expression(Expression {
                 location: (1, 4).into(),
                 kind: Assignment {
@@ -1410,6 +1459,34 @@ mod test {
     }
 
     #[test]
+    fn test_parse_statement_multi_labeled_simple() {
+        let src = "x: y: z: a = 10;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            labels: vec![
+                "x".to_string(),
+                "y".to_string(),
+                "z".to_string(),
+            ],
+            kind: StatementKind::Expression(Expression {
+                location: (1, 10).into(),
+                kind: Assignment {
+                    lvalue: Box::new(Expression {
+                        location: (1,10).into(),
+                        kind: Variable("a".to_string()),
+                    }),
+                    rvalue: Box::new(Expression {
+                        location: (1, 14).into(),
+                        kind: IntConstant("10".to_string(), Decimal),
+                    }),
+                    op: None,
+                },
+            }),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
     fn test_parse_statement_labeled_if() {
         let src = indoc!{r#"
         lbl1:
@@ -1417,7 +1494,7 @@ mod test {
         "#};
         let expected = Ok(Statement {
             location: (1, 1).into(),
-            label: Some("lbl1".to_string()),
+            labels: vec!["lbl1".to_string()],
             kind: If {
                 condition: Box::new(Expression {
                     location: (2, 9).into(),
@@ -1425,7 +1502,7 @@ mod test {
                 }),
                 then_statement: Box::new(Statement {
                     location: (2, 12).into(),
-                    label: None,
+                    labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (2, 12).into(),
                         kind: Variable("b".to_string()),
@@ -1433,7 +1510,7 @@ mod test {
                 }),
                 else_statement: Some(Box::new(Statement {
                     location: (2, 20).into(),
-                    label: None,
+                    labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (2, 20).into(),
                         kind: Variable("c".to_string()),
@@ -2556,7 +2633,7 @@ mod test {
             items: vec![
                 BlockItem::Statement(Statement {
                     location: (2, 5).into(),
-                    label: None,
+                    labels: vec![],
                     kind: Return(Expression {
                         location: (2, 12).into(),
                         kind: IntConstant("0".to_string(), Decimal),
@@ -2605,7 +2682,7 @@ mod test {
                 }),
                 BlockItem::Statement(Statement {
                     location: (4, 5).into(),
-                    label: None,
+                    labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (4, 5).into(),
                         kind: Assignment {
@@ -2658,7 +2735,7 @@ mod test {
                 }),
                 BlockItem::Statement(Statement {
                     location: (3, 3).into(),
-                    label: None,
+                    labels: vec![],
                     kind: SubBlock(Block {
                         start_loc: (3, 3).into(),
                         end_loc: (7, 3).into(),
@@ -2685,7 +2762,7 @@ mod test {
                             }),
                             BlockItem::Statement(Statement {
                                 location: (6, 5).into(),
-                                label: None,
+                                labels: vec![],
                                 kind: StatementKind::Expression(Expression {
                                     location: (6, 5).into(),
                                     kind: Assignment {
@@ -2716,7 +2793,7 @@ mod test {
                 }),
                 BlockItem::Statement(Statement {
                     location: (8, 3).into(),
-                    label: None,
+                    labels: vec![],
                     kind: Return(Expression {
                         location: (8, 10).into(),
                         kind: IntConstant("0".to_string(), Decimal),

@@ -25,7 +25,7 @@ functions:
             location:
               line: 2
               column: 5
-            label: ~
+            labels: []
             kind:
               return:
                 location:

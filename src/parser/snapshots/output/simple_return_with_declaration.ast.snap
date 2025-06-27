@@ -56,7 +56,7 @@ functions:
             location:
               line: 4
               column: 5
-            label: ~
+            labels: []
             kind:
               expression:
                 location:
@@ -83,7 +83,7 @@ functions:
             location:
               line: 5
               column: 5
-            label: ~
+            labels: []
             kind:
               return:
                 location:

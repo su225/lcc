@@ -323,8 +323,8 @@ fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Res
 
 fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<TackyInstruction>, TackyError> {
     let mut instrs = vec![];
-    if let Some(ref stmt_label) = s.label {
-        instrs.push(Label(TackySymbol::from(stmt_label)));
+    for lbl in s.labels.iter() {
+        instrs.push(Label(TackySymbol::from(lbl)));
     }
     match &s.kind {
         StatementKind::Return(ref expr) => {

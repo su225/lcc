@@ -200,8 +200,8 @@ fn collect_labels_from_block(ctx: &mut IdentifierResolutionContext, block: &Bloc
 
 fn collect_labels_from_statement(ctx: &mut IdentifierResolutionContext, statement: &Statement) -> Result<(), IdentifierResolutionError> {
     let loc = statement.location.clone();
-    if let Some(ref cur_stmt_label) = statement.label {
-        ctx.add_label(cur_stmt_label.clone(), loc)?;
+    for lbl in statement.labels.iter() {
+        ctx.add_label(lbl.clone(), loc)?;
     }
     match &statement.kind {
         StatementKind::If { then_statement, else_statement, .. } => {
@@ -244,16 +244,16 @@ fn resolve_block_item<'a>(ctx: &mut IdentifierResolutionContext, blk_item: &Bloc
 
 fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) -> Result<Statement, IdentifierResolutionError> {
     let loc = stmt.location.clone();
-    let resolved_label = match &stmt.label {
-        None => None,
-        Some(lbl) => Some(ctx.get_resolved_label(&lbl)?),
-    };
+    let mut resolved_labels = Vec::with_capacity(stmt.labels.len());
+    for lbl in stmt.labels.iter() {
+        resolved_labels.push(ctx.get_resolved_label(lbl)?);
+    }
     match &stmt.kind {
         StatementKind::Return(ret_val_expr) => {
             let resolved_ret_val_expr = resolve_expression(ctx, ret_val_expr)?;
             Ok(Statement {
                 location: loc.clone(),
-                label: resolved_label,
+                labels: resolved_labels,
                 kind: StatementKind::Return(resolved_ret_val_expr),
             })
         },
@@ -261,7 +261,7 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
             let resolved_expr = resolve_expression(ctx, expr)?;
             Ok(Statement {
                 location: loc.clone(),
-                label: resolved_label,
+                labels: resolved_labels,
                 kind: StatementKind::Expression(resolved_expr),
             })
         },
@@ -270,7 +270,7 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
                 let resolved_subblock = resolve_block(sub_ctx, sub_block)?;
                 Ok(Statement {
                     location: loc.clone(),
-                    label: resolved_label.clone(),
+                    labels: resolved_labels.clone(),
                     kind: StatementKind::SubBlock(resolved_subblock),
                 })
             })
@@ -287,7 +287,7 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
             };
             Ok(Statement {
                 location: loc,
-                label: resolved_label,
+                labels: resolved_labels,
                 kind: StatementKind::If {
                     condition: Box::new(resolved_condition),
                     then_statement: Box::new(resolved_then),
@@ -297,14 +297,14 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
         },
         StatementKind::Goto { target } => Ok(Statement {
             location: loc,
-            label: resolved_label,
+            labels: resolved_labels,
             kind: StatementKind::Goto {
                 target: ctx.get_resolved_label(target)?,
             },
         }),
         StatementKind::Null => Ok(Statement {
             location: loc.clone(),
-            label: resolved_label,
+            labels: resolved_labels,
             kind: StatementKind::Null,
         }),
     }
@@ -822,6 +822,7 @@ mod test {
         }
         "#};
         let resolv_result = run_program_resolution(program);
+        println!("error: {:?}", resolv_result);
         assert!(resolv_result.is_err());
         let IdentifierResolutionError::LabelAlreadyUsed { .. } = resolv_result.unwrap_err() else {
             panic!("unexpected error");
