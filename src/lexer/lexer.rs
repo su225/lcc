@@ -17,6 +17,12 @@ pub enum KeywordIdentifier {
     If,
     Else,
     Goto,
+
+    Do,
+    While,
+    For,
+    Break,
+    Continue,
 }
 
 impl Radix {
@@ -271,6 +277,12 @@ static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
         ("else", KeywordIdentifier::Else),
 
         ("goto", KeywordIdentifier::Goto),
+
+        ("do", KeywordIdentifier::Do),
+        ("while", KeywordIdentifier::While),
+        ("for", KeywordIdentifier::For),
+        ("break", KeywordIdentifier::Break),
+        ("continue", KeywordIdentifier::Continue),
     ])
 });
 
@@ -284,6 +296,12 @@ static KEYWORD_STRINGS: Lazy<HashMap<KeywordIdentifier, &'static str>> = Lazy::n
         (KeywordIdentifier::Else, "else"),
 
         (KeywordIdentifier::Goto, "goto"),
+
+        (KeywordIdentifier::Do, "do"),
+        (KeywordIdentifier::While, "while"),
+        (KeywordIdentifier::For, "for"),
+        (KeywordIdentifier::Break, "break"),
+        (KeywordIdentifier::Continue, "continue"),
     ])
 });
 
