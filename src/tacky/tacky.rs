@@ -322,26 +322,30 @@ fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Res
 }
 
 fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec<TackyInstruction>, TackyError> {
+    let mut instrs = vec![];
+    if let Some(ref stmt_label) = s.label {
+        instrs.push(Label(TackySymbol::from(stmt_label)));
+    }
     match &s.kind {
         StatementKind::Return(ref expr) => {
-            let (dst, mut expr_instrs) = emit_tacky_for_expression(ctx, expr)?;
-            expr_instrs.push(Return(dst));
-            Ok(expr_instrs)
+            let (dst, expr_instrs) = emit_tacky_for_expression(ctx, expr)?;
+            instrs.extend(expr_instrs);
+            instrs.push(Return(dst));
         }
         StatementKind::SubBlock(block) => {
-            let mut instrs = vec![];
             for blk_item in block.items.iter() {
                 let blk_instrs = emit_tacky_for_block_item(ctx, blk_item)?;
                 instrs.extend(blk_instrs);
             }
-            Ok(instrs)
         }
         StatementKind::Expression(e) => {
             let (_, expr_instrs) = emit_tacky_for_expression(ctx, e)?;
-            Ok(expr_instrs)
+            instrs.extend(expr_instrs)
         },
         StatementKind::If { condition, then_statement, else_statement } => {
-            let (cond_res, mut instructions) = emit_tacky_for_expression(ctx, condition)?;
+            let (cond_res, cond_instrs) = emit_tacky_for_expression(ctx, condition)?;
+            instrs.extend(cond_instrs);
+
             let then_stmts = emit_tacky_for_statement(ctx, then_statement)?;
             let else_stmts = else_statement.as_ref()
                 .map(|else_stmt| emit_tacky_for_statement(ctx, else_stmt))
@@ -349,35 +353,34 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             let end_lbl = ctx.next_temporary_label("if_end");
             if else_stmts.is_empty() {
                 let tmp_cond_res = ctx.next_temporary_identifier();
-                instructions.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
-                instructions.push(JumpIfZero {
+                instrs.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+                instrs.push(JumpIfZero {
                     condition: Variable(tmp_cond_res),
                     target: end_lbl.clone(),
                 });
-                instructions.extend(then_stmts);
+                instrs.extend(then_stmts);
             } else {
                 let else_lbl = ctx.next_temporary_label("if_else");
                 let tmp_cond_res = ctx.next_temporary_identifier();
-                instructions.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
-                instructions.push(JumpIfZero {
+                instrs.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+                instrs.push(JumpIfZero {
                     condition: Variable(tmp_cond_res),
                     target: else_lbl.clone(),
                 });
-                instructions.extend(then_stmts);
-                instructions.push(Jump { target: end_lbl.clone() });
+                instrs.extend(then_stmts);
+                instrs.push(Jump { target: end_lbl.clone() });
 
-                instructions.push(Label(else_lbl.clone()));
-                instructions.extend(else_stmts);
+                instrs.push(Label(else_lbl.clone()));
+                instrs.extend(else_stmts);
             }
-            instructions.push(Label(end_lbl));
-            Ok(instructions)
+            instrs.push(Label(end_lbl));
         },
         StatementKind::Goto {target} => {
-            let instructions = vec![Jump {target: TackySymbol::from(target) }];
-            Ok(instructions)
-        }
-        StatementKind::Null => Ok(vec![]),
-    }
+            instrs.push(Jump { target: TackySymbol::from(target) });
+        },
+        StatementKind::Null => {},
+    };
+    Ok(instrs)
 }
 
 fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(TackyValue, Vec<TackyInstruction>), TackyError> {
