@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap};
 use thiserror::Error;
 use crate::common::Location;
 use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol};
@@ -13,6 +13,12 @@ pub enum IdentifierResolutionError {
 
     #[error("{0:?}: lvalue expected")]
     LvalueExpected(Location),
+
+    #[error("{cur_location:?} label '{label:?}' already used at {prev_location:?}")]
+    LabelAlreadyUsed { prev_location: Location, cur_location: Location, label: String },
+
+    #[error("label '{label:?}' not declared")]
+    LabelNotDeclared { label: String }
 }
 
 struct Scope {
@@ -51,9 +57,14 @@ impl Scope {
     }
 }
 
+struct ResolvedLabel {
+    label: String,
+    location: Location,
+}
+
 struct IdentifierResolutionContext {
     scopes: Vec<Scope>,
-    labels: Scope,
+    labels: HashMap<String, ResolvedLabel>,
     next_num_id: u64,
 }
 
@@ -61,7 +72,7 @@ impl IdentifierResolutionContext {
     fn new() -> Self {
         return IdentifierResolutionContext {
             scopes: vec![Scope::new()],
-            labels: Scope::new(),
+            labels: HashMap::new(),
             next_num_id: 0,
         }
     }
@@ -77,6 +88,31 @@ impl IdentifierResolutionContext {
         let current_scope = self.get_current_scope_mut();
         current_scope.add_mapping(ident, mapped_symbol.clone())?;
         Ok(mapped_symbol)
+    }
+
+    fn add_label(&mut self, lbl: String, loc: Location) -> Result<(), IdentifierResolutionError> {
+        let next = self.next_num_id;
+        self.next_num_id += 1;
+        let resolved_label = ResolvedLabel {
+            label: format!(".L{lbl}.{next}"),
+            location: loc.clone(),
+        };
+        if let Some(prev_resolved_label) = self.labels.insert(lbl.clone(), resolved_label) {
+            return Err(IdentifierResolutionError::LabelAlreadyUsed {
+                prev_location: prev_resolved_label.location.clone(),
+                cur_location: loc,
+                label: lbl.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    fn get_resolved_label(&self, lbl: &String) -> Result<String, IdentifierResolutionError> {
+        if let Some(resolved) = self.labels.get(lbl) {
+            Ok(resolved.label.clone())
+        } else {
+            Err(IdentifierResolutionError::LabelNotDeclared { label: lbl.to_string() })
+        }
     }
 
     fn get_resolved_identifier(&self, raw_ident: &Symbol) -> Result<Symbol, IdentifierResolutionError> {
@@ -111,6 +147,15 @@ impl IdentifierResolutionContext {
         result
     }
 
+    #[inline]
+    fn with_function_scope<T, F>(&mut self, f: F) -> Result<T, IdentifierResolutionError>
+    where
+        F: Fn(&mut IdentifierResolutionContext) -> Result<T, IdentifierResolutionError>
+    {
+        self.labels.clear();
+        self.with_scope(f)
+    }
+
     fn get_current_scope(&self) -> &Scope {
         self.scopes.last().expect("expected at least one scope")
     }
@@ -132,7 +177,8 @@ pub fn resolve_program(program: ProgramDefinition) -> Result<ProgramDefinition, 
 }
 
 fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &FunctionDefinition) -> Result<FunctionDefinition, IdentifierResolutionError> {
-    ctx.with_scope(|sub_ctx| {
+    ctx.with_function_scope(|sub_ctx| {
+        collect_labels_from_block(sub_ctx, &f.body)?;
         resolve_block(sub_ctx, &f.body).map(|resolved_block| {
             FunctionDefinition {
                 location: f.location.clone(),
@@ -141,6 +187,33 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &FunctionDefin
             }
         })
     })
+}
+
+fn collect_labels_from_block(ctx: &mut IdentifierResolutionContext, block: &Block) -> Result<(), IdentifierResolutionError> {
+    for blk_item in block.items.iter() {
+        if let BlockItem::Statement(statement) = blk_item {
+            collect_labels_from_statement(ctx, statement)?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_labels_from_statement(ctx: &mut IdentifierResolutionContext, statement: &Statement) -> Result<(), IdentifierResolutionError> {
+    let loc = statement.location.clone();
+    if let Some(ref cur_stmt_label) = statement.label {
+        ctx.add_label(cur_stmt_label.clone(), loc)?;
+    }
+    match &statement.kind {
+        StatementKind::If { then_statement, else_statement, .. } => {
+            collect_labels_from_statement(ctx, then_statement)?;
+            if let Some(ref else_stmt) = else_statement {
+                collect_labels_from_statement(ctx, else_stmt)?;
+            }
+        }
+        StatementKind::SubBlock(sub_block) => collect_labels_from_block(ctx, sub_block)?,
+        _ => {}
+    }
+    Ok(())
 }
 
 fn resolve_block<'a>(ctx: &mut IdentifierResolutionContext, block: &Block) -> Result<Block, IdentifierResolutionError> {
@@ -169,21 +242,37 @@ fn resolve_block_item<'a>(ctx: &mut IdentifierResolutionContext, blk_item: &Bloc
     }
 }
 
-fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement) -> Result<Statement, IdentifierResolutionError> {
+fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) -> Result<Statement, IdentifierResolutionError> {
     let loc = stmt.location.clone();
+    let resolved_label = match &stmt.label {
+        None => None,
+        Some(lbl) => Some(ctx.get_resolved_label(&lbl)?),
+    };
     match &stmt.kind {
         StatementKind::Return(ret_val_expr) => {
             let resolved_ret_val_expr = resolve_expression(ctx, ret_val_expr)?;
-            Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::Return(resolved_ret_val_expr) })
+            Ok(Statement {
+                location: loc.clone(),
+                label: resolved_label,
+                kind: StatementKind::Return(resolved_ret_val_expr),
+            })
         },
         StatementKind::Expression(expr) => {
             let resolved_expr = resolve_expression(ctx, expr)?;
-            Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::Expression(resolved_expr) })
+            Ok(Statement {
+                location: loc.clone(),
+                label: resolved_label,
+                kind: StatementKind::Expression(resolved_expr),
+            })
         },
         StatementKind::SubBlock(sub_block) => {
             ctx.with_scope(|sub_ctx| {
                 let resolved_subblock = resolve_block(sub_ctx, sub_block)?;
-                Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::SubBlock(resolved_subblock) })
+                Ok(Statement {
+                    location: loc.clone(),
+                    label: resolved_label.clone(),
+                    kind: StatementKind::SubBlock(resolved_subblock),
+                })
             })
         },
         StatementKind::If { condition, then_statement, else_statement } => {
@@ -197,8 +286,8 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
                 },
             };
             Ok(Statement {
-                location: loc.clone(),
-                label: None,
+                location: loc,
+                label: resolved_label,
                 kind: StatementKind::If {
                     condition: Box::new(resolved_condition),
                     then_statement: Box::new(resolved_then),
@@ -206,12 +295,22 @@ fn resolve_statement<'a>(ctx: &mut IdentifierResolutionContext, stmt: &Statement
                 },
             })
         },
-        StatementKind::Goto { .. } => todo!("label must be defined within the function"),
-        StatementKind::Null => Ok(Statement { location: loc.clone(), label: None, kind: StatementKind::Null })
+        StatementKind::Goto { target } => Ok(Statement {
+            location: loc,
+            label: resolved_label,
+            kind: StatementKind::Goto {
+                target: ctx.get_resolved_label(target)?,
+            },
+        }),
+        StatementKind::Null => Ok(Statement {
+            location: loc.clone(),
+            label: resolved_label,
+            kind: StatementKind::Null,
+        }),
     }
 }
 
-fn resolve_declaration<'a>(ctx: &mut IdentifierResolutionContext, decl: &Declaration) -> Result<Declaration, IdentifierResolutionError> {
+fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration) -> Result<Declaration, IdentifierResolutionError> {
     let decl_loc = decl.location.clone();
     match &decl.kind {
         DeclarationKind::Declaration { identifier, init_expression } => {
@@ -334,12 +433,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         assert!(resolved_ast.is_err());
 
         let IdentifierResolutionError::NotFound { location, name } = resolved_ast.unwrap_err() else { panic!("unexpected error") };
@@ -356,12 +450,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::AlreadyDeclared { name, current_loc: _, original_loc: _ } = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -413,12 +502,7 @@ mod test {
             return x;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::NotFound { name, location } = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -434,12 +518,7 @@ mod test {
             return 0;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::LvalueExpected(location) = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -456,12 +535,7 @@ mod test {
             a = 2;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         assert!(resolved_ast.is_err());
 
         let IdentifierResolutionError::NotFound { location, name } = resolved_ast.unwrap_err() else {
@@ -478,12 +552,7 @@ mod test {
             10++;
         }
         "#};
-
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -500,11 +569,7 @@ mod test {
         }
         "#};
 
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -517,12 +582,7 @@ mod test {
             (!10)++;
         }
         "#};
-
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -617,11 +677,7 @@ mod test {
             return a;
         }
         "#};
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved_ast = resolve_program(parsed.unwrap());
+        let resolved_ast = run_program_resolution(program);
         let IdentifierResolutionError::LvalueExpected(_location) = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
@@ -680,17 +736,150 @@ mod test {
         assert_successful_identifier_resolution(program);
     }
 
+    #[test]
+    fn test_should_resolve_labels_correctly_simple() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            assign_1: x = 1;
+            return x;
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_resolve_variable_name_and_labels_correctly_when_they_are_the_same() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            x: x = 1;
+            return x;
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_resolve_labels_correctly_forward_ref() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            int errno = 0;
+            if (x < 10)
+                goto err;
+            return x;
+        err:
+            errno = -1;
+            return errno;
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_resolve_same_label_in_different_functions_correctly() {
+        let program = indoc!{r#"
+        int foo(void) {
+        x: return 10;
+        }
+
+        int bar(void) {
+        x: return 1;
+        }
+        "#};
+        assert_successful_identifier_resolution(program);
+    }
+
+    #[test]
+    fn test_should_error_when_same_label_is_reused_within_a_function() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            a: x += 1;
+            a: x += 2;
+            return x;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::LabelAlreadyUsed { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    #[test]
+    fn test_should_error_when_same_label_is_reused_in_a_different_block_in_the_same_function() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            if (x > 10) {
+                a: x += 1;
+            } else {
+                a: x += 2;
+            }
+            return x;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::LabelAlreadyUsed { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error");
+        };
+    }
+
+    #[test]
+    fn test_should_error_when_undeclared_label_is_used_in_the_goto_statement() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            goto y;
+            return x;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::LabelNotDeclared { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    #[test]
+    fn test_should_error_when_goto_target_is_declared_in_a_different_function() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 10;
+            goto y;
+            return x;
+        }
+
+        int foo(void) {
+            y: return 1;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::LabelNotDeclared { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
     fn assert_successful_identifier_resolution(program: &str) {
-        let lexer = Lexer::new(program);
-        let mut parser = Parser::new(lexer);
-        let parsed = parser.parse();
-        assert!(parsed.is_ok());
-        let resolved = resolve_program(parsed.unwrap());
+        let resolved = run_program_resolution(program);
         assert!(resolved.is_ok(), "{:#?}", resolved);
 
         let resolved_program = resolved.unwrap();
         assert!(program_identifiers_are_unique(&resolved_program));
         assert!(desugared_compound_assignment(&resolved_program));
+    }
+
+    fn run_program_resolution(program: &str) -> Result<ProgramDefinition, IdentifierResolutionError> {
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        resolved_ast
     }
     
     fn desugared_compound_assignment(prog: &ProgramDefinition) -> bool {
