@@ -307,6 +307,11 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
             labels: resolved_labels,
             kind: StatementKind::Null,
         }),
+        StatementKind::Break(_) => todo!(),
+        StatementKind::Continue(_) => todo!(),
+        StatementKind::While { .. } => todo!(),
+        StatementKind::DoWhile { .. } => todo!(),
+        StatementKind::For { .. } => todo!(),
     }
 }
 
@@ -916,6 +921,11 @@ mod test {
             }
             StatementKind::Goto {..} => true,
             StatementKind::Null => true,
+            StatementKind::Break(_) => true,
+            StatementKind::Continue(_) => true,
+            StatementKind::While { .. } => todo!(),
+            StatementKind::DoWhile { .. } => todo!(),
+            StatementKind::For { .. } => todo!(),
         }
     }
 
@@ -986,6 +996,11 @@ mod test {
             },
             StatementKind::Goto {..} => true,
             StatementKind::SubBlock(sb) => block_identifiers_are_unique(identifiers, sb),
+            StatementKind::Break(_) => todo!(),
+            StatementKind::Continue(_) => todo!(),
+            StatementKind::While { .. } => todo!(),
+            StatementKind::DoWhile { .. } => todo!(),
+            StatementKind::For { .. } => todo!(),
         }
     }
 

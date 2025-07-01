@@ -352,6 +352,13 @@ pub struct Parser<'a> {
     token_provider: Lexer<'a>,
 }
 
+fn is_declaration(tok: &Token) -> bool {
+    match &tok.token_type {
+        TokenType::Keyword(KeywordIdentifier::TypeInt) => true,
+        _ => false,
+    }
+}
+
 impl<'a> Parser<'a> {
     pub fn new(token_provider: Lexer<'a>) -> Parser<'a> {
         Parser { token_provider }
@@ -423,7 +430,7 @@ impl<'a> Parser<'a> {
         }
         match tok.unwrap() {
             Ok(tok) => {
-                if self.is_declaration(tok) {
+                if is_declaration(tok) {
                     let decl = self.parse_declaration()?;
                     Ok(BlockItem::Declaration(decl))
                 } else {
@@ -432,13 +439,6 @@ impl<'a> Parser<'a> {
                 }
             }
             Err(e) => Err(TokenizationError(e.clone())),
-        }
-    }
-
-    fn is_declaration(&self, tok: &Token) -> bool {
-        match &tok.token_type {
-            TokenType::Keyword(KeywordIdentifier::TypeInt) => true,
-            _ => false,
         }
     }
 
@@ -679,6 +679,7 @@ impl<'a> Parser<'a> {
                         self.expect_token_with_tag(TokenTag::OpenParentheses)?;
                         let post_condition = self.parse_expression()?;
                         self.expect_token_with_tag(TokenTag::CloseParentheses)?;
+                        self.expect_semicolon()?;
                         Ok(Statement {
                             location: first_loc.unwrap_or(tok_loc.clone()),
                             labels: stmt_labels,
@@ -753,20 +754,27 @@ impl<'a> Parser<'a> {
             return Err(UnexpectedEnd(vec![TokenTag::Semicolon, TokenTag::CloseParentheses]));
         }
         let tok_unwrapped = tok.unwrap();
-        match &tok_unwrapped {
-            Ok(Token { token_type: TokenType::Semicolon, .. })
-            | Ok(Token { token_type: TokenType::CloseParentheses, .. }) => Ok(ForInit::Null),
+        let init_expr = match &tok_unwrapped {
+            Ok(Token { token_type: TokenType::Semicolon, .. }) => {
+                self.expect_semicolon()?;
+                Ok(ForInit::Null)
+            },
             Ok(tok) => {
-                if self.is_declaration(tok) {
+                if is_declaration(tok) {
                     let decl = self.parse_declaration()?;
                     Ok(ForInit::InitDecl(Box::new(decl)))
                 } else {
                     let expr = self.parse_expression()?;
+                    self.expect_semicolon()?;
                     Ok(ForInit::InitExpr(Box::new(expr)))
                 }
             },
             Err(e) => Err(TokenizationError(e.clone())),
+        };
+        if init_expr.is_err() {
+            return init_expr;
         }
+        init_expr
     }
 
     fn parse_for_loop_maybe_parse_expression(&mut self) -> Result<Option<Expression>, ParserError> {
@@ -1086,7 +1094,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -1672,6 +1680,109 @@ mod test {
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
 
+    #[test]
+    fn test_parse_statement_for_loop_with_init_declaration() {
+        let src = indoc!{r#"
+        for (int i = 0; i < 10; i++)
+            x = x + i;
+        "#};
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            labels: vec![],
+            kind: For {
+                init: ForInit::InitDecl(Box::new(Declaration {
+                    location: (1, 6).into(),
+                    kind: DeclarationKind::Declaration {
+                        identifier: Symbol {
+                            name: "i".to_string(),
+                            location: (1, 10).into(),
+                        },
+                        init_expression: Some(Expression {
+                            location: (1, 14).into(),
+                            kind: IntConstant("0".to_string(), Decimal),
+                        }),
+                    },
+                })),
+                condition: Some(Box::new(Expression {
+                    location: (1, 17).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (1, 17).into(),
+                            kind: Variable("i".to_string()),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 21).into(),
+                            kind: IntConstant("10".to_string(), Decimal),
+                        }),
+                    ),
+                })),
+                post: Some(Box::new(Expression {
+                    location: (1, 25).into(),
+                    kind: Increment {
+                        is_post: true,
+                        e: Box::new(Expression {
+                            location: (1, 25).into(),
+                            kind: Variable("i".to_string()),
+                        }),
+                    },
+                })),
+                loop_body: Box::new(Statement {
+                    location: (2, 5).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (2, 5).into(),
+                        kind: Assignment {
+                            lvalue: Box::new(Expression {
+                                location: (2, 5).into(),
+                                kind: Variable("x".to_string()),
+                            }),
+                            rvalue: Box::new(Expression {
+                                location: (2, 9).into(),
+                                kind: Binary(
+                                    BinaryOperator::Add,
+                                    Box::new(Expression {
+                                        location: (2, 9).into(),
+                                        kind: Variable("x".to_string()),
+                                    }),
+                                    Box::new(Expression {
+                                        location: (2, 13).into(),
+                                        kind: Variable("i".to_string()),
+                                    }),
+                                ),
+                            }),
+                            op: None,
+                        },
+                    }),
+                }),
+                loop_label: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_for_loop_null_headers() {
+        let src = indoc!{r#"
+        for(;;);
+        "#};
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            labels: vec![],
+            kind: For {
+                init: ForInit::Null,
+                condition: None,
+                post: None,
+                loop_body: Box::new(Statement {
+                    location: (1,8).into(),
+                    labels: vec![],
+                    kind: Null,
+                }),
+                loop_label: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
 
     struct ExprTestCase<'a> {
         src: &'a str,

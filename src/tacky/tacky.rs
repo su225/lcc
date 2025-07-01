@@ -379,6 +379,11 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             instrs.push(Jump { target: TackySymbol::from(target) });
         },
         StatementKind::Null => {},
+        StatementKind::Break(_) => todo!(),
+        StatementKind::Continue(_) => todo!(),
+        StatementKind::While { .. } => todo!(),
+        StatementKind::DoWhile { .. } => todo!(),
+        StatementKind::For { .. } => todo!(),
     };
     Ok(instrs)
 }
