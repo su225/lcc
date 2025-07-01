@@ -221,6 +221,14 @@ pub struct TypeExpression {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ForInit {
+    InitDecl(Box<Declaration>),
+    InitExpr(Box<Expression>),
+    Null,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StatementKind {
     Return(Expression),
     Expression(Expression),
@@ -229,6 +237,25 @@ pub enum StatementKind {
         condition: Box<Expression>,
         then_statement: Box<Statement>,
         else_statement: Option<Box<Statement>>,
+    },
+    Break(Option<String>),
+    Continue(Option<String>),
+    While {
+        pre_condition: Box<Expression>,
+        loop_body: Box<Statement>,
+        loop_label: Option<String>,
+    },
+    DoWhile {
+        loop_body: Box<Statement>,
+        post_condition: Box<Expression>,
+        loop_label: Option<String>,
+    },
+    For {
+        init: ForInit,
+        condition: Option<Box<Expression>>,
+        post: Option<Box<Expression>>,
+        loop_body: Box<Statement>,
+        loop_label: Option<String>,
     },
     Goto { target: String },
     Null,
@@ -395,19 +422,23 @@ impl<'a> Parser<'a> {
             return Err(UnexpectedEnd(vec![TokenTag::Semicolon]));
         }
         match tok.unwrap() {
-            Ok(Token { token_type, .. }) => {
-                match token_type {
-                    TokenType::Keyword(KeywordIdentifier::TypeInt) => {
-                        let decl = self.parse_declaration()?;
-                        Ok(BlockItem::Declaration(decl))
-                    }
-                    _ => {
-                        let stmt = self.parse_statement()?;
-                        Ok(BlockItem::Statement(stmt))
-                    }
+            Ok(tok) => {
+                if self.is_declaration(tok) {
+                    let decl = self.parse_declaration()?;
+                    Ok(BlockItem::Declaration(decl))
+                } else {
+                    let stmt = self.parse_statement()?;
+                    Ok(BlockItem::Statement(stmt))
                 }
             }
             Err(e) => Err(TokenizationError(e.clone())),
+        }
+    }
+
+    fn is_declaration(&self, tok: &Token) -> bool {
+        match &tok.token_type {
+            TokenType::Keyword(KeywordIdentifier::TypeInt) => true,
+            _ => false,
         }
     }
 
@@ -599,6 +630,65 @@ impl<'a> Parser<'a> {
                             kind: unlabeled.kind,
                         })
                     },
+                    TokenType::Keyword(KeywordIdentifier::Break) => {
+                        self.token_provider.next();
+                        self.get_token_with_tag(TokenTag::Semicolon)?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(tok_loc.clone()),
+                            labels: stmt_labels,
+                            kind: StatementKind::Break(None),
+                        })
+                    },
+                    TokenType::Keyword(KeywordIdentifier::Continue) => {
+                        self.token_provider.next();
+                        self.get_token_with_tag(TokenTag::Semicolon)?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(tok_loc.clone()),
+                            labels: stmt_labels,
+                            kind: StatementKind::Continue(None),
+                        })
+                    },
+                    TokenType::Keyword(KeywordIdentifier::For) => {
+                        let unlabeled = self.parse_for_loop_statement()?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(unlabeled.location.clone()),
+                            labels: stmt_labels,
+                            kind: unlabeled.kind,
+                        })
+                    },
+                    TokenType::Keyword(KeywordIdentifier::While) => {
+                        self.token_provider.next();
+                        self.expect_token_with_tag(TokenTag::OpenParentheses)?;
+                        let precondition_expr = self.parse_expression()?;
+                        self.expect_token_with_tag(TokenTag::CloseParentheses)?;
+                        let loop_body = self.parse_statement()?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(tok_loc.clone()),
+                            labels: stmt_labels,
+                            kind: StatementKind::While {
+                                pre_condition: Box::new(precondition_expr),
+                                loop_body: Box::new(loop_body),
+                                loop_label: None,
+                            },
+                        })
+                    },
+                    TokenType::Keyword(KeywordIdentifier::Do) => {
+                        self.token_provider.next();
+                        let loop_body = self.parse_statement()?;
+                        self.expect_keyword(KeywordIdentifier::While)?;
+                        self.expect_token_with_tag(TokenTag::OpenParentheses)?;
+                        let post_condition = self.parse_expression()?;
+                        self.expect_token_with_tag(TokenTag::CloseParentheses)?;
+                        Ok(Statement {
+                            location: first_loc.unwrap_or(tok_loc.clone()),
+                            labels: stmt_labels,
+                            kind: StatementKind::DoWhile {
+                                loop_body: Box::new(loop_body),
+                                post_condition: Box::new(post_condition),
+                                loop_label: None,
+                            },
+                        })
+                    },
                     TokenType::Keyword(KeywordIdentifier::Goto) => {
                         self.token_provider.next();
                         let target_label = self.get_token_with_tag(TokenTag::Identifier)?;
@@ -629,6 +719,67 @@ impl<'a> Parser<'a> {
                 }
             }
             Err(e) => Err(TokenizationError(e.clone())),
+        }
+    }
+
+    fn parse_for_loop_statement(&mut self) -> Result<Statement, ParserError> {
+        let first_loc = self.expect_keyword(KeywordIdentifier::For)?;
+        self.expect_token_with_tag(TokenTag::OpenParentheses)?;
+        let loop_init = self.parse_for_loop_init()?;
+
+        let loop_cond = self.parse_for_loop_maybe_parse_expression()?;
+        self.expect_token_with_tag(TokenTag::Semicolon)?;
+
+        let loop_post = self.parse_for_loop_maybe_parse_expression()?;
+        self.expect_token_with_tag(TokenTag::CloseParentheses)?;
+
+        let loop_body = self.parse_statement()?;
+        Ok(Statement {
+            location: first_loc,
+            labels: vec![],
+            kind: StatementKind::For {
+                init: loop_init,
+                condition: loop_cond.map(|e| Box::new(e)),
+                post: loop_post.map(|e| Box::new(e)),
+                loop_body: Box::new(loop_body),
+                loop_label: None,
+            },
+        })
+    }
+
+    fn parse_for_loop_init(&mut self) -> Result<ForInit, ParserError> {
+        let tok = self.token_provider.peek();
+        if tok.is_none() {
+            return Err(UnexpectedEnd(vec![TokenTag::Semicolon, TokenTag::CloseParentheses]));
+        }
+        let tok_unwrapped = tok.unwrap();
+        match &tok_unwrapped {
+            Ok(Token { token_type: TokenType::Semicolon, .. })
+            | Ok(Token { token_type: TokenType::CloseParentheses, .. }) => Ok(ForInit::Null),
+            Ok(tok) => {
+                if self.is_declaration(tok) {
+                    let decl = self.parse_declaration()?;
+                    Ok(ForInit::InitDecl(Box::new(decl)))
+                } else {
+                    let expr = self.parse_expression()?;
+                    Ok(ForInit::InitExpr(Box::new(expr)))
+                }
+            },
+            Err(e) => Err(TokenizationError(e.clone())),
+        }
+    }
+
+    fn parse_for_loop_maybe_parse_expression(&mut self) -> Result<Option<Expression>, ParserError> {
+        let tok = self.token_provider.peek();
+        match &tok {
+            None => Err(UnexpectedEnd(vec![TokenTag::Semicolon, TokenTag::CloseParentheses])),
+            Some(Ok(Token { token_type: TokenType::Semicolon, .. }))
+            | Some(Ok(Token { token_type: TokenType::CloseParentheses, .. })) => Ok(None),
+            Some(Ok(_)) => {
+                let expr = self.parse_expression()?;
+                Ok(Some(expr))
+            },
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
         }
     }
 
