@@ -1,1 +1,3 @@
 pub mod identifier_resolution;
+mod verify_desugared_compound_assignment;
+mod verify_unique_identifiers;

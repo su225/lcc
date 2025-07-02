@@ -1,7 +1,9 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
+
 use thiserror::Error;
+
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol};
 
 #[derive(Debug, Error)]
 pub enum IdentifierResolutionError {
@@ -307,11 +309,92 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
             labels: resolved_labels,
             kind: StatementKind::Null,
         }),
-        StatementKind::Break(_) => todo!(),
-        StatementKind::Continue(_) => todo!(),
-        StatementKind::While { .. } => todo!(),
-        StatementKind::DoWhile { .. } => todo!(),
-        StatementKind::For { .. } => todo!(),
+        StatementKind::Break(lbl) => {
+            debug_assert!(lbl.is_none());
+            Ok(Statement {
+                location: loc.clone(),
+                labels: resolved_labels,
+                kind: StatementKind::Break(None),
+            })
+        },
+        StatementKind::Continue(lbl) => {
+            debug_assert!(lbl.is_none());
+            Ok(Statement {
+                location: loc.clone(),
+                labels: resolved_labels,
+                kind: StatementKind::Continue(None),
+            })
+        },
+        StatementKind::While { pre_condition, loop_body, loop_label } => {
+            debug_assert!(loop_label.is_none());
+            let resolved_precondition = resolve_expression(ctx, &*pre_condition)?;
+            let resolved_loop_body = resolve_statement(ctx, &*loop_body)?;
+            Ok(Statement {
+                location: loc.clone(),
+                labels: resolved_labels,
+                kind: StatementKind::While {
+                    pre_condition: Box::new(resolved_precondition),
+                    loop_body: Box::new(resolved_loop_body),
+                    loop_label: None,
+                }
+            })
+        },
+        StatementKind::DoWhile { loop_body, post_condition, loop_label } => {
+            debug_assert!(loop_label.is_none());
+            let resolved_loop_body = resolve_statement(ctx, &*loop_body)?;
+            let resolved_post_condition = resolve_expression(ctx, &*post_condition)?;
+            Ok(Statement {
+                location: loc.clone(),
+                labels: resolved_labels,
+                kind: StatementKind::DoWhile {
+                    loop_body: Box::new(resolved_loop_body),
+                    post_condition: Box::new(resolved_post_condition),
+                    loop_label: None,
+                }
+            })
+        },
+        StatementKind::For { init, condition, post, loop_body, loop_label } => {
+            debug_assert!(loop_label.is_none());
+            ctx.with_scope(|sub_ctx| {
+                let resolved_init = match &init {
+                    ForInit::InitDecl(decl) => {
+                        let resolved_declaration = resolve_declaration(sub_ctx, &*decl)?;
+                        ForInit::InitDecl(Box::new(resolved_declaration))
+                    }
+                    ForInit::InitExpr(expr) => {
+                        let resolved_expression = resolve_expression(sub_ctx, &*expr)?;
+                        ForInit::InitExpr(Box::new(resolved_expression))
+                    }
+                    ForInit::Null => ForInit::Null,
+                };
+                let resolved_condition = match &condition {
+                    None => None,
+                    Some(cond_expr) => {
+                        let resolved_cond_expr = resolve_expression(sub_ctx, &*cond_expr)?;
+                        Some(Box::new(resolved_cond_expr))
+                    }
+                };
+                let resolved_post_loop = match &post {
+                    None => None,
+                    Some(post_expr) => {
+                        let resolved_post_expr = resolve_expression(sub_ctx, &*post_expr)?;
+                        Some(Box::new(resolved_post_expr))
+                    }
+                };
+                let resolved_loop_body = resolve_statement(sub_ctx, &*loop_body)?;
+                Ok(Statement {
+                    location: loc.clone(),
+                    labels: resolved_labels.clone(),
+                    kind: StatementKind::For {
+                        init: resolved_init,
+                        condition: resolved_condition,
+                        post: resolved_post_loop,
+                        loop_body: Box::new(resolved_loop_body),
+                        loop_label: None,
+                    }
+                })
+            })
+        },
     }
 }
 
@@ -423,11 +506,13 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
     use indoc::indoc;
+
     use crate::lexer::Lexer;
-    use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, Parser, ProgramDefinition, Statement, StatementKind};
+    use crate::parser::{Parser, ProgramDefinition};
     use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
+    use crate::semantic_analysis::verify_desugared_compound_assignment::desugared_compound_assignment;
+    use crate::semantic_analysis::verify_unique_identifiers::program_identifiers_are_unique;
 
     #[test]
     fn test_should_error_on_use_before_declaration() {
@@ -886,134 +971,5 @@ mod test {
         assert!(parsed.is_ok());
         let resolved_ast = resolve_program(parsed.unwrap());
         resolved_ast
-    }
-    
-    fn desugared_compound_assignment(prog: &ProgramDefinition) -> bool {
-        prog.functions.iter().all(|f| desugared_compound_assignment_in_functions(f))
-    }
-
-    fn desugared_compound_assignment_in_functions(func: &FunctionDefinition) -> bool {
-        desugared_compound_assignment_in_blocks(&func.body)
-    }
-
-    fn desugared_compound_assignment_in_blocks(block: &Block) -> bool {
-        block.items.iter().all(|blk_item| desugared_compound_assignment_in_block_items(blk_item))
-    }
-
-    fn desugared_compound_assignment_in_block_items(block_item: &BlockItem) -> bool {
-        match block_item {
-            BlockItem::Statement(stmt) => desugared_compound_assignment_in_statement(stmt),
-            BlockItem::Declaration(decl) => desugared_compound_assignment_in_declaration(decl),
-        }
-    }
-
-    fn desugared_compound_assignment_in_statement(stmt: &Statement) -> bool {
-        match &stmt.kind {
-            StatementKind::Return(ret_expr) => desugared_compound_assignment_in_expression(ret_expr),
-            StatementKind::Expression(expr) => desugared_compound_assignment_in_expression(expr),
-            StatementKind::SubBlock(blk) => desugared_compound_assignment_in_blocks(blk),
-            StatementKind::If { condition, then_statement, else_statement } => {
-                desugared_compound_assignment_in_expression(condition)
-                    && desugared_compound_assignment_in_statement(then_statement)
-                    && else_statement.as_ref().map(
-                        |else_stmt| desugared_compound_assignment_in_statement(else_stmt))
-                        .unwrap_or(true)
-            }
-            StatementKind::Goto {..} => true,
-            StatementKind::Null => true,
-            StatementKind::Break(_) => true,
-            StatementKind::Continue(_) => true,
-            StatementKind::While { .. } => todo!(),
-            StatementKind::DoWhile { .. } => todo!(),
-            StatementKind::For { .. } => todo!(),
-        }
-    }
-
-    fn desugared_compound_assignment_in_declaration(decl: &Declaration) -> bool {
-        match &decl.kind {
-            DeclarationKind::Declaration { init_expression: Some(init_expr), .. } =>
-                desugared_compound_assignment_in_expression(init_expr),
-            _ => true,
-        }
-    }
-
-    fn desugared_compound_assignment_in_expression(expr: &Expression) -> bool {
-        match &expr.kind {
-            ExpressionKind::Assignment { op: Some(_), .. } => false,
-            _ => true,
-        }
-    }
-
-    fn program_identifiers_are_unique(prog: &ProgramDefinition) -> bool {
-        let mut function_names = HashSet::with_capacity(prog.functions.len());
-        let mut identifiers = HashSet::new();
-        for f in prog.functions.iter() {
-            if function_names.contains(&f.name.name) {
-                return false;
-            }
-            function_names.insert(f.name.name.clone());
-            let unique_func_identifiers = function_identifiers_are_unique(&mut identifiers, f);
-            if !unique_func_identifiers {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    fn function_identifiers_are_unique(identifiers: &mut HashSet<String>, f: &FunctionDefinition) -> bool {
-        block_identifiers_are_unique(identifiers, &f.body)
-    }
-
-    fn block_identifiers_are_unique(identifiers: &mut HashSet<String>, b: &Block) -> bool {
-        for bi in b.items.iter() {
-            let are_unique = block_item_identifiers_are_unique(identifiers, bi);
-            if !are_unique {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    fn block_item_identifiers_are_unique(identifiers: &mut HashSet<String>, bi: &BlockItem) -> bool {
-        match bi {
-            BlockItem::Statement(s) => statement_identifiers_are_unique(identifiers, s),
-            BlockItem::Declaration(d) => declaration_identifiers_are_unique(identifiers, d),
-        }
-    }
-
-    fn statement_identifiers_are_unique(identifiers: &mut HashSet<String>, s: &Statement) -> bool {
-        match &s.kind {
-            StatementKind::Return(_)
-            | StatementKind::Expression(_)
-            | StatementKind::Null => true,
-            StatementKind::If {then_statement, else_statement, ..} => {
-                let then_uniq = statement_identifiers_are_unique(identifiers, then_statement);
-                let else_uniq = match else_statement {
-                    None => true,
-                    Some(e) => statement_identifiers_are_unique(identifiers, e),
-                };
-                then_uniq && else_uniq
-            },
-            StatementKind::Goto {..} => true,
-            StatementKind::SubBlock(sb) => block_identifiers_are_unique(identifiers, sb),
-            StatementKind::Break(_) => todo!(),
-            StatementKind::Continue(_) => todo!(),
-            StatementKind::While { .. } => todo!(),
-            StatementKind::DoWhile { .. } => todo!(),
-            StatementKind::For { .. } => todo!(),
-        }
-    }
-
-    fn declaration_identifiers_are_unique(identifiers: &mut HashSet<String>, d: &Declaration) -> bool {
-        return match &d.kind {
-            DeclarationKind::Declaration { identifier: ident, .. } => {
-                if identifiers.contains(&ident.name) {
-                    false
-                } else {
-                    identifiers.insert(ident.name.clone());
-                    true
-                }
-            },
-        }
     }
 }
