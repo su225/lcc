@@ -1239,7 +1239,8 @@ mod test {
         let lexer = Lexer::new(test_case.src);
         let mut parser = Parser::new(lexer);
         let actual = parser.parse_statement();
-        assert_eq!(test_case.expected, actual);
+        assert_eq!(test_case.expected, actual,
+                   "expected:{:#?}\nactual:{:#?}\n", test_case.expected, actual);
     }
 
     #[test]
@@ -1762,6 +1763,150 @@ mod test {
     }
 
     #[test]
+    fn test_parse_statement_for_loop_init_statement() {
+        let src = indoc! {r#"
+        for (i = 0; i < 10; i++)
+            x += i;
+        "#};
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            labels: vec![],
+            kind: For {
+                init: ForInit::InitExpr(Box::new(
+                    Expression {
+                        location: (1,6).into(),
+                        kind: Assignment {
+                            lvalue: Box::new(Expression {
+                                location: (1,6).into(),
+                                kind: Variable("i".to_string()),
+                            }),
+                            rvalue: Box::new(Expression {
+                                location: (1,10).into(),
+                                kind: IntConstant("0".to_string(), Decimal),
+                            }),
+                            op: None,
+                        }
+                    }
+                )),
+                condition: Some(Box::new(Expression {
+                    location: (1,13).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (1,13).into(),
+                            kind: Variable("i".to_string())
+                        }),
+                        Box::new(Expression {
+                            location: (1,17).into(),
+                            kind: IntConstant("10".to_string(), Decimal)
+                        }),
+                    ),
+                })),
+                post: Some(Box::new(Expression {
+                    location: (1,21).into(),
+                    kind: Increment {
+                        is_post: true,
+                        e: Box::new(Expression {
+                            location: (1,21).into(),
+                            kind: Variable("i".to_string())
+                        }),
+                    },
+                })),
+                loop_body: Box::new(Statement {
+                    location: (2,5).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (2,5).into(),
+                        kind: Assignment {
+                            lvalue: Box::new(Expression {
+                                location: (2,5).into(),
+                                kind: Variable("x".to_string()),
+                            }),
+                            rvalue: Box::new(Expression {
+                                location: (2,10).into(),
+                                kind: Variable("i".to_string()),
+                            }),
+                            op: Some(CompoundAssignmentType::Add),
+                        },
+                    }),
+                }),
+                loop_label: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+
+    #[test]
+    fn test_parse_statement_for_loop_labeled() {
+        let src = "x: for (i = 0; i < 10; i++) x += i;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            labels: vec!["x".into()],
+            kind: For {
+                init: ForInit::InitExpr(Box::new(Expression {
+                    location: (1, 9).into(),
+                    kind: Assignment {
+                        lvalue: Box::new(Expression {
+                            location: (1, 9).into(),
+                            kind: Variable("i".into()),
+                        }),
+                        rvalue: Box::new(Expression {
+                            location: (1, 13).into(),
+                            kind: IntConstant("0".into(), Decimal),
+                        }),
+                        op: None,
+                    },
+                })),
+                condition: Some(Box::new(Expression {
+                    location: (1, 16).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (1, 16).into(),
+                            kind: Variable("i".into()),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 20).into(),
+                            kind: IntConstant("10".into(), Decimal),
+                        }),
+                    ),
+                })),
+                post: Some(Box::new(Expression {
+                    location: (1, 24).into(),
+                    kind: Increment {
+                        is_post: true,
+                        e: Box::new(Expression {
+                            location: (1, 24).into(),
+                            kind: Variable("i".into()),
+                        }),
+                    },
+                })),
+                loop_body: Box::new(Statement {
+                    location: (1, 29).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (1, 29).into(),
+                        kind: Assignment {
+                            lvalue: Box::new(Expression {
+                                location: (1, 29).into(),
+                                kind: Variable("x".into()),
+                            }),
+                            rvalue: Box::new(Expression {
+                                location: (1, 34).into(),
+                                kind: Variable("i".into()),
+                            }),
+                            op: Some(CompoundAssignmentType::Add),
+                        },
+                    }),
+                }),
+                loop_label: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
     fn test_parse_statement_for_loop_null_headers() {
         let src = indoc!{r#"
         for(;;);
@@ -1783,6 +1928,140 @@ mod test {
         });
         run_parse_statement_test_case(StatementTestCase { src, expected });
     }
+
+    #[test]
+    fn test_parse_statement_while_loop() {
+        let src = "while (x < 10) x++;";
+        let expected = Ok(Statement {
+            location: (1, 1).into(),
+            labels: vec![],
+            kind: While {
+                pre_condition: Box::new(Expression {
+                    location: (1, 8).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (1, 8).into(),
+                            kind: Variable("x".into()),
+                        }),
+                        Box::new(Expression {
+                            location: (1, 12).into(),
+                            kind: IntConstant("10".into(), Decimal),
+                        }),
+                    ),
+                }),
+                loop_body: Box::new(Statement {
+                    location: (1, 16).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (1, 16).into(),
+                        kind: Increment {
+                            is_post: true,
+                            e: Box::new(Expression {
+                                location: (1, 16).into(),
+                                kind: Variable("x".into()),
+                            }),
+                        },
+                    }),
+                }),
+                loop_label: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_statement_do_while_loop() {
+        let src = indoc! {r#"
+        do {
+            x++; --y;
+        } while (x < 10);
+        "#};
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            labels: vec![],
+            kind: DoWhile {
+                loop_body: Box::new(Statement {
+                    location: (1,4).into(),
+                    labels: vec![],
+                    kind: SubBlock(Block {
+                        start_loc: (1,4).into(),
+                        end_loc: (3,1).into(),
+                        items: vec![
+                            BlockItem::Statement(Statement {
+                                location: (2,5).into(),
+                                labels: vec![],
+                                kind: Expression(Expression {
+                                    location: (2,5).into(),
+                                    kind: Increment {
+                                        is_post: true,
+                                        e: Box::new(Expression {
+                                            location: (2,5).into(),
+                                            kind: Variable("x".into()),
+                                        }),
+                                    },
+                                }),
+                            }),
+                            BlockItem::Statement(Statement {
+                                location: (2,10).into(),
+                                labels: vec![],
+                                kind: Expression(Expression {
+                                    location: (2,10).into(),
+                                    kind: Decrement {
+                                        is_post: false,
+                                        e: Box::new(Expression {
+                                            location: (2,12).into(),
+                                            kind: Variable("y".into()),
+                                        }),
+                                    },
+                                }),
+                            }),
+                        ],
+                    }),
+                }),
+                post_condition: Box::new(Expression {
+                    location: (3,10).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (3,10).into(),
+                            kind: Variable("x".into()),
+                        }),
+                        Box::new(Expression {
+                            location: (3,14).into(),
+                            kind: IntConstant("10".into(), Decimal),
+                        }),
+                    ),
+                }),
+                loop_label: None,
+            },
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+    #[test]
+    fn test_parse_continue_statement() {
+        let src = "continue;";
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            labels: vec![],
+            kind: Continue(None),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
+
+    #[test]
+    fn test_parse_break_statement() {
+        let src = "break;";
+        let expected = Ok(Statement {
+            location: (1,1).into(),
+            labels: vec![],
+            kind: Break(None),
+        });
+        run_parse_statement_test_case(StatementTestCase { src, expected });
+    }
+
 
     struct ExprTestCase<'a> {
         src: &'a str,
