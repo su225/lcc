@@ -57,8 +57,16 @@ pub fn loop_label_program_definition(program: ProgramDefinition) -> Result<Progr
 }
 
 fn loop_label_function(ctx: &mut LoopLabelingContext, function: FunctionDefinition) -> Result<FunctionDefinition, LoopLabelingError> {
-    let mut labeled_blk_item = Vec::with_capacity(function.body.items.len());
-    for blk_item in function.body.items {
+    Ok(FunctionDefinition {
+        location: function.location,
+        name: function.name,
+        body: loop_label_block(ctx, function.body)?,
+    })
+}
+
+fn loop_label_block(ctx: &mut LoopLabelingContext, block: Block) -> Result<Block, LoopLabelingError> {
+    let mut labeled_blk_item = Vec::with_capacity(block.items.len());
+    for blk_item in block.items.into_iter() {
         if let BlockItem::Statement(stmt) = blk_item {
             let labeled_stmt = loop_label_statement(ctx, stmt)?;
             debug_assert!(loop_statement_is_labeled(&labeled_stmt));
@@ -67,14 +75,10 @@ fn loop_label_function(ctx: &mut LoopLabelingContext, function: FunctionDefiniti
             labeled_blk_item.push(blk_item);
         }
     }
-    Ok(FunctionDefinition {
-        location: function.location,
-        name: function.name,
-        body: Block {
-            start_loc: function.body.start_loc,
-            end_loc: function.body.end_loc,
-            items: labeled_blk_item,
-        },
+    Ok(Block {
+        start_loc: block.start_loc,
+        end_loc: block.end_loc,
+        items: labeled_blk_item,
     })
 }
 
@@ -157,6 +161,28 @@ fn loop_label_statement(ctx: &mut LoopLabelingContext, stmt: Statement) -> Resul
                 })
                 .ok_or(LoopLabelingError::ContinueOutsideLoop {location: stmt_loc})
         },
+        StatementKind::If { condition, then_statement, else_statement } => {
+            let labeled_then = loop_label_statement(ctx, *then_statement)?;
+            let labeled_else = else_statement
+                .map(|else_stmt| loop_label_statement(ctx, *else_stmt).map(|s| Box::new(s)))
+                .transpose()?;
+            Ok(Statement {
+                location: stmt_loc,
+                labels: stmt.labels,
+                kind: StatementKind::If {
+                    condition,
+                    then_statement: Box::new(labeled_then),
+                    else_statement: labeled_else,
+                },
+            })
+        },
+        StatementKind::SubBlock(sub_block) => {
+            Ok(Statement {
+                location: stmt_loc,
+                labels: stmt.labels,
+                kind: StatementKind::SubBlock(loop_label_block(ctx, sub_block)?),
+            })
+        }
         _ => unreachable!("is_loop_labeling_required() should have returned false"),
     }
 }
@@ -167,7 +193,132 @@ fn is_loop_labeling_required(stmt: &Statement) -> bool {
         | StatementKind::Continue(_)
         | StatementKind::For {..}
         | StatementKind::While {..}
-        | StatementKind::DoWhile {..} => true,
+        | StatementKind::DoWhile {..}
+        | StatementKind::If {..}
+        | StatementKind::SubBlock(_) => true,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use indoc::indoc;
+    use crate::lexer::Lexer;
+    use crate::parser::{Parser, ProgramDefinition};
+    use crate::semantic_analysis::identifier_resolution::{resolve_program};
+    use crate::semantic_analysis::loop_label_verifier::loop_labels_are_complete_and_unique;
+    use crate::semantic_analysis::loop_labeling::{loop_label_program_definition, LoopLabelingError};
+
+    #[test]
+    fn test_label_for_loop_correctly() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            for (int i = 0; i < 10; i++)
+                x += i;
+            return 0;
+        }
+        "#};
+        assert_successful_loop_labeling(program);
+    }
+
+    #[test]
+    fn test_label_while_loop_correctly() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            while (x < 10) x++;
+            return 0;
+        }
+        "#};
+        assert_successful_loop_labeling(program);
+    }
+
+    #[test]
+    fn test_label_do_while_loop_correctly() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            do x++; while (x < 10);
+            return 0;
+        }
+        "#};
+        assert_successful_loop_labeling(program);
+    }
+
+    #[test]
+    fn test_label_break_statement_inside_loop() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            for (int i = 0; i < 10; i++)
+                break;
+            return 0;
+        }
+        "#};
+        assert_successful_loop_labeling(program);
+    }
+
+    #[test]
+    fn test_label_continue_statement_inside_loop() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            for (int i = 0; i < 10; i++)
+                continue;
+            return 0;
+        }
+        "#};
+        assert_successful_loop_labeling(program);
+    }
+
+    #[test]
+    fn test_label_break_statement_outside_loop_must_error() {
+        let program = indoc!{r#"
+        int main(void) {
+            if (1)
+                break;
+            return 0;
+        }
+        "#};
+        let res = run_program_loop_labeling(program);
+        assert!(res.is_err(), "{:#?}", res);
+        let LoopLabelingError::BreakOutsideLoop { .. } = res.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    #[test]
+    fn test_label_continue_statement_outside_loop_must_error() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            continue;
+            return 0;
+        }
+        "#};
+        let res = run_program_loop_labeling(program);
+        assert!(res.is_err());
+        let LoopLabelingError::ContinueOutsideLoop { .. } = res.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    fn assert_successful_loop_labeling(program: &str) {
+        let labeled = run_program_loop_labeling(program);
+        assert!(labeled.is_ok(), "{:#?}", labeled);
+
+        let lbl = labeled.unwrap();
+        assert!(loop_labels_are_complete_and_unique(&lbl));
+    }
+
+    fn run_program_loop_labeling(program: &str) -> Result<ProgramDefinition, LoopLabelingError> {
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        let loop_labeled_ast = loop_label_program_definition(resolved_ast.unwrap());
+        loop_labeled_ast
     }
 }

@@ -511,8 +511,8 @@ mod test {
     use crate::lexer::Lexer;
     use crate::parser::{Parser, ProgramDefinition};
     use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
-    use crate::semantic_analysis::verify_desugared_compound_assignment::desugared_compound_assignment;
-    use crate::semantic_analysis::verify_unique_identifiers::program_identifiers_are_unique;
+    use crate::semantic_analysis::desugaring_verifier::desugared_compound_assignment;
+    use crate::semantic_analysis::unique_identifier_verifier::program_identifiers_are_unique;
 
     #[test]
     fn test_should_error_on_use_before_declaration() {

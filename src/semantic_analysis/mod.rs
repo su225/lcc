@@ -2,7 +2,10 @@ pub mod identifier_resolution;
 pub mod loop_labeling;
 
 #[cfg(test)]
-mod verify_desugared_compound_assignment;
+mod desugaring_verifier;
 
 #[cfg(test)]
-mod verify_unique_identifiers;
+mod unique_identifier_verifier;
+
+#[cfg(test)]
+mod loop_label_verifier;
