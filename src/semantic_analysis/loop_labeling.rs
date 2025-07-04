@@ -223,6 +223,20 @@ mod test {
     }
 
     #[test]
+    fn test_label_nested_for_loop_correctly() {
+        let program = indoc!{r#"
+        int main(void) {
+            int x = 0;
+            for (int i = 0; i < 10; i++)
+                for (int j = 0; j < 10; j++)
+                    x += (i + j);
+            return 0;
+        }
+        "#};
+        assert_successful_loop_labeling(program);
+    }
+
+    #[test]
     fn test_label_while_loop_correctly() {
         let program = indoc!{r#"
         int main(void) {
