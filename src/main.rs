@@ -9,6 +9,7 @@ use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
 use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
 use lcc::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
+use lcc::semantic_analysis::loop_labeling::{loop_label_program_definition, LoopLabelingError};
 use lcc::tacky;
 use lcc::tacky::TackyError;
 
@@ -69,6 +70,9 @@ enum CompilerDriverError {
     #[error("error during semantic-analysis/identifier-resolution: {0}")]
     IdentifierResolutionError(#[from] IdentifierResolutionError),
 
+    #[error("error during semantic-analyis/loop-labeling: {0}")]
+    LoopLabelingError(#[from] LoopLabelingError),
+
     #[error("error in tacky generation: {0}")]
     TackyGenerationError(#[from] TackyError),
 
@@ -88,6 +92,7 @@ enum CompilerDriverError {
 /// invoke_compiler_driver invokes different compiler stages. Depending on
 /// the flags, it may stop early in some stage
 fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), CompilerDriverError> {
+    // Lexer
     let lexer = Lexer::new(&source_code);
     if args.lex {
         let tokens = lexer.collect::<Result<Vec<Token>, LexerError>>()
@@ -95,22 +100,31 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         println!("{:#?}", tokens);
         return Ok(());
     }
+
+    // Parsing
     let mut parser = Parser::new(lexer);
     let ast = parser.parse()?;
     if args.parse {
         println!("{:#?}", ast);
         return Ok(());
     }
+
+    // Semantic analysis
     let ident_resolved_ast = resolve_program(ast)?;
+    let loop_labeled_ast = loop_label_program_definition(ident_resolved_ast)?;
     if args.validate {
-        println!("{:#?}", ident_resolved_ast);
+        println!("{:#?}", loop_labeled_ast);
         return Ok(())
     }
-    let tacky = tacky::emit(&ident_resolved_ast)?;
+
+    // IR generation
+    let tacky = tacky::emit(&loop_labeled_ast)?;
     if args.tacky {
         println!("{:#?}", tacky);
         return Ok(());
     }
+
+    // ASM code generation
     let asm_code = codegen::generate_assembly(tacky)?;
     if args.codegen {
         println!("{:#?}", asm_code);
