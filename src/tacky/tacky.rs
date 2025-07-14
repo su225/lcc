@@ -4,7 +4,7 @@ use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
 
-use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
 use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::{Int32, Variable};
 
@@ -379,13 +379,108 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             instrs.push(Jump { target: TackySymbol::from(target) });
         },
         StatementKind::Null => {},
-        StatementKind::Break(_) => todo!(),
-        StatementKind::Continue(_) => todo!(),
-        StatementKind::While { .. } => todo!(),
-        StatementKind::DoWhile { .. } => todo!(),
-        StatementKind::For { .. } => todo!(),
+        StatementKind::While { pre_condition, loop_body, loop_label } => {
+            debug_assert!(loop_label.is_some());
+            let loop_continue_label = loop_continue_symbol(TackySymbol::from(loop_label.as_ref().unwrap()));
+            let loop_break_label = loop_break_symbol(TackySymbol::from(loop_label.as_ref().unwrap()));
+            instrs.push(Label(loop_continue_label.clone()));
+
+            let (cond_res, cond_instrs) = emit_tacky_for_expression(ctx, &*pre_condition)?;
+            instrs.extend(cond_instrs);
+            let tmp_cond_res = ctx.next_temporary_identifier();
+            instrs.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+            instrs.push(JumpIfZero { condition: Variable(tmp_cond_res), target: loop_break_label.clone() });
+
+            let body_instrs = emit_tacky_for_statement(ctx, &*loop_body)?;
+            instrs.extend(body_instrs);
+            instrs.push(Jump { target: loop_continue_label });
+            instrs.push(Label(loop_break_label));
+        },
+        StatementKind::DoWhile { loop_body, post_condition, loop_label } => {
+            debug_assert!(loop_label.is_some());
+            let loop_start_label = loop_start_symbol(TackySymbol::from(loop_label.as_ref().unwrap()));
+            instrs.push(Label(loop_start_label.clone()));
+
+            let body_instrs = emit_tacky_for_statement(ctx, &*loop_body)?;
+            instrs.extend(body_instrs);
+
+            instrs.push(Label(loop_continue_symbol(TackySymbol::from(loop_label.as_ref().unwrap()))));
+            let (cond_res, cond_instrs) = emit_tacky_for_expression(ctx, &*post_condition)?;
+            instrs.extend(cond_instrs);
+            let tmp_cond_res = ctx.next_temporary_identifier();
+            instrs.push(Copy { src: cond_res, dst: tmp_cond_res.clone() });
+            instrs.push(JumpIfNotZero { condition: Variable(tmp_cond_res), target: loop_start_label });
+            instrs.push(Label(loop_break_symbol(TackySymbol::from(loop_label.as_ref().unwrap()))));
+        },
+        StatementKind::For { init, condition, post, loop_body, loop_label } => {
+            // loop start: init
+            // loop continue: evaluate condition
+            //   translate loop body
+            //   translate loop post
+            // jump back to continue point
+            // add "break" label
+            debug_assert!(loop_label.is_some());
+            let lbl = loop_label.as_ref().unwrap();
+            let loop_start_label = loop_start_symbol(TackySymbol::from(lbl));
+            let loop_continue_label = loop_continue_symbol(TackySymbol::from(lbl));
+            let loop_break_label = loop_break_symbol(TackySymbol::from(lbl));
+
+            instrs.push(Label(loop_start_label));
+            let init_instrs = emit_tacky_for_forloop_init(ctx, init)?;
+            instrs.extend(init_instrs);
+
+            instrs.push(Label(loop_continue_label.clone()));
+            if let Some(pre_condition) = condition {
+                let (pre_cond_res, pre_cond_instrs) = emit_tacky_for_expression(ctx, &*pre_condition)?;
+                let tmp_pre_cond_res = ctx.next_temporary_identifier();
+                instrs.push(Copy { src: pre_cond_res, dst: tmp_pre_cond_res.clone() });
+                instrs.push(JumpIfZero {condition: Variable(tmp_pre_cond_res), target: loop_break_label.clone() });
+                instrs.extend(pre_cond_instrs);
+            }
+            instrs.extend(emit_tacky_for_statement(ctx, &*loop_body)?);
+            if let Some(post_expr) = post {
+                let (_, post_expr_instrs) = emit_tacky_for_expression(ctx, &*post_expr)?;
+                instrs.extend(post_expr_instrs);
+            }
+            instrs.push(Jump {target: loop_continue_label});
+            instrs.push(Label(loop_break_label));
+        },
+        StatementKind::Break(loop_label) => {
+            let break_label = loop_break_symbol(TackySymbol::from(loop_label.as_ref().unwrap()));
+            instrs.push(Jump {target: break_label});
+        },
+        StatementKind::Continue(loop_label) => {
+            let continue_label = loop_continue_symbol(TackySymbol::from(loop_label.as_ref().unwrap()));
+            instrs.push(Jump { target: continue_label })
+        },
     };
     Ok(instrs)
+}
+
+fn emit_tacky_for_forloop_init(ctx: &mut TackyContext, for_init: &ForInit) -> Result<Vec<TackyInstruction>, TackyError> {
+    match &for_init {
+        ForInit::InitDecl(decl) => emit_tacky_for_declaration(ctx, &*decl),
+        ForInit::InitExpr(expr) => {
+            let (_, init_expr_instrs) = emit_tacky_for_expression(ctx, &*expr)?;
+            Ok(init_expr_instrs)
+        }
+        ForInit::Null => Ok(vec![])
+    }
+}
+
+#[inline]
+fn loop_start_symbol(s: TackySymbol) -> TackySymbol {
+    TackySymbol::from(format!("{}.start", s.0).as_str())
+}
+
+#[inline]
+fn loop_continue_symbol(s: TackySymbol) -> TackySymbol {
+    TackySymbol::from(format!("{}.continue", s.0).as_str())
+}
+
+#[inline]
+fn loop_break_symbol(s: TackySymbol) -> TackySymbol {
+    TackySymbol::from(format!("{}.break", s.0).as_str())
 }
 
 fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(TackyValue, Vec<TackyInstruction>), TackyError> {
