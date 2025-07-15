@@ -413,36 +413,31 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
             instrs.push(Label(loop_break_symbol(TackySymbol::from(loop_label.as_ref().unwrap()))));
         },
         StatementKind::For { init, condition, post, loop_body, loop_label } => {
-            // loop start: init
-            // loop continue: evaluate condition
-            //   translate loop body
-            //   translate loop post
-            // jump back to continue point
-            // add "break" label
             debug_assert!(loop_label.is_some());
             let lbl = loop_label.as_ref().unwrap();
             let loop_start_label = loop_start_symbol(TackySymbol::from(lbl));
             let loop_continue_label = loop_continue_symbol(TackySymbol::from(lbl));
             let loop_break_label = loop_break_symbol(TackySymbol::from(lbl));
 
-            instrs.push(Label(loop_start_label));
             let init_instrs = emit_tacky_for_forloop_init(ctx, init)?;
             instrs.extend(init_instrs);
 
-            instrs.push(Label(loop_continue_label.clone()));
+            instrs.push(Label(loop_start_label.clone()));
             if let Some(pre_condition) = condition {
                 let (pre_cond_res, pre_cond_instrs) = emit_tacky_for_expression(ctx, &*pre_condition)?;
                 let tmp_pre_cond_res = ctx.next_temporary_identifier();
+                instrs.extend(pre_cond_instrs);
                 instrs.push(Copy { src: pre_cond_res, dst: tmp_pre_cond_res.clone() });
                 instrs.push(JumpIfZero {condition: Variable(tmp_pre_cond_res), target: loop_break_label.clone() });
-                instrs.extend(pre_cond_instrs);
             }
-            instrs.extend(emit_tacky_for_statement(ctx, &*loop_body)?);
+            let loop_body_instrs = emit_tacky_for_statement(ctx, &*loop_body)?;
+            instrs.extend(loop_body_instrs);
+            instrs.push(Label(loop_continue_label.clone()));
             if let Some(post_expr) = post {
                 let (_, post_expr_instrs) = emit_tacky_for_expression(ctx, &*post_expr)?;
                 instrs.extend(post_expr_instrs);
             }
-            instrs.push(Jump {target: loop_continue_label});
+            instrs.push(Jump {target: loop_start_label});
             instrs.push(Label(loop_break_label));
         },
         StatementKind::Break(loop_label) => {
