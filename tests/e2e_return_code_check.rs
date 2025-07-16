@@ -77,6 +77,27 @@ fn test_e2e_conditional(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }
 
+#[rstest]
+#[case("loops/simple_for.c")]
+#[case("loops/for_init_decl.c")]
+#[case("loops/for_init_decl_shadow.c")]
+#[case("loops/for_noinit.c")]
+#[case("loops/for_all_empty.c")]
+#[case("loops/for_with_break.c")]
+#[case("loops/for_with_continue.c")]
+#[case("loops/nested_for.c")]
+#[case("loops/nested_for_with_break.c")]
+#[case("loops/nested_for_with_continue.c")]
+#[case("loops/simple_while.c")]
+#[case("loops/while_with_break.c")]
+#[case("loops/while_with_continue.c")]
+#[case("loops/simple_dowhile.c")]
+#[case("loops/dowhile_with_break.c")]
+#[case("loops/dowhile_with_continue.c")]
+fn test_e2e_loops(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
 fn run_e2e_against_clang(input_file: &str) {
     println!("current working directory: {}", env::current_dir().unwrap().display());
 

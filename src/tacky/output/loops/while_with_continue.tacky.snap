@@ -1,0 +1,27 @@
+---
+source: src/tacky/tacky.rs
+description: while loop
+expression: tacky
+info: loops/while_with_continue.c
+---
+int main(void) {
+    a$1 = (int32 0);
+    i$2 = (int32 0);
+.loop.0.continue:
+    <t>.0 = i$2 < (int32 10);
+    <t>.1 = <t>.0;
+    jump_if_zero (<t>.1) .loop.0.break;
+    <t>.2 = i$2;
+    i$2 = i$2 + (int32 1);
+    <t>.3 = i$2 % (int32 2);
+    <t>.4 = <t>.3 == (int32 0);
+    <t>.5 = <t>.4;
+    jump_if_zero (<t>.5) _L.if_end.0;
+    jump .loop.0.continue;
+_L.if_end.0:
+    <t>.6 = a$1 + i$2;
+    a$1 = <t>.6;
+    jump .loop.0.continue;
+.loop.0.break:
+    return a$1;
+}

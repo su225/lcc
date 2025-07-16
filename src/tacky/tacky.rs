@@ -680,6 +680,7 @@ mod test {
     use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
     use crate::semantic_analysis::identifier_resolution::resolve_program;
+    use crate::semantic_analysis::loop_labeling::loop_label_program_definition;
     use crate::tacky::*;
     use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, TackyContext};
     use crate::tacky::TackyInstruction::*;
@@ -992,6 +993,71 @@ mod test {
         ]);
     }
 
+    #[test]
+    fn test_emit_tacky_forloop_init_assignment() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_forloop_init_variable_declaration() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_forloop_without_init() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_forloop_with_break() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_forloop_with_continue() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_forloop_with_nested_continue() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_forloop_nocondition_nopost() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_for_while_loop() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_for_while_loop_with_break() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_for_while_loop_with_continue() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_for_dowhile_loop() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_for_dowhile_loop_with_break() {
+
+    }
+
+    #[test]
+    fn test_emit_tacky_for_dowhile_loop_with_continue() {
+
+    }
+
     #[rstest]
     #[case("multifunc/simple.c")]
     fn test_generation_for_multiple_functions(#[case] input_path: &str) {
@@ -1060,6 +1126,37 @@ mod test {
         run_ir_generation_snapshot_test("if statement", input_path)
     }
 
+    #[rstest]
+    #[case("loops/simple_for.c")]
+    #[case("loops/for_init_decl.c")]
+    #[case("loops/for_init_decl_shadow.c")]
+    #[case("loops/for_noinit.c")]
+    #[case("loops/for_all_empty.c")]
+    #[case("loops/for_with_break.c")]
+    #[case("loops/for_with_continue.c")]
+    #[case("loops/nested_for.c")]
+    #[case("loops/nested_for_with_break.c")]
+    #[case("loops/nested_for_with_continue.c")]
+    fn test_generation_with_for_loops(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("for loop", input_path)
+    }
+
+    #[rstest]
+    #[case("loops/simple_while.c")]
+    #[case("loops/while_with_break.c")]
+    #[case("loops/while_with_continue.c")]
+    fn test_generation_with_while_loops(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("while loop", input_path)
+    }
+
+    #[rstest]
+    #[case("loops/simple_dowhile.c")]
+    #[case("loops/dowhile_with_break.c")]
+    #[case("loops/dowhile_with_continue.c")]
+    fn test_generation_with_do_while_loops(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("do-while loop", input_path)
+    }
+
     fn run_ir_generation_snapshot_test(suite_description: &str, src_file: &str) {
         let base_dir = file!();
         let src_path = Path::new(base_dir).parent().unwrap().join("input").join(src_file);
@@ -1071,7 +1168,8 @@ mod test {
         let mut parser = Parser::new(lexer);
         let ast = parser.parse().expect("parsing must be successful");
         let resolved_ast = resolve_program(ast).expect("identity resolution must be successful");
-        let tacky = emit(&resolved_ast).expect("tacky IR generation must be successful");
+        let loop_labeled_ast = loop_label_program_definition(resolved_ast).expect("loop labeling must be successful");
+        let tacky = emit(&loop_labeled_ast).expect("tacky IR generation must be successful");
 
         let (out_dir, snapshot_file) = output_path_parts(src_file);
         insta::with_settings!({

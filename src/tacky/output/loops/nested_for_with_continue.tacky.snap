@@ -1,0 +1,41 @@
+---
+source: src/tacky/tacky.rs
+description: for loop
+expression: tacky
+info: loops/nested_for_with_continue.c
+---
+int main(void) {
+    i$1 = (int32 0);
+    a$2 = (int32 0);
+    i$1 = (int32 0);
+.loop.0.start:
+    <t>.0 = i$1 < (int32 10);
+    <t>.1 = <t>.0;
+    jump_if_zero (<t>.1) .loop.0.break;
+    j$3 = (int32 0);
+.loop.1.start:
+    <t>.2 = j$3 < (int32 10);
+    <t>.3 = <t>.2;
+    jump_if_zero (<t>.3) .loop.1.break;
+    <t>.4 = i$1 + j$3;
+    <t>.5 = <t>.4 % (int32 5);
+    <t>.6 = <t>.5 == (int32 0);
+    <t>.7 = <t>.6;
+    jump_if_zero (<t>.7) _L.if_end.0;
+    jump .loop.1.continue;
+_L.if_end.0:
+    <t>.8 = i$1 + j$3;
+    <t>.9 = a$2 + <t>.8;
+    a$2 = <t>.9;
+.loop.1.continue:
+    <t>.10 = j$3;
+    j$3 = j$3 + (int32 1);
+    jump .loop.1.start;
+.loop.1.break:
+.loop.0.continue:
+    <t>.11 = i$1;
+    i$1 = i$1 + (int32 1);
+    jump .loop.0.start;
+.loop.0.break:
+    return a$2;
+}
