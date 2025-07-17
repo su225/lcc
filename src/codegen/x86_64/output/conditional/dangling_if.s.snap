@@ -1,0 +1,37 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: conditional statements
+expression: asm_output
+info: conditional/dangling_if.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $48, %rsp
+    movl $9, -8(%rbp)
+    movl $10, -16(%rbp)
+    cmpl $10, -8(%rbp)
+    movl $0, -24(%rbp)
+    setl -24(%rbp)
+    movl -24(%rbp), %r10d
+    movl %r10d, -32(%rbp)
+    cmpl $0, -32(%rbp)
+    je _L.if_end.2
+    cmpl $5, -8(%rbp)
+    movl $0, -40(%rbp)
+    setl -40(%rbp)
+    movl -40(%rbp), %r10d
+    movl %r10d, -48(%rbp)
+    cmpl $0, -48(%rbp)
+    je _L.if_else.1
+    movl $1, -16(%rbp)
+    jmp _L.if_end.0
+_L.if_else.1:
+    movl $2, -16(%rbp)
+_L.if_end.0:
+_L.if_end.2:
+    movl -16(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

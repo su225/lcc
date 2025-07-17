@@ -1,0 +1,62 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: "loops: for"
+expression: asm_output
+info: loops/nested_for.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $88, %rsp
+    movl $0, -8(%rbp)
+    movl $0, -16(%rbp)
+    movl $0, -8(%rbp)
+.loop.0.start:
+    cmpl $10, -8(%rbp)
+    movl $0, -24(%rbp)
+    setl -24(%rbp)
+    movl -24(%rbp), %r10d
+    movl %r10d, -32(%rbp)
+    cmpl $0, -32(%rbp)
+    je .loop.0.break
+    movl $0, -40(%rbp)
+.loop.1.start:
+    movl -8(%rbp), %r10d
+    cmpl %r10d, -40(%rbp)
+    movl $0, -48(%rbp)
+    setl -48(%rbp)
+    movl -48(%rbp), %r10d
+    movl %r10d, -56(%rbp)
+    cmpl $0, -56(%rbp)
+    je .loop.1.break
+    movl -8(%rbp), %r10d
+    movl %r10d, -64(%rbp)
+    movl -40(%rbp), %r10d
+    addl %r10d, -64(%rbp)
+    movl -16(%rbp), %r10d
+    movl %r10d, -72(%rbp)
+    movl -64(%rbp), %r10d
+    addl %r10d, -72(%rbp)
+    movl -72(%rbp), %r10d
+    movl %r10d, -16(%rbp)
+.loop.1.continue:
+    movl -40(%rbp), %r10d
+    movl %r10d, -80(%rbp)
+    movl -40(%rbp), %r10d
+    movl %r10d, -40(%rbp)
+    addl $1, -40(%rbp)
+    jmp .loop.1.start
+.loop.1.break:
+.loop.0.continue:
+    movl -8(%rbp), %r10d
+    movl %r10d, -88(%rbp)
+    movl -8(%rbp), %r10d
+    movl %r10d, -8(%rbp)
+    addl $1, -8(%rbp)
+    jmp .loop.0.start
+.loop.0.break:
+    movl -16(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

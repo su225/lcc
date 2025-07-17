@@ -1,0 +1,82 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: "loops: for"
+expression: asm_output
+info: loops/nested_for_with_break.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $120, %rsp
+    movl $0, -8(%rbp)
+    movl $0, -16(%rbp)
+    movl $0, -24(%rbp)
+    movl $0, -8(%rbp)
+.loop.0.start:
+    cmpl $10, -8(%rbp)
+    movl $0, -32(%rbp)
+    setl -32(%rbp)
+    movl -32(%rbp), %r10d
+    movl %r10d, -40(%rbp)
+    cmpl $0, -40(%rbp)
+    je .loop.0.break
+    movl $0, -16(%rbp)
+.loop.1.start:
+    cmpl $10, -16(%rbp)
+    movl $0, -48(%rbp)
+    setl -48(%rbp)
+    movl -48(%rbp), %r10d
+    movl %r10d, -56(%rbp)
+    cmpl $0, -56(%rbp)
+    je .loop.1.break
+    movl -8(%rbp), %r10d
+    movl %r10d, -64(%rbp)
+    movl -16(%rbp), %r10d
+    addl %r10d, -64(%rbp)
+    movl -64(%rbp), %eax
+    cdq
+    movl $5, %r10d
+    idivl %r10d
+    movl %edx, -72(%rbp)
+    cmpl $0, -72(%rbp)
+    movl $0, -80(%rbp)
+    sete -80(%rbp)
+    movl -80(%rbp), %r10d
+    movl %r10d, -88(%rbp)
+    cmpl $0, -88(%rbp)
+    je _L.if_else.1
+    jmp .loop.1.break
+    jmp _L.if_end.0
+_L.if_else.1:
+    movl -8(%rbp), %r10d
+    movl %r10d, -96(%rbp)
+    movl -16(%rbp), %r10d
+    addl %r10d, -96(%rbp)
+    movl -24(%rbp), %r10d
+    movl %r10d, -104(%rbp)
+    movl -96(%rbp), %r10d
+    addl %r10d, -104(%rbp)
+    movl -104(%rbp), %r10d
+    movl %r10d, -24(%rbp)
+_L.if_end.0:
+.loop.1.continue:
+    movl -16(%rbp), %r10d
+    movl %r10d, -112(%rbp)
+    movl -16(%rbp), %r10d
+    movl %r10d, -16(%rbp)
+    addl $1, -16(%rbp)
+    jmp .loop.1.start
+.loop.1.break:
+.loop.0.continue:
+    movl -8(%rbp), %r10d
+    movl %r10d, -120(%rbp)
+    movl -8(%rbp), %r10d
+    movl %r10d, -8(%rbp)
+    addl $1, -8(%rbp)
+    jmp .loop.0.start
+.loop.0.break:
+    movl -24(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

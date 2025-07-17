@@ -1,0 +1,19 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: local variables
+expression: asm_output
+info: localvars/nested_scopes.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $24, %rsp
+    movl $10, -8(%rbp)
+    movl $20, -16(%rbp)
+    movl -16(%rbp), %r10d
+    movl %r10d, -24(%rbp)
+    movl -8(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

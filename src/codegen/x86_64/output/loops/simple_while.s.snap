@@ -1,0 +1,38 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: "loops: while"
+expression: asm_output
+info: loops/simple_while.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $48, %rsp
+    movl $0, -8(%rbp)
+    movl $0, -16(%rbp)
+.loop.0.continue:
+    cmpl $10, -16(%rbp)
+    movl $0, -24(%rbp)
+    setl -24(%rbp)
+    movl -24(%rbp), %r10d
+    movl %r10d, -32(%rbp)
+    cmpl $0, -32(%rbp)
+    je .loop.0.break
+    movl -8(%rbp), %r10d
+    movl %r10d, -40(%rbp)
+    movl -16(%rbp), %r10d
+    addl %r10d, -40(%rbp)
+    movl -40(%rbp), %r10d
+    movl %r10d, -8(%rbp)
+    movl -16(%rbp), %r10d
+    movl %r10d, -48(%rbp)
+    movl -16(%rbp), %r10d
+    movl %r10d, -16(%rbp)
+    addl $1, -16(%rbp)
+    jmp .loop.0.continue
+.loop.0.break:
+    movl -8(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret

@@ -84,6 +84,8 @@ mod test {
     use crate::codegen::x86_64::{emit_assembly, generate_assembly};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use crate::semantic_analysis::identifier_resolution::resolve_program;
+    use crate::semantic_analysis::loop_labeling::loop_label_program_definition;
     use crate::tacky::emit;
 
     #[rstest]
@@ -134,6 +136,56 @@ mod test {
         run_asm_emit_snapshot_test("logical operators with short-circuiting", input_path)
     }
 
+    #[rstest]
+    #[case("localvars/simple.c")]
+    #[case("localvars/declaration_and_assign.c")]
+    #[case("localvars/nested_scopes.c")]
+    #[case("localvars/expression_with_var.c")]
+    fn test_generation_for_local_vars(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("local variables", input_path)
+    }
+
+    #[rstest]
+    #[case("conditional/if.c")]
+    #[case("conditional/if_else.c")]
+    #[case("conditional/if_else_if.c")]
+    #[case("conditional/dangling_if.c")]
+    #[case("conditional/ternary.c")]
+    fn test_generation_for_conditional_statements(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("conditional statements", input_path)
+    }
+
+    #[rstest]
+    #[case("loops/simple_for.c")]
+    #[case("loops/for_init_decl.c")]
+    #[case("loops/for_init_decl_shadow.c")]
+    #[case("loops/for_noinit.c")]
+    #[case("loops/for_all_empty.c")]
+    #[case("loops/for_with_break.c")]
+    #[case("loops/for_with_continue.c")]
+    #[case("loops/nested_for.c")]
+    #[case("loops/nested_for_with_break.c")]
+    #[case("loops/nested_for_with_continue.c")]
+    fn test_generation_for_for_loop(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("loops: for", input_path)
+    }
+
+    #[rstest]
+    #[case("loops/simple_while.c")]
+    #[case("loops/while_with_break.c")]
+    #[case("loops/while_with_continue.c")]
+    fn test_generation_for_while_loop(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("loops: while", input_path)
+    }
+
+    #[rstest]
+    #[case("loops/simple_dowhile.c")]
+    #[case("loops/dowhile_with_break.c")]
+    #[case("loops/dowhile_with_continue.c")]
+    fn test_generation_for_dowhile_loop(#[case] input_path: &str) {
+        run_asm_emit_snapshot_test("loops: do-while", input_path)
+    }
+
     fn run_asm_emit_snapshot_test(suite_description: &str, src_file: &str) {
         let base_dir = file!();
         let src_path = Path::new(base_dir).parent().unwrap().join("input").join(src_file);
@@ -144,7 +196,9 @@ mod test {
         let lexer = Lexer::new(&src);
         let mut parser = Parser::new(lexer);
         let ast = parser.parse().expect("parsing failed");
-        let tacky = emit(&ast).expect("tacky gen failed");
+        let id_resolved_ast = resolve_program(ast).expect("identifier resolution failed");
+        let loop_labeled_ast = loop_label_program_definition(id_resolved_ast).expect("loop labeling failed");
+        let tacky = emit(&loop_labeled_ast).expect("tacky gen failed");
         let asm = generate_assembly(tacky).expect("asm gen failed");
 
         let mut buffer = Cursor::new(Vec::new());

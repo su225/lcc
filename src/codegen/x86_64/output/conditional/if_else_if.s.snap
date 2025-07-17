@@ -1,0 +1,50 @@
+---
+source: src/codegen/x86_64/asmgen.rs
+description: conditional statements
+expression: asm_output
+info: conditional/if_else_if.c
+---
+    .globl _main
+_main:
+    pushq %rbp
+    movq  %rsp, %rbp
+    subq $64, %rsp
+    movl $10, -8(%rbp)
+    cmpl $5, -8(%rbp)
+    movl $0, -16(%rbp)
+    setl -16(%rbp)
+    movl -16(%rbp), %r10d
+    movl %r10d, -24(%rbp)
+    cmpl $0, -24(%rbp)
+    je _L.if_else.5
+    movl $1, -32(%rbp)
+    jmp _L.if_end.4
+_L.if_else.5:
+    cmpl $10, -8(%rbp)
+    movl $0, -40(%rbp)
+    setl -40(%rbp)
+    movl -40(%rbp), %r10d
+    movl %r10d, -48(%rbp)
+    cmpl $0, -48(%rbp)
+    je _L.if_else.3
+    movl $2, -32(%rbp)
+    jmp _L.if_end.2
+_L.if_else.3:
+    cmpl $20, -8(%rbp)
+    movl $0, -56(%rbp)
+    setl -56(%rbp)
+    movl -56(%rbp), %r10d
+    movl %r10d, -64(%rbp)
+    cmpl $0, -64(%rbp)
+    je _L.if_else.1
+    movl $3, -32(%rbp)
+    jmp _L.if_end.0
+_L.if_else.1:
+    movl $4, -32(%rbp)
+_L.if_end.0:
+_L.if_end.2:
+_L.if_end.4:
+    movl -32(%rbp), %eax
+    movq %rbp, %rsp
+    popq %rbp
+    ret
