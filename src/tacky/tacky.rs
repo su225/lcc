@@ -677,12 +677,14 @@ mod test {
 
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, Parser, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Parser, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
+    use crate::parser::StatementKind::For;
     use crate::semantic_analysis::identifier_resolution::resolve_program;
     use crate::semantic_analysis::loop_labeling::loop_label_program_definition;
     use crate::tacky::*;
-    use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, TackyContext};
+    use crate::tacky::tacky::{emit_tacky_for_declaration, emit_tacky_for_expression, emit_tacky_for_statement, TackyContext};
+    use crate::tacky::TackyBinaryOperator::LessThan;
     use crate::tacky::TackyInstruction::*;
     use crate::tacky::TackyValue::*;
 
@@ -994,68 +996,199 @@ mod test {
     }
 
     #[test]
-    fn test_emit_tacky_forloop_init_assignment() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_forloop_init_variable_declaration() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_forloop_without_init() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_forloop_with_break() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_forloop_with_continue() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_forloop_with_nested_continue() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_forloop_nocondition_nopost() {
-
+    fn test_emit_tacky_forloop_init_declaration() {
+        let forloop = Statement {
+            location: (0,0).into(),
+            labels: vec![],
+            kind: For {
+                init: ForInit::InitDecl(Box::new(Declaration {
+                    location: (0,0).into(),
+                    kind: DeclarationKind::Declaration {
+                        identifier: Symbol { name: "i".to_string(), location: (0,0).into() },
+                        init_expression: Some(Expression {
+                            location: (0,0).into(),
+                            kind: IntConstant("0".to_string(), Decimal),
+                        }),
+                    },
+                })),
+                condition: None,
+                post: Some(Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: Increment {
+                        is_post: true,
+                        e: Box::new(Expression {
+                            location: (0,0).into(),
+                            kind: ExpressionKind::Variable("i".to_string()),
+                        }),
+                    },
+                })),
+                loop_body: Box::new(Statement {
+                    location: (0,0).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (0,0).into(),
+                        kind: Increment {
+                            is_post: false,
+                            e: Box::new(Expression {
+                                location: (0,0).into(),
+                                kind: ExpressionKind::Variable("a".to_string()),
+                            }),
+                        },
+                    }),
+                }),
+                loop_label: Some("forloop".to_string()),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let tinstrs = emit_tacky_for_statement(&mut ctx, &forloop).unwrap();
+        assert_eq!(tinstrs, vec![
+            Copy { src: Int32(0), dst: TackySymbol::from("i") },
+            Label(TackySymbol::from("forloop.start")),
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: Variable(TackySymbol::from("a")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("a")),
+            },
+            Label(TackySymbol::from("forloop.continue")),
+            Copy { src: Variable(TackySymbol::from("i")), dst: TackySymbol::from("<t>.0")},
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: Variable(TackySymbol::from("i")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("i")),
+            },
+            Jump {target: TackySymbol::from("forloop.start")},
+            Label(TackySymbol::from("forloop.break")),
+        ], "{:#?}", tinstrs);
     }
 
     #[test]
     fn test_emit_tacky_for_while_loop() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_for_while_loop_with_break() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_for_while_loop_with_continue() {
-
+        let whileloop = Statement {
+            location: (0,0).into(),
+            labels: vec![],
+            kind: StatementKind::While {
+                pre_condition: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (0,0).into(),
+                            kind: ExpressionKind::Variable("i".to_string()),
+                        }),
+                        Box::new(Expression {
+                            location: (0,0).into(),
+                            kind: IntConstant("10".to_string(), Decimal),
+                        }),
+                    ),
+                }),
+                loop_body: Box::new(Statement {
+                    location: (0,0).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (0,0).into(),
+                        kind: Increment {
+                            is_post: true,
+                            e: Box::new(Expression {
+                                location: (0,0).into(),
+                                kind: ExpressionKind::Variable("i".to_string()),
+                            }),
+                        },
+                    }),
+                }),
+                loop_label: Some("loop".to_string()),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let tinstrs = emit_tacky_for_statement(&mut ctx, &whileloop).unwrap();
+        assert_eq!(tinstrs, vec![
+            Label(TackySymbol::from("loop.continue")),
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::LessThan,
+                src1: Variable(TackySymbol::from("i")),
+                src2: Int32(10),
+                dst: Variable(TackySymbol::from("<t>.0")),
+            },
+            Copy { src: Variable(TackySymbol::from("<t>.0")), dst: TackySymbol::from("<t>.1") },
+            JumpIfZero {
+                condition: Variable(TackySymbol::from("<t>.1")),
+                target: TackySymbol::from("loop.break"),
+            },
+            Copy { src: Variable(TackySymbol::from("i")), dst: TackySymbol::from("<t>.2") },
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: Variable(TackySymbol::from("i")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("i")),
+            },
+            Jump {target: TackySymbol::from("loop.continue")},
+            Label(TackySymbol::from("loop.break")),
+        ], "{:#?}", tinstrs);
     }
 
     #[test]
     fn test_emit_tacky_for_dowhile_loop() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_for_dowhile_loop_with_break() {
-
-    }
-
-    #[test]
-    fn test_emit_tacky_for_dowhile_loop_with_continue() {
-
+        let dowhileloop = Statement {
+            location: (0,0).into(),
+            labels: vec![],
+            kind: StatementKind::DoWhile {
+                loop_body: Box::new(Statement {
+                    location: (0,0).into(),
+                    labels: vec![],
+                    kind: StatementKind::Expression(Expression {
+                        location: (0,0).into(),
+                        kind: Increment {
+                            is_post: true,
+                            e: Box::new(Expression {
+                                location: (0,0).into(),
+                                kind: ExpressionKind::Variable("i".to_string()),
+                            }),
+                        },
+                    }),
+                }),
+                post_condition: Box::new(Expression {
+                    location: (0,0).into(),
+                    kind: Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression {
+                            location: (0,0).into(),
+                            kind: ExpressionKind::Variable("i".to_string()),
+                        }),
+                        Box::new(Expression {
+                            location: (0,0).into(),
+                            kind: IntConstant("10".to_string(), Decimal),
+                        }),
+                    ),
+                }),
+                loop_label: Some("loop".to_string()),
+            },
+        };
+        let mut ctx = TackyContext::new();
+        let tinstrs = emit_tacky_for_statement(&mut ctx, &dowhileloop).unwrap();
+        assert_eq!(tinstrs, vec![
+            Label(TackySymbol::from("loop.start")),
+            Copy { src: Variable(TackySymbol::from("i")), dst: TackySymbol::from("<t>.0") },
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Add,
+                src1: Variable(TackySymbol::from("i")),
+                src2: Int32(1),
+                dst: Variable(TackySymbol::from("i")),
+            },
+            Label(TackySymbol::from("loop.continue")),
+            TackyInstruction::Binary {
+                operator: LessThan,
+                src1: Variable(TackySymbol::from("i")),
+                src2: Int32(10),
+                dst: Variable(TackySymbol::from("<t>.1")),
+            },
+            Copy { src: Variable(TackySymbol::from("<t>.1")), dst: TackySymbol::from("<t>.2") },
+            JumpIfNotZero {
+                condition: Variable(TackySymbol::from("<t>.2")),
+                target: TackySymbol::from("loop.start"),
+            },
+            Label(TackySymbol::from("loop.break")),
+        ], "{:#?}", tinstrs);
     }
 
     #[rstest]
