@@ -411,7 +411,7 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
 fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration) -> Result<Declaration, IdentifierResolutionError> {
     let decl_loc = decl.location.clone();
     match &decl.kind {
-        DeclarationKind::Declaration { identifier, init_expression } => {
+        DeclarationKind::VarDeclaration { identifier, init_expression } => {
             let prev_decl = ctx.get_resolved_identifier_in_current_scope(&identifier);
             if let Ok(prev_mapped) = prev_decl {
                 return Err(IdentifierResolutionError::AlreadyDeclared {
@@ -423,7 +423,7 @@ fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration
             let mapped = ctx.add_identifier_mapping(identifier.clone())?;
             Ok(Declaration {
                 location: decl_loc.clone(),
-                kind: DeclarationKind::Declaration {
+                kind: DeclarationKind::VarDeclaration {
                     identifier: mapped,
                     init_expression: match init_expression {
                         None => None,

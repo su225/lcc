@@ -272,7 +272,7 @@ pub struct Statement {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeclarationKind {
-    Declaration {
+    VarDeclaration {
         identifier: Symbol,
         init_expression: Option<Expression>,
     },
@@ -458,7 +458,7 @@ impl<'a> Parser<'a> {
                         self.expect_semicolon()?;
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
-                            kind: DeclarationKind::Declaration {
+                            kind: DeclarationKind::VarDeclaration {
                                 identifier: var_name,
                                 init_expression: Some(init_expr),
                             },
@@ -467,7 +467,7 @@ impl<'a> Parser<'a> {
                     TokenType::Semicolon => {
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
-                            kind: DeclarationKind::Declaration {
+                            kind: DeclarationKind::VarDeclaration {
                                 identifier: var_name,
                                 init_expression: None,
                             },
@@ -1694,7 +1694,7 @@ mod test {
             kind: For {
                 init: ForInit::InitDecl(Box::new(Declaration {
                     location: (1, 6).into(),
-                    kind: DeclarationKind::Declaration {
+                    kind: DeclarationKind::VarDeclaration {
                         identifier: Symbol {
                             name: "i".to_string(),
                             location: (1, 10).into(),
@@ -3109,7 +3109,7 @@ mod test {
         let src = "int a;";
         let expected = Ok(Declaration {
             location: (1, 1).into(),
-            kind: DeclarationKind::Declaration {
+            kind: DeclarationKind::VarDeclaration {
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
@@ -3125,7 +3125,7 @@ mod test {
         let src = "int a = 10;";
         let expected = Ok(Declaration {
             location: (1, 1).into(),
-            kind: DeclarationKind::Declaration {
+            kind: DeclarationKind::VarDeclaration {
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
@@ -3201,7 +3201,7 @@ mod test {
             items: vec![
                 BlockItem::Declaration(Declaration {
                     location: (2, 5).into(),
-                    kind: DeclarationKind::Declaration {
+                    kind: DeclarationKind::VarDeclaration {
                         identifier: Symbol {
                             location: (2, 9).into(),
                             name: "a".to_string(),
@@ -3214,7 +3214,7 @@ mod test {
                 }),
                 BlockItem::Declaration(Declaration {
                     location: (3, 5).into(),
-                    kind: DeclarationKind::Declaration {
+                    kind: DeclarationKind::VarDeclaration {
                         identifier: Symbol {
                             location: (3, 9).into(),
                             name: "b".to_string(),
@@ -3264,7 +3264,7 @@ mod test {
             items: vec![
                 BlockItem::Declaration(Declaration {
                     location: (2, 3).into(),
-                    kind: DeclarationKind::Declaration {
+                    kind: DeclarationKind::VarDeclaration {
                         identifier: Symbol {
                             name: "a".to_string(),
                             location: (2, 7).into(),
@@ -3284,7 +3284,7 @@ mod test {
                         items: vec![
                             BlockItem::Declaration(Declaration {
                                 location: (4, 5).into(),
-                                kind: DeclarationKind::Declaration {
+                                kind: DeclarationKind::VarDeclaration {
                                     identifier: Symbol { location: (4, 9).into(), name: "b".to_string() },
                                     init_expression: Some(Expression {
                                         location: (4, 13).into(),
@@ -3294,7 +3294,7 @@ mod test {
                             }),
                             BlockItem::Declaration(Declaration {
                                 location: (5, 5).into(),
-                                kind: DeclarationKind::Declaration {
+                                kind: DeclarationKind::VarDeclaration {
                                     identifier: Symbol { location: (5, 9).into(), name: "c".to_string() },
                                     init_expression: Some(Expression {
                                         location: (5, 13).into(),

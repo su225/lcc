@@ -68,7 +68,7 @@ fn statement_identifiers_are_unique(identifiers: &mut HashSet<String>, s: &State
 
 fn declaration_identifiers_are_unique(identifiers: &mut HashSet<String>, d: &Declaration) -> bool {
     return match &d.kind {
-        DeclarationKind::Declaration { identifier: ident, .. } => {
+        DeclarationKind::VarDeclaration { identifier: ident, .. } => {
             if identifiers.contains(&ident.name) {
                 false
             } else {

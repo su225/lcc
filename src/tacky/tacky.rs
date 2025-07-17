@@ -315,12 +315,12 @@ fn emit_tacky_for_block_item(ctx: &mut TackyContext, blk_item: &BlockItem) -> Re
 
 fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Result<Vec<TackyInstruction>, TackyError> {
     match &decl.kind {
-        DeclarationKind::Declaration { identifier, init_expression: Some(expr) } => {
+        DeclarationKind::VarDeclaration { identifier, init_expression: Some(expr) } => {
             let (tacky_val, mut expr_tacky) = emit_tacky_for_expression(ctx, expr)?;
             expr_tacky.push(Copy { src: tacky_val, dst: TackySymbol(identifier.name.clone()) });
             Ok(expr_tacky)
         },
-        DeclarationKind::Declaration { init_expression: None, .. } => Ok(vec![]),
+        DeclarationKind::VarDeclaration { init_expression: None, .. } => Ok(vec![]),
         DeclarationKind::FunctionDeclaration(_) => todo!()
     }
 }
@@ -982,7 +982,7 @@ mod test {
     fn test_emit_tacky_for_declaration_and_assignment() {
         let decl = Declaration {
             location: (0,0).into(),
-            kind: DeclarationKind::Declaration {
+            kind: DeclarationKind::VarDeclaration {
                 identifier: Symbol {
                     location: (0, 0).into(),
                     name: "a".to_string(),
@@ -1008,7 +1008,7 @@ mod test {
             kind: For {
                 init: ForInit::InitDecl(Box::new(Declaration {
                     location: (0,0).into(),
-                    kind: DeclarationKind::Declaration {
+                    kind: DeclarationKind::VarDeclaration {
                         identifier: Symbol { name: "i".to_string(), location: (0,0).into() },
                         init_expression: Some(Expression {
                             location: (0,0).into(),

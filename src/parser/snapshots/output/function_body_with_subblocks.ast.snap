@@ -26,7 +26,7 @@ functions:
               line: 2
               column: 5
             kind:
-              declaration:
+              var_declaration:
                 identifier:
                   name: a
                   location:
@@ -45,7 +45,7 @@ functions:
               line: 3
               column: 5
             kind:
-              declaration:
+              var_declaration:
                 identifier:
                   name: b
                   location:

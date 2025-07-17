@@ -64,7 +64,7 @@ fn desugared_compound_assignment_in_for_init(for_init: &ForInit) -> bool {
 
 fn desugared_compound_assignment_in_declaration(decl: &Declaration) -> bool {
     match &decl.kind {
-        DeclarationKind::Declaration { init_expression: Some(init_expr), .. } =>
+        DeclarationKind::VarDeclaration { init_expression: Some(init_expr), .. } =>
             desugared_compound_assignment_in_expression(init_expr),
         _ => true,
     }
