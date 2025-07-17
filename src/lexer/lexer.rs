@@ -92,6 +92,7 @@ pub enum TokenTag {
     OperatorCompoundAssignmentBitwiseXor,
     OperatorTernaryThen,
     OperatorColon,
+    Comma,
 }
 
 impl Display for TokenTag {
@@ -149,6 +150,7 @@ pub enum TokenType<'a> {
 
     OperatorTernaryThen,
     OperatorColon,
+    Comma,
 }
 
 impl<'a> TokenType<'a> {
@@ -204,6 +206,7 @@ impl<'a> TokenType<'a> {
 
             TokenType::OperatorTernaryThen => TokenTag::OperatorTernaryThen,
             TokenType::OperatorColon => TokenTag::OperatorColon,
+            TokenType::Comma => TokenTag::Comma,
         }
     }
 
@@ -351,6 +354,7 @@ impl<'a> Display for TokenType<'a> {
             TokenType::OperatorCompoundAssignmentBitwiseXor => f.write_str("^="),
             TokenType::OperatorTernaryThen => f.write_str("?"),
             TokenType::OperatorColon => f.write_str(":"),
+            TokenType::Comma => f.write_str(","),
         }
     }
 }
@@ -827,6 +831,10 @@ impl<'a> Lexer<'a> {
                         '\n' | '\t' | ' ' => {
                             self.next_char();
                         }
+                        ',' => {
+                            let token = self.tokenize_single_char(TokenType::Comma);
+                            return Ok(Some(token));
+                        }
                         _ => {
                             let token = self.tokenize_identifier_or_keyword()?;
                             return Ok(Some(token));
@@ -1254,6 +1262,14 @@ mod test {
         ]));
     }
 
+    #[test]
+    fn test_tokenizing_comma() {
+        let source = ",";
+        let lexer = Lexer::new(source);
+        let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
+        assert_eq!(tokens, Ok(vec![Token { token_type: Comma, location: (1,1).into() }]));
+    }
+
     #[rstest]
     #[case("abcde")]
     #[case("abcde123")]
@@ -1410,7 +1426,7 @@ mod test {
         let tokens: LexerResult<Vec<Token>> = lexer.into_iter().collect();
         let expected = Ok(vec![
             Token {
-                token_type: TokenType::OpenParentheses,
+                token_type: OpenParentheses,
                 location: Location { line: 1, column: 1 },
             },
             Token {
