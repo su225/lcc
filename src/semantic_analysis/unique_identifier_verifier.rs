@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, ForInit, FunctionDefinition, ProgramDefinition, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, ForInit, Function, ProgramDefinition, Statement, StatementKind};
 
 pub fn program_identifiers_are_unique(prog: &ProgramDefinition) -> bool {
     let mut function_names = HashSet::with_capacity(prog.functions.len());
@@ -17,8 +17,8 @@ pub fn program_identifiers_are_unique(prog: &ProgramDefinition) -> bool {
     return true;
 }
 
-fn function_identifiers_are_unique(identifiers: &mut HashSet<String>, f: &FunctionDefinition) -> bool {
-    block_identifiers_are_unique(identifiers, &f.body)
+fn function_identifiers_are_unique(identifiers: &mut HashSet<String>, f: &Function) -> bool {
+    f.body.as_ref().is_some_and(|func_body| block_identifiers_are_unique(identifiers, func_body))
 }
 
 fn block_identifiers_are_unique(identifiers: &mut HashSet<String>, b: &Block) -> bool {
@@ -76,5 +76,6 @@ fn declaration_identifiers_are_unique(identifiers: &mut HashSet<String>, d: &Dec
                 true
             }
         },
+        DeclarationKind::FunctionDeclaration(_) => todo!(),
     }
 }

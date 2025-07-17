@@ -1,13 +1,13 @@
 use std::collections::HashSet;
-use crate::parser::{BlockItem, FunctionDefinition, ProgramDefinition, Statement, StatementKind};
+use crate::parser::{BlockItem, Function, ProgramDefinition, Statement, StatementKind};
 
 pub fn loop_labels_are_complete_and_unique(p: &ProgramDefinition) -> bool {
     let mut label_set: HashSet<String> = HashSet::new();
     p.functions.iter().all(|f| function_loop_labels_are_complete_and_unique(&mut label_set, f))
 }
 
-fn function_loop_labels_are_complete_and_unique(label_set: &mut HashSet<String>, f: &FunctionDefinition) -> bool {
-    f.body.items.iter().all(|bi| block_item_loop_labels_are_complete_and_unique(label_set, bi))
+fn function_loop_labels_are_complete_and_unique(label_set: &mut HashSet<String>, f: &Function) -> bool {
+    f.body.as_ref().is_some_and(|func_body| func_body.items.iter().all(|bi| block_item_loop_labels_are_complete_and_unique(label_set, bi)))
 }
 
 fn block_item_loop_labels_are_complete_and_unique(label_set: &mut HashSet<String>, block_item: &BlockItem) -> bool {

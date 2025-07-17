@@ -4,7 +4,7 @@ use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
 
-use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
 use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::{Int32, Variable};
 
@@ -282,15 +282,18 @@ pub fn emit(prog: &ProgramDefinition) -> Result<TackyProgram, TackyError> {
     let mut ctx = TackyContext::new();
     let mut f = vec![];
     for fd in prog.functions.iter() {
+        if fd.body.is_none() {
+            continue;
+        }
         let tf = emit_tacky_for_function(&mut ctx, fd)?;
         f.push(tf);
     }
     Ok(TackyProgram { functions: f })
 }
 
-fn emit_tacky_for_function(ctx: &mut TackyContext, f: &FunctionDefinition) -> Result<TackyFunction, TackyError> {
+fn emit_tacky_for_function(ctx: &mut TackyContext, f: &Function) -> Result<TackyFunction, TackyError> {
     let mut instructions = vec![];
-    for blk_item in f.body.items.iter() {
+    for blk_item in f.body.as_ref().unwrap().items.iter() {
         let instrs = emit_tacky_for_block_item(ctx, blk_item)?;
         instructions.extend(instrs);
     }
@@ -318,6 +321,7 @@ fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Res
             Ok(expr_tacky)
         },
         DeclarationKind::Declaration { init_expression: None, .. } => Ok(vec![]),
+        DeclarationKind::FunctionDeclaration(_) => todo!()
     }
 }
 
@@ -664,6 +668,7 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             instructions.push(Label(cond_end_lbl));
             Ok((Variable(tmp_final_res), instructions))
         }
+        ExpressionKind::FunctionCall {..} => unimplemented!(),
     }
 }
 

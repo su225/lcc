@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, FunctionDefinition, ProgramDefinition, Statement, StatementKind, Symbol};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, ProgramDefinition, Statement, StatementKind, Symbol};
 
 #[derive(Debug, Error)]
 pub enum IdentifierResolutionError {
@@ -178,16 +178,26 @@ pub fn resolve_program(program: ProgramDefinition) -> Result<ProgramDefinition, 
     Ok(ProgramDefinition { functions: resolved_funcs })
 }
 
-fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &FunctionDefinition) -> Result<FunctionDefinition, IdentifierResolutionError> {
+fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> Result<Function, IdentifierResolutionError> {
     ctx.with_function_scope(|sub_ctx| {
-        collect_labels_from_block(sub_ctx, &f.body)?;
-        resolve_block(sub_ctx, &f.body).map(|resolved_block| {
-            FunctionDefinition {
-                location: f.location.clone(),
-                name: f.name.clone(),
-                body: resolved_block,
+        match &f.body {
+            None => {
+                // This is just a function declaration. It does not require
+                // any resolution step other than adding it to the context
+                unimplemented!()
             }
-        })
+            Some(func_definition) => {
+                collect_labels_from_block(sub_ctx, func_definition)?;
+                resolve_block(sub_ctx, func_definition).map(|resolved_block| {
+                    Function {
+                        location: f.location.clone(),
+                        name: f.name.clone(),
+                        body: Some(resolved_block),
+                    }
+                })
+            }
+        }
+
     })
 }
 
@@ -422,6 +432,7 @@ fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration
                 },
             })
         }
+        DeclarationKind::FunctionDeclaration(_) => todo!(),
     }
 }
 
@@ -500,6 +511,7 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                     else_expr: Box::new(resolved_else_expr),
                 }
             },
+            ExpressionKind::FunctionCall {..} => todo!(),
         },
     })
 }

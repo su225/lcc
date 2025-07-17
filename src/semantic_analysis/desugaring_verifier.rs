@@ -1,11 +1,11 @@
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, FunctionDefinition, ProgramDefinition, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, ProgramDefinition, Statement, StatementKind};
 
 pub fn desugared_compound_assignment(prog: &ProgramDefinition) -> bool {
     prog.functions.iter().all(|f| desugared_compound_assignment_in_functions(f))
 }
 
-fn desugared_compound_assignment_in_functions(func: &FunctionDefinition) -> bool {
-    desugared_compound_assignment_in_blocks(&func.body)
+fn desugared_compound_assignment_in_functions(func: &Function) -> bool {
+    func.body.as_ref().is_some_and(|func_body| desugared_compound_assignment_in_blocks(func_body))
 }
 
 fn desugared_compound_assignment_in_blocks(block: &Block) -> bool {

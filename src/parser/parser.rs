@@ -276,6 +276,7 @@ pub enum DeclarationKind {
         identifier: Symbol,
         init_expression: Option<Expression>,
     },
+    FunctionDeclaration (Function),
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -302,16 +303,16 @@ pub struct Block {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct FunctionDefinition {
+pub struct Function {
     pub location: Location,
     pub name: Symbol,
-    pub body: Block,
+    pub body: Option<Block>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ProgramDefinition {
-    pub functions: Vec<FunctionDefinition>,
+    pub functions: Vec<Function>,
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -371,7 +372,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_program(&mut self) -> Result<ProgramDefinition, ParserError> {
-        let mut functions: Vec<FunctionDefinition> = vec![];
+        let mut functions: Vec<Function> = vec![];
         loop {
             if self.token_provider.peek().is_none() {
                 break; // No more tokens and hence we are safe to stop here
@@ -384,14 +385,14 @@ impl<'a> Parser<'a> {
         Ok(ProgramDefinition { functions })
     }
 
-    fn parse_function_definition(&mut self) -> Result<FunctionDefinition, ParserError> {
+    fn parse_function_definition(&mut self) -> Result<Function, ParserError> {
         let return_type = self.parse_type_expression()?;
         let name = self.parse_identifier()?;
         self.expect_open_parentheses()?;
         self.parse_function_parameters()?;
         self.expect_close_parentheses()?;
         let body = self.parse_block()?;
-        Ok(FunctionDefinition { location: return_type.location, name, body })
+        Ok(Function { location: return_type.location, name, body: Some(body) })
     }
 
     fn parse_function_parameters(&mut self) -> Result<(), ParserError> {
@@ -1094,7 +1095,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, FunctionDefinition, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -1106,13 +1107,13 @@ mod test {
         let parsed = parser.parse();
         assert_eq!(Ok(ProgramDefinition {
             functions: vec![
-                FunctionDefinition {
+                Function {
                     location: Location { line: 1, column: 1 },
                     name: Symbol {
                         name: "main".to_string(),
                         location: Location { line: 1, column: 8 },
                     },
-                    body: Block {
+                    body: Some(Block {
                         start_loc: Location { line: 1, column: 32 }, // ← updated from (0,0)
                         end_loc: Location { line: 1, column: 64 },   // ← updated from (0,0)
                         items: vec![
@@ -1127,7 +1128,7 @@ mod test {
                                 },
                             ),
                         ],
-                    },
+                    }),
                 },
             ],
         }), parsed);
@@ -1149,10 +1150,10 @@ mod test {
         let parsed = parser.parse();
         assert_eq!(Ok(ProgramDefinition {
             functions: vec![
-                FunctionDefinition {
+                Function {
                     location: (1, 1).into(),
                     name: Symbol { name: "main".to_string(), location: (1, 5).into() },
-                    body: Block {
+                    body: Some(Block {
                         start_loc: (1, 16).into(),
                         end_loc: (3, 1).into(),
                         items: vec![
@@ -1165,12 +1166,12 @@ mod test {
                                 }),
                             })
                         ],
-                    },
+                    }),
                 },
-                FunctionDefinition {
+                Function {
                     location: (5, 1).into(),
                     name: Symbol { name: "foo".to_string(), location: (5, 5).into() },
-                    body: Block {
+                    body: Some(Block {
                         start_loc: (5, 15).into(),
                         end_loc: (7, 1).into(),
                         items: vec![
@@ -1183,7 +1184,7 @@ mod test {
                                 }),
                             })
                         ],
-                    },
+                    }),
                 },
             ],
         }), parsed)
@@ -1201,10 +1202,10 @@ mod test {
         let actual = parser.parse();
         let expected = Ok(ProgramDefinition {
             functions: vec![
-                FunctionDefinition {
+                Function {
                     location: (1, 1).into(),
                     name: Symbol { name: "main".to_string(), location: (1, 5).into() },
-                    body: Block {
+                    body: Some(Block {
                         start_loc: (1, 16).into(),
                         end_loc: (3, 1).into(),
                         items: vec![
@@ -1223,7 +1224,7 @@ mod test {
                                 },
                             ),
                         ],
-                    },
+                    }),
                 },
             ],
         });
