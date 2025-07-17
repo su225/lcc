@@ -8,7 +8,6 @@ use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
-use crate::parser::ExpressionKind::Conditional;
 use crate::parser::ParserError::*;
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Clone)]
@@ -177,6 +176,7 @@ pub enum ExpressionKind {
     Assignment { lvalue: Box<Expression>, rvalue: Box<Expression>, op: Option<CompoundAssignmentType> },
     Increment { is_post: bool, e: Box<Expression> },
     Decrement { is_post: bool, e: Box<Expression> },
+    FunctionCall { func_name: String, actual_params: Vec<Box<Expression>> },
 }
 
 impl ExpressionKind {
@@ -870,7 +870,7 @@ impl<'a> Parser<'a> {
                         let else_expr = self.parse_expression_with_precedence(next_min_precedence)?;
                         left = Expression {
                             location: left_loc,
-                            kind: Conditional {
+                            kind: ExpressionKind::Conditional {
                                 condition: Box::new(left),
                                 then_expr: Box::new(then_expr),
                                 else_expr: Box::new(else_expr),
