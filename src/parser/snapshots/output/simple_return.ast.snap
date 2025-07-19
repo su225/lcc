@@ -4,34 +4,39 @@ description: basic
 expression: ast
 info: simple_return.c
 ---
-functions:
+declarations:
   - location:
       line: 1
       column: 1
-    name:
-      name: main
-      location:
-        line: 1
-        column: 5
-    body:
-      start_loc:
-        line: 1
-        column: 16
-      end_loc:
-        line: 3
-        column: 1
-      items:
-        - statement:
-            location:
-              line: 2
-              column: 5
-            labels: []
-            kind:
-              return:
+    kind:
+      function_declaration:
+        location:
+          line: 1
+          column: 1
+        name:
+          name: main
+          location:
+            line: 1
+            column: 5
+        body:
+          start_loc:
+            line: 1
+            column: 16
+          end_loc:
+            line: 3
+            column: 1
+          items:
+            - statement:
                 location:
                   line: 2
-                  column: 12
+                  column: 5
+                labels: []
                 kind:
-                  int_constant:
-                    - "0"
-                    - decimal
+                  return:
+                    location:
+                      line: 2
+                      column: 12
+                    kind:
+                      int_constant:
+                        - "0"
+                        - decimal

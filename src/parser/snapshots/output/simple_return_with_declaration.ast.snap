@@ -4,101 +4,106 @@ description: basic
 expression: ast
 info: simple_return_with_declaration.c
 ---
-functions:
+declarations:
   - location:
       line: 1
       column: 1
-    name:
-      name: main
-      location:
-        line: 1
-        column: 5
-    body:
-      start_loc:
-        line: 1
-        column: 16
-      end_loc:
-        line: 6
-        column: 1
-      items:
-        - declaration:
-            location:
-              line: 2
-              column: 5
-            kind:
-              var_declaration:
-                identifier:
-                  name: a
-                  location:
-                    line: 2
-                    column: 9
-                init_expression:
-                  location:
-                    line: 2
-                    column: 13
-                  kind:
-                    int_constant:
-                      - "10"
-                      - decimal
-        - declaration:
-            location:
-              line: 3
-              column: 5
-            kind:
-              var_declaration:
-                identifier:
-                  name: b
-                  location:
-                    line: 3
-                    column: 9
-                init_expression: ~
-        - statement:
-            location:
-              line: 4
-              column: 5
-            labels: []
-            kind:
-              expression:
+    kind:
+      function_declaration:
+        location:
+          line: 1
+          column: 1
+        name:
+          name: main
+          location:
+            line: 1
+            column: 5
+        body:
+          start_loc:
+            line: 1
+            column: 16
+          end_loc:
+            line: 6
+            column: 1
+          items:
+            - declaration:
+                location:
+                  line: 2
+                  column: 5
+                kind:
+                  var_declaration:
+                    identifier:
+                      name: a
+                      location:
+                        line: 2
+                        column: 9
+                    init_expression:
+                      location:
+                        line: 2
+                        column: 13
+                      kind:
+                        int_constant:
+                          - "10"
+                          - decimal
+            - declaration:
+                location:
+                  line: 3
+                  column: 5
+                kind:
+                  var_declaration:
+                    identifier:
+                      name: b
+                      location:
+                        line: 3
+                        column: 9
+                    init_expression: ~
+            - statement:
                 location:
                   line: 4
                   column: 5
+                labels: []
                 kind:
-                  assignment:
-                    lvalue:
-                      location:
-                        line: 4
-                        column: 5
-                      kind:
-                        variable: b
-                    rvalue:
-                      location:
-                        line: 4
-                        column: 9
-                      kind:
-                        int_constant:
-                          - "20"
-                          - decimal
-                    op: ~
-        - statement:
-            location:
-              line: 5
-              column: 5
-            labels: []
-            kind:
-              return:
+                  expression:
+                    location:
+                      line: 4
+                      column: 5
+                    kind:
+                      assignment:
+                        lvalue:
+                          location:
+                            line: 4
+                            column: 5
+                          kind:
+                            variable: b
+                        rvalue:
+                          location:
+                            line: 4
+                            column: 9
+                          kind:
+                            int_constant:
+                              - "20"
+                              - decimal
+                        op: ~
+            - statement:
                 location:
                   line: 5
-                  column: 12
+                  column: 5
+                labels: []
                 kind:
-                  binary:
-                    - add
-                    - location:
-                        line: 5
-                        column: 12
-                      kind:
-                        variable: a
-                    - location:
-                        line: 5
-                        column: 16
-                      kind:
-                        variable: b
+                  return:
+                    location:
+                      line: 5
+                      column: 12
+                    kind:
+                      binary:
+                        - add
+                        - location:
+                            line: 5
+                            column: 12
+                          kind:
+                            variable: a
+                        - location:
+                            line: 5
+                            column: 16
+                          kind:
+                            variable: b
