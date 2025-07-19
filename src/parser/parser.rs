@@ -286,6 +286,15 @@ pub struct Declaration {
     pub kind: DeclarationKind,
 }
 
+impl Declaration {
+    pub fn identifier(&self) -> Symbol {
+        match &self.kind {
+            DeclarationKind::FunctionDeclaration(ref f) => f.name.clone(),
+            DeclarationKind::VarDeclaration { ref identifier, ..} => identifier.clone(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockItem {
@@ -311,8 +320,10 @@ pub struct Function {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub struct ProgramDefinition {
-    pub functions: Vec<Function>,
+pub struct Program {
+    /// declarations consist of all the variables
+    /// and functions defined in the program unit
+    pub declarations: Vec<Declaration>,
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -367,32 +378,41 @@ impl<'a> Parser<'a> {
 
     /// parse parses the given source file and returns the
     /// Abstract Syntax Tree (AST).
-    pub fn parse(&mut self) -> Result<ProgramDefinition, ParserError> {
+    pub fn parse(&mut self) -> Result<Program, ParserError> {
         Ok(self.parse_program()?)
     }
 
-    fn parse_program(&mut self) -> Result<ProgramDefinition, ParserError> {
-        let mut functions: Vec<Function> = vec![];
+    fn parse_program(&mut self) -> Result<Program, ParserError> {
+        let mut decls: Vec<Declaration> = vec![];
         loop {
             if self.token_provider.peek().is_none() {
-                break; // No more tokens and hence we are safe to stop here
+                break;
             }
-            // Otherwise parse the next function definition
-            let func_definition = self.parse_function_definition()?;
-            functions.push(func_definition);
+            let decl = self.parse_declaration()?;
+            decls.push(decl);
         }
-
-        Ok(ProgramDefinition { functions })
+        Ok(Program { declarations: decls })
     }
 
-    fn parse_function_definition(&mut self) -> Result<Function, ParserError> {
-        let return_type = self.parse_type_expression()?;
-        let name = self.parse_identifier()?;
-        self.expect_open_parentheses()?;
+    fn parse_function(&mut self) -> Result<Option<Block>, ParserError> {
         self.parse_function_parameters()?;
         self.expect_close_parentheses()?;
-        let body = self.parse_block()?;
-        Ok(Function { location: return_type.location, name, body: Some(body) })
+
+        let next_tok = self.token_provider.peek();
+        match next_tok {
+            None => Err(UnexpectedEnd(vec![TokenTag::OpenBrace, TokenTag::Semicolon])),
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
+            Some(Ok(tok)) => {
+                match &tok.token_type {
+                    TokenType::Semicolon => Ok(None),
+                    TokenType::OpenBrace => {
+                        let func_body = self.parse_block()?;
+                        Ok(Some(func_body))
+                    }
+                    _ => Err(UnexpectedEnd(vec![TokenTag::OpenBrace, TokenTag::Semicolon])),
+                }
+            }
+        }
     }
 
     fn parse_function_parameters(&mut self) -> Result<(), ParserError> {
@@ -444,8 +464,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration, ParserError> {
-        let ty_decl = self.get_keyword_token(KeywordIdentifier::TypeInt)?;
-        let var_name = self.parse_identifier()?;
+        let ty_decl = self.parse_type_expression()?;
+        let ident = self.parse_identifier()?;
         let next_tok = self.token_provider.next();
         match next_tok {
             None => Err(UnexpectedEnd(vec![TokenTag::OperatorAssignment, TokenTag::Semicolon])),
@@ -459,7 +479,7 @@ impl<'a> Parser<'a> {
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
                             kind: DeclarationKind::VarDeclaration {
-                                identifier: var_name,
+                                identifier: ident,
                                 init_expression: Some(init_expr),
                             },
                         })
@@ -468,9 +488,20 @@ impl<'a> Parser<'a> {
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
                             kind: DeclarationKind::VarDeclaration {
-                                identifier: var_name,
+                                identifier: ident,
                                 init_expression: None,
                             },
+                        })
+                    }
+                    TokenType::OpenParentheses => {
+                        let func_body = self.parse_function()?;
+                        Ok(Declaration {
+                            location: ty_decl.location.clone(),
+                            kind: DeclarationKind::FunctionDeclaration(Function {
+                                location: ty_decl.location.clone(),
+                                name: ident,
+                                body: func_body,
+                            })
                         })
                     }
                     _ => Err(UnexpectedToken {
@@ -479,21 +510,6 @@ impl<'a> Parser<'a> {
                     })
                 }
             }
-        }
-    }
-
-    fn get_keyword_token(&mut self, kw_ident_type: KeywordIdentifier) -> Result<Token<'a>, ParserError> {
-        let kwd = self.get_token_with_tag(TokenTag::Keyword)?;
-        let kwd_loc = kwd.location;
-        match kwd.token_type {
-            TokenType::Keyword(kw) if kw_ident_type == kw => Ok(Token {
-                location: kwd_loc,
-                token_type: TokenType::Keyword(kw_ident_type),
-            }),
-            _ => Err(UnexpectedToken {
-                location: kwd_loc,
-                expected_token_tags: vec![TokenTag::Keyword],
-            })
         }
     }
 
@@ -1095,7 +1111,8 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, Parser, ParserError, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, Parser, ParserError, Program, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::DeclarationKind::FunctionDeclaration;
     use crate::parser::ExpressionKind::*;
     use crate::parser::StatementKind::*;
 
@@ -1105,29 +1122,32 @@ mod test {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();
-        assert_eq!(Ok(ProgramDefinition {
-            functions: vec![
-                Function {
-                    location: Location { line: 1, column: 1 },
-                    name: Symbol {
-                        name: "main".to_string(),
-                        location: Location { line: 1, column: 8 },
-                    },
-                    body: Some(Block {
-                        start_loc: Location { line: 1, column: 32 }, // ← updated from (0,0)
-                        end_loc: Location { line: 1, column: 64 },   // ← updated from (0,0)
-                        items: vec![
-                            BlockItem::Statement(
-                                Statement {
-                                    location: Location { line: 1, column: 40 },
-                                    labels: vec![],
-                                    kind: Return(Expression {
-                                        location: Location { line: 1, column: 48 },
-                                        kind: IntConstant("0".to_string(), Decimal),
-                                    }),
-                                },
-                            ),
-                        ],
+        assert_eq!(Ok(Program {
+            declarations: vec![
+                Declaration {
+                    location: (1,1).into(),
+                    kind: DeclarationKind::FunctionDeclaration(Function {
+                        location: (1,1).into(),
+                        name: Symbol {
+                            name: "main".to_string(),
+                            location: (1,8).into(),
+                        },
+                        body: Some(Block {
+                            start_loc: (1,32).into(),
+                            end_loc: (1,64).into(),
+                            items: vec![
+                                BlockItem::Statement(
+                                    Statement {
+                                        location: (1,40).into(),
+                                        labels: vec![],
+                                        kind: Return(Expression {
+                                            location: (1,48).into(),
+                                            kind: IntConstant("0".to_string(), Decimal),
+                                        }),
+                                    },
+                                ),
+                            ],
+                        }),
                     }),
                 },
             ],
@@ -1148,43 +1168,49 @@ mod test {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();
-        assert_eq!(Ok(ProgramDefinition {
-            functions: vec![
-                Function {
-                    location: (1, 1).into(),
-                    name: Symbol { name: "main".to_string(), location: (1, 5).into() },
-                    body: Some(Block {
-                        start_loc: (1, 16).into(),
-                        end_loc: (3, 1).into(),
-                        items: vec![
-                            BlockItem::Statement(Statement {
-                                location: (2, 5).into(),
-                                labels: vec![],
-                                kind: Return(Expression {
-                                    location: (2, 12).into(),
-                                    kind: IntConstant("2".to_string(), Decimal),
-                                }),
-                            })
-                        ],
+        assert_eq!(Ok(Program {
+            declarations: vec![
+                Declaration {
+                    location: (1,1).into(),
+                    kind: FunctionDeclaration(Function {
+                        location: (1, 1).into(),
+                        name: Symbol { name: "main".to_string(), location: (1, 5).into() },
+                        body: Some(Block {
+                            start_loc: (1, 16).into(),
+                            end_loc: (3, 1).into(),
+                            items: vec![
+                                BlockItem::Statement(Statement {
+                                    location: (2, 5).into(),
+                                    labels: vec![],
+                                    kind: Return(Expression {
+                                        location: (2, 12).into(),
+                                        kind: IntConstant("2".to_string(), Decimal),
+                                    }),
+                                })
+                            ],
+                        }),
                     }),
                 },
-                Function {
-                    location: (5, 1).into(),
-                    name: Symbol { name: "foo".to_string(), location: (5, 5).into() },
-                    body: Some(Block {
-                        start_loc: (5, 15).into(),
-                        end_loc: (7, 1).into(),
-                        items: vec![
-                            BlockItem::Statement(Statement {
-                                location: (6, 5).into(),
-                                labels: vec![],
-                                kind: Return(Expression {
-                                    location: (6, 12).into(),
-                                    kind: IntConstant("3".to_string(), Decimal),
-                                }),
-                            })
-                        ],
-                    }),
+                Declaration {
+                    location: (5,1).into(),
+                    kind: FunctionDeclaration(Function {
+                        location: (5,1).into(),
+                        name: Symbol { name: "foo".to_string(), location: (5,5).into() },
+                        body: Some(Block {
+                            start_loc: (5,15).into(),
+                            end_loc: (7,1).into(),
+                            items: vec![
+                                BlockItem::Statement(Statement {
+                                    location: (6,5).into(),
+                                    labels: vec![],
+                                    kind: Return(Expression {
+                                        location: (6,12).into(),
+                                        kind: IntConstant("3".to_string(), Decimal),
+                                    }),
+                                })
+                            ],
+                        }),
+                    },),
                 },
             ],
         }), parsed)
@@ -1200,32 +1226,35 @@ mod test {
         let lexer = Lexer::new(src);
         let mut parser = Parser::new(lexer);
         let actual = parser.parse();
-        let expected = Ok(ProgramDefinition {
-            functions: vec![
-                Function {
-                    location: (1, 1).into(),
-                    name: Symbol { name: "main".to_string(), location: (1, 5).into() },
-                    body: Some(Block {
-                        start_loc: (1, 16).into(),
-                        end_loc: (3, 1).into(),
-                        items: vec![
-                            BlockItem::Statement(
-                                Statement {
-                                    location: (2, 5).into(),
-                                    labels: vec![],
-                                    kind: Return(Expression {
-                                        location: (2, 12).into(),
-                                        kind: Binary(
-                                            BinaryOperator::Add,
-                                            Box::new(Expression { location: (2, 12).into(), kind: IntConstant("1".to_string(), Decimal) }),
-                                            Box::new(Expression { location: (2, 16).into(), kind: IntConstant("2".to_string(), Decimal) }),
-                                        ),
-                                    }),
-                                },
-                            ),
-                        ],
+        let expected = Ok(Program {
+            declarations: vec![
+                Declaration {
+                    location: (1,1).into(),
+                    kind: FunctionDeclaration(Function {
+                        location: (1,1).into(),
+                        name: Symbol { name: "main".to_string(), location: (1,5).into() },
+                        body: Some(Block {
+                            start_loc: (1,16).into(),
+                            end_loc: (3,1).into(),
+                            items: vec![
+                                BlockItem::Statement(
+                                    Statement {
+                                        location: (2,5).into(),
+                                        labels: vec![],
+                                        kind: Return(Expression {
+                                            location: (2,12).into(),
+                                            kind: Binary(
+                                                BinaryOperator::Add,
+                                                Box::new(Expression { location: (2,12).into(), kind: IntConstant("1".to_string(), Decimal) }),
+                                                Box::new(Expression { location: (2,16).into(), kind: IntConstant("2".to_string(), Decimal) }),
+                                            ),
+                                        }),
+                                    },
+                                ),
+                            ],
+                        }),
                     }),
-                },
+                }
             ],
         });
         assert_eq!(expected, actual, "expected:\n{:#?}\nactual:\n{:#?}\n", expected, actual);

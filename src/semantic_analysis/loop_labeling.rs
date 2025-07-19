@@ -1,6 +1,6 @@
 use thiserror::Error;
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Function, ProgramDefinition, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Function, Program, Statement, StatementKind};
 
 #[derive(Debug, Error)]
 pub enum LoopLabelingError {
@@ -46,14 +46,22 @@ impl LoopLabelingContext {
     }
 }
 
-pub fn loop_label_program_definition(program: ProgramDefinition) -> Result<ProgramDefinition, LoopLabelingError> {
+pub fn loop_label_program_definition(program: Program) -> Result<Program, LoopLabelingError> {
     let mut ctx = LoopLabelingContext::new();
-    let mut labeled_funcs = Vec::with_capacity(program.functions.len());
-    for f in program.functions {
-        let labeled_f = loop_label_function(&mut ctx, f)?;
-        labeled_funcs.push(labeled_f);
+    let mut labeled_decls = Vec::with_capacity(program.declarations.len());
+    for decl in program.declarations {
+        let decl_loc = decl.location.clone();
+        if let DeclarationKind::FunctionDeclaration(f) = decl.kind {
+            let labeled_f = loop_label_function(&mut ctx, f)?;
+            labeled_decls.push(Declaration {
+                location: decl_loc,
+                kind: DeclarationKind::FunctionDeclaration(labeled_f),
+            });
+        } else {
+            labeled_decls.push(decl);
+        }
     }
-    Ok(ProgramDefinition { functions: labeled_funcs })
+    Ok(Program { declarations: labeled_decls })
 }
 
 fn loop_label_function(ctx: &mut LoopLabelingContext, function: Function) -> Result<Function, LoopLabelingError> {
@@ -207,7 +215,7 @@ fn is_loop_labeling_required(stmt: &Statement) -> bool {
 mod test {
     use indoc::indoc;
     use crate::lexer::Lexer;
-    use crate::parser::{Parser, ProgramDefinition};
+    use crate::parser::{Parser, Program};
     use crate::semantic_analysis::identifier_resolution::{resolve_program};
     use crate::semantic_analysis::loop_label_verifier::loop_labels_are_complete_and_unique;
     use crate::semantic_analysis::loop_labeling::{loop_label_program_definition, LoopLabelingError};
@@ -329,7 +337,7 @@ mod test {
         assert!(loop_labels_are_complete_and_unique(&lbl));
     }
 
-    fn run_program_loop_labeling(program: &str) -> Result<ProgramDefinition, LoopLabelingError> {
+    fn run_program_loop_labeling(program: &str) -> Result<Program, LoopLabelingError> {
         let lexer = Lexer::new(program);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();

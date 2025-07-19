@@ -4,7 +4,7 @@ use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
 
-use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, ProgramDefinition, Statement, StatementKind, Symbol, UnaryOperator};
+use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, Symbol, UnaryOperator};
 use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::{Int32, Variable};
 
@@ -278,17 +278,22 @@ impl TackyContext {
     }
 }
 
-pub fn emit(prog: &ProgramDefinition) -> Result<TackyProgram, TackyError> {
+pub fn emit(prog: &Program) -> Result<TackyProgram, TackyError> {
     let mut ctx = TackyContext::new();
-    let mut f = vec![];
-    for fd in prog.functions.iter() {
-        if fd.body.is_none() {
-            continue;
+    let mut tacky_funcs = vec![];
+    for decl in prog.declarations.iter() {
+        match &decl.kind {
+            DeclarationKind::FunctionDeclaration(ref f) => {
+                if f.body.is_none() {
+                    continue;
+                }
+                let tf = emit_tacky_for_function(&mut ctx, f)?;
+                tacky_funcs.push(tf);
+            }
+            DeclarationKind::VarDeclaration { .. } => unimplemented!("global vars not yet supported")
         }
-        let tf = emit_tacky_for_function(&mut ctx, fd)?;
-        f.push(tf);
     }
-    Ok(TackyProgram { functions: f })
+    Ok(TackyProgram { functions: tacky_funcs })
 }
 
 fn emit_tacky_for_function(ctx: &mut TackyContext, f: &Function) -> Result<TackyFunction, TackyError> {

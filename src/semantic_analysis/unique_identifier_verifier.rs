@@ -1,15 +1,16 @@
 use std::collections::HashSet;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, ForInit, Function, ProgramDefinition, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, ForInit, Function, Program, Statement, StatementKind};
 
-pub fn program_identifiers_are_unique(prog: &ProgramDefinition) -> bool {
-    let mut function_names = HashSet::with_capacity(prog.functions.len());
+pub fn program_identifiers_are_unique(prog: &Program) -> bool {
+    let mut identifier_names = HashSet::with_capacity(prog.declarations.len());
     let mut identifiers = HashSet::new();
-    for f in prog.functions.iter() {
-        if function_names.contains(&f.name.name) {
+    for decl in prog.declarations.iter() {
+        let ident_name = decl.identifier().name.clone();
+        if identifier_names.contains(&ident_name) {
             return false;
         }
-        function_names.insert(f.name.name.clone());
-        let unique_func_identifiers = function_identifiers_are_unique(&mut identifiers, f);
+        identifier_names.insert(ident_name);
+        let unique_func_identifiers = declaration_identifiers_are_unique(&mut identifiers, decl);
         if !unique_func_identifiers {
             return false;
         }
@@ -67,15 +68,13 @@ fn statement_identifiers_are_unique(identifiers: &mut HashSet<String>, s: &State
 }
 
 fn declaration_identifiers_are_unique(identifiers: &mut HashSet<String>, d: &Declaration) -> bool {
-    return match &d.kind {
-        DeclarationKind::VarDeclaration { identifier: ident, .. } => {
-            if identifiers.contains(&ident.name) {
-                false
-            } else {
-                identifiers.insert(ident.name.clone());
-                true
-            }
-        },
-        DeclarationKind::FunctionDeclaration(_) => todo!(),
+    let ident = d.identifier().name.clone();
+    let is_unique = identifiers.insert(ident);
+    if !is_unique {
+        return false;
+    }
+    match &d.kind {
+        DeclarationKind::FunctionDeclaration(ref f) => function_identifiers_are_unique(identifiers, f),
+        _ => true,
     }
 }

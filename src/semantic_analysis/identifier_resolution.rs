@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, ProgramDefinition, Statement, StatementKind, Symbol};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, Symbol};
 
 #[derive(Debug, Error)]
 pub enum IdentifierResolutionError {
@@ -167,15 +167,24 @@ impl IdentifierResolutionContext {
     }
 }
 
-pub fn resolve_program(program: ProgramDefinition) -> Result<ProgramDefinition, IdentifierResolutionError> {
+pub fn resolve_program(program: Program) -> Result<Program, IdentifierResolutionError> {
     let mut ctx = IdentifierResolutionContext::new();
-    let mut resolved_funcs = Vec::with_capacity(program.functions.len());
-    for f in program.functions.iter() {
-        ctx.add_identifier_mapping(f.name.clone())?;
-        let resolved_f = resolve_function(&mut ctx, f)?;
-        resolved_funcs.push(resolved_f);
+    let mut resolved_funcs = Vec::with_capacity(program.declarations.len());
+    for decl in program.declarations.iter() {
+        let decl_loc = decl.location.clone();
+        match &decl.kind {
+            DeclarationKind::FunctionDeclaration(ref f) => {
+                ctx.add_identifier_mapping(f.name.clone())?;
+                let resolved_f = resolve_function(&mut ctx, f)?;
+                resolved_funcs.push(Declaration {
+                    location: decl_loc,
+                    kind: DeclarationKind::FunctionDeclaration(resolved_f),
+                });       
+            }
+            DeclarationKind::VarDeclaration { .. } => unimplemented!("global variables not implemented")
+        }
     }
-    Ok(ProgramDefinition { functions: resolved_funcs })
+    Ok(Program { declarations: resolved_funcs })
 }
 
 fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> Result<Function, IdentifierResolutionError> {
@@ -521,7 +530,7 @@ mod test {
     use indoc::indoc;
 
     use crate::lexer::Lexer;
-    use crate::parser::{Parser, ProgramDefinition};
+    use crate::parser::{Parser, Program};
     use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
     use crate::semantic_analysis::desugaring_verifier::desugared_compound_assignment;
     use crate::semantic_analysis::unique_identifier_verifier::program_identifiers_are_unique;
@@ -976,7 +985,7 @@ mod test {
         assert!(desugared_compound_assignment(&resolved_program));
     }
 
-    fn run_program_resolution(program: &str) -> Result<ProgramDefinition, IdentifierResolutionError> {
+    fn run_program_resolution(program: &str) -> Result<Program, IdentifierResolutionError> {
         let lexer = Lexer::new(program);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();
