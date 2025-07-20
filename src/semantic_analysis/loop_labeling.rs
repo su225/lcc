@@ -71,6 +71,7 @@ fn loop_label_function(ctx: &mut LoopLabelingContext, function: Function) -> Res
     Ok(Function {
         location: function.location,
         name: function.name,
+        params: vec![],
         body: loop_labeled_body,
     })
 }

@@ -201,6 +201,7 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> 
                     Function {
                         location: f.location.clone(),
                         name: f.name.clone(),
+                        params: vec![],
                         body: Some(resolved_block),
                     }
                 })

@@ -18,6 +18,7 @@ declarations:
           location:
             line: 1
             column: 5
+        params: []
         body:
           start_loc:
             line: 1

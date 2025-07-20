@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
+use crate::lexer::TokenTag::{CloseParentheses, Comma};
 use crate::parser::ParserError::*;
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Clone)]
@@ -312,9 +313,18 @@ pub struct Block {
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub struct FunctionParameter {
+    pub loc: Location,
+    pub param_type: Box<TypeExpression>,
+    pub param_name: String,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Function {
     pub location: Location,
     pub name: Symbol,
+    pub params: Vec<FunctionParameter>,
     pub body: Option<Block>,
 }
 
@@ -358,6 +368,9 @@ pub enum ParserError {
         keyword_identifier: KeywordIdentifier,
         actual_token: TokenTag,
     },
+
+    #[error("{location:?}: void must be the only parameter and unnamed")]
+    InvalidFunctionDeclarationVoidMustBeOnlyParam { location: Location }
 }
 
 pub struct Parser<'a> {
@@ -394,8 +407,8 @@ impl<'a> Parser<'a> {
         Ok(Program { declarations: decls })
     }
 
-    fn parse_function(&mut self) -> Result<Option<Block>, ParserError> {
-        self.parse_function_parameters()?;
+    fn parse_function(&mut self) -> Result<(Vec<FunctionParameter>, Option<Block>), ParserError> {
+        let params = self.parse_function_parameters()?;
         self.expect_close_parentheses()?;
 
         let next_tok = self.token_provider.peek();
@@ -404,10 +417,10 @@ impl<'a> Parser<'a> {
             Some(Err(e)) => Err(TokenizationError(e.clone())),
             Some(Ok(tok)) => {
                 match &tok.token_type {
-                    TokenType::Semicolon => Ok(None),
+                    TokenType::Semicolon => Ok((params, None)),
                     TokenType::OpenBrace => {
                         let func_body = self.parse_block()?;
-                        Ok(Some(func_body))
+                        Ok((params, Some(func_body)))
                     }
                     _ => Err(UnexpectedEnd(vec![TokenTag::OpenBrace, TokenTag::Semicolon])),
                 }
@@ -415,9 +428,57 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function_parameters(&mut self) -> Result<(), ParserError> {
-        self.expect_keyword(KeywordIdentifier::TypeVoid)?;
-        Ok(())
+    fn parse_function_parameters(&mut self) -> Result<Vec<FunctionParameter>, ParserError> {
+        let mut params = vec![];
+        loop {
+            let cur = self.token_provider.next();
+            if cur.is_none() {
+                return Err(UnexpectedEnd(vec![Comma, CloseParentheses]));
+            }
+            let tok = cur.unwrap();
+            if let Err(e) = tok {
+                return Err(TokenizationError(e.clone()));
+            }
+            let token = tok.unwrap();
+            let tok_loc = token.location;
+            if let TokenType::Keyword(KeywordIdentifier::TypeVoid) = token.token_type {
+                if params.is_empty() {
+                    return Ok(vec![]);
+                }
+                return Err(InvalidFunctionDeclarationVoidMustBeOnlyParam {location: tok_loc});
+            }
+            let param_type = self.parse_type_expression()?;
+            let param_ident = self.parse_identifier()?;
+            params.push(FunctionParameter {
+                loc: param_type.location.clone(),
+                param_type: Box::new(param_type),
+                param_name: param_ident.name,
+            });
+
+            // decide whether to stop or to continue parsing parameters
+            let next_tok = self.token_provider.peek();
+            match next_tok {
+                Some(Ok(tok)) => {
+                    let tok_loc = tok.location.clone();
+                    match &tok.token_type {
+                        TokenType::CloseParentheses => { break; },
+                        TokenType::Comma => {
+                            self.token_provider.next();
+                            continue;
+                        }
+                        _ => {
+                            return Err(UnexpectedToken {
+                                location: tok_loc,
+                                expected_token_tags: vec![Comma, CloseParentheses],
+                            });
+                        },
+                    }
+                }
+                Some(Err(e)) => return Err(TokenizationError(e.clone())),
+                None => return Err(UnexpectedEnd(vec![Comma, CloseParentheses])),
+            }
+        }
+        Ok(params)
     }
 
     fn parse_block(&mut self) -> Result<Block, ParserError> {
@@ -494,12 +555,13 @@ impl<'a> Parser<'a> {
                         })
                     }
                     TokenType::OpenParentheses => {
-                        let func_body = self.parse_function()?;
+                        let (func_params, func_body) = self.parse_function()?;
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
                             kind: DeclarationKind::FunctionDeclaration(Function {
                                 location: ty_decl.location.clone(),
                                 name: ident,
+                                params: func_params,
                                 body: func_body,
                             })
                         })
@@ -1132,6 +1194,7 @@ mod test {
                             name: "main".to_string(),
                             location: (1,8).into(),
                         },
+                        params: vec![],
                         body: Some(Block {
                             start_loc: (1,32).into(),
                             end_loc: (1,64).into(),
@@ -1175,6 +1238,7 @@ mod test {
                     kind: FunctionDeclaration(Function {
                         location: (1, 1).into(),
                         name: Symbol { name: "main".to_string(), location: (1, 5).into() },
+                        params: vec![],
                         body: Some(Block {
                             start_loc: (1, 16).into(),
                             end_loc: (3, 1).into(),
@@ -1196,6 +1260,7 @@ mod test {
                     kind: FunctionDeclaration(Function {
                         location: (5,1).into(),
                         name: Symbol { name: "foo".to_string(), location: (5,5).into() },
+                        params: vec![],
                         body: Some(Block {
                             start_loc: (5,15).into(),
                             end_loc: (7,1).into(),
@@ -1233,6 +1298,7 @@ mod test {
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
                         name: Symbol { name: "main".to_string(), location: (1,5).into() },
+                        params: vec![],
                         body: Some(Block {
                             start_loc: (1,16).into(),
                             end_loc: (3,1).into(),
