@@ -1181,7 +1181,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, FunctionParameter, Parser, ParserError, PrimitiveKind, Program, Statement, StatementKind, Symbol, TypeExpression, TypeExpressionKind, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, FunctionParameter, Parser, ParserError, Program, Statement, StatementKind, Symbol, TypeExpression, UnaryOperator};
     use crate::parser::DeclarationKind::FunctionDeclaration;
     use crate::parser::ExpressionKind::*;
     use crate::parser::PrimitiveKind::Integer;
