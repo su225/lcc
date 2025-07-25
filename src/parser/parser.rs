@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::common::{Location, Radix};
 use crate::lexer::{KeywordIdentifier, Lexer, LexerError, Token, TokenTag, TokenType};
-use crate::lexer::TokenTag::{CloseParentheses, Comma};
+use crate::lexer::TokenTag::{CloseParentheses, Comma, Keyword};
 use crate::parser::ParserError::*;
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Clone)]
@@ -417,7 +417,10 @@ impl<'a> Parser<'a> {
             Some(Err(e)) => Err(TokenizationError(e.clone())),
             Some(Ok(tok)) => {
                 match &tok.token_type {
-                    TokenType::Semicolon => Ok((params, None)),
+                    TokenType::Semicolon => {
+                        self.token_provider.next();
+                        Ok((params, None))
+                    },
                     TokenType::OpenBrace => {
                         let func_body = self.parse_block()?;
                         Ok((params, Some(func_body)))
@@ -431,22 +434,25 @@ impl<'a> Parser<'a> {
     fn parse_function_parameters(&mut self) -> Result<Vec<FunctionParameter>, ParserError> {
         let mut params = vec![];
         loop {
-            let cur = self.token_provider.next();
-            if cur.is_none() {
-                return Err(UnexpectedEnd(vec![Comma, CloseParentheses]));
-            }
-            let tok = cur.unwrap();
-            if let Err(e) = tok {
-                return Err(TokenizationError(e.clone()));
-            }
-            let token = tok.unwrap();
-            let tok_loc = token.location;
-            if let TokenType::Keyword(KeywordIdentifier::TypeVoid) = token.token_type {
-                if params.is_empty() {
-                    return Ok(vec![]);
+            let cur = self.token_provider.peek();
+            match cur {
+                None => return Err(UnexpectedEnd(vec![CloseParentheses, Keyword])),
+                Some(Err(e)) => return Err(TokenizationError(e.clone())),
+                Some(Ok(tok)) => {
+                    let tok_loc = tok.location.clone();
+                    match &tok.token_type {
+                        TokenType::Keyword(KeywordIdentifier::TypeVoid) => {
+                            if params.is_empty() {
+                                self.token_provider.next();
+                                return Ok(vec![]);
+                            }
+                            return Err(InvalidFunctionDeclarationVoidMustBeOnlyParam { location: tok_loc });
+                        }
+                        _ => {}
+                    }
                 }
-                return Err(InvalidFunctionDeclarationVoidMustBeOnlyParam {location: tok_loc});
             }
+
             let param_type = self.parse_type_expression()?;
             let param_ident = self.parse_identifier()?;
             params.push(FunctionParameter {
@@ -461,7 +467,9 @@ impl<'a> Parser<'a> {
                 Some(Ok(tok)) => {
                     let tok_loc = tok.location.clone();
                     match &tok.token_type {
-                        TokenType::CloseParentheses => { break; },
+                        TokenType::CloseParentheses => {
+                            break;
+                        },
                         TokenType::Comma => {
                             self.token_provider.next();
                             continue;
@@ -1173,10 +1181,12 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, Parser, ParserError, Program, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, FunctionParameter, Parser, ParserError, PrimitiveKind, Program, Statement, StatementKind, Symbol, TypeExpression, TypeExpressionKind, UnaryOperator};
     use crate::parser::DeclarationKind::FunctionDeclaration;
     use crate::parser::ExpressionKind::*;
+    use crate::parser::PrimitiveKind::Integer;
     use crate::parser::StatementKind::*;
+    use crate::parser::TypeExpressionKind::Primitive;
 
     #[test]
     fn test_parse_program_with_tabs() {
@@ -1188,7 +1198,7 @@ mod test {
             declarations: vec![
                 Declaration {
                     location: (1,1).into(),
-                    kind: DeclarationKind::FunctionDeclaration(Function {
+                    kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
                         name: Symbol {
                             name: "main".to_string(),
@@ -1279,6 +1289,126 @@ mod test {
                 },
             ],
         }), parsed)
+    }
+    
+    #[test]
+    fn test_parse_function_with_multiple_args() {
+        let src = indoc! {r#"
+        int add(int a, int b) {
+            return a + b;
+        }
+        "#};
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse();
+        let expected = Ok(Program {
+            declarations: vec![
+                Declaration {
+                    location: (1,1).into(),
+                    kind: FunctionDeclaration(Function {
+                        location: (1,1).into(),
+                        name: Symbol {
+                            name: "add".to_string(),
+                            location: (1,5).into(),
+                        },
+                        params: vec![
+                            FunctionParameter {
+                                loc: (1,9).into(),
+                                param_type: Box::new(TypeExpression {
+                                    location: (1,9).into(),
+                                    kind: Primitive(Integer),
+                                }),
+                                param_name: "a".to_string(),
+                            },
+                            FunctionParameter {
+                                loc: (1,16).into(),
+                                param_type: Box::new(TypeExpression {
+                                    location: (1,16).into(),
+                                    kind: Primitive(Integer),
+                                }),
+                                param_name: "b".to_string(),
+                            }
+                        ],
+                        body: Some(Block {
+                            start_loc: (1,23).into(),
+                            end_loc: (3,1).into(),
+                            items: vec![
+                                BlockItem::Statement(Statement {
+                                    location: (2,5).into(),
+                                    labels: vec![],
+                                    kind: Return(Expression {
+                                        location: (2,12).into(),
+                                        kind: Binary(
+                                            BinaryOperator::Add,
+                                            Box::new(Expression {
+                                                location: (2,12).into(),
+                                                kind: Variable("a".to_string()),
+                                            }),
+                                            Box::new(Expression {
+                                                location: (2,16).into(),
+                                                kind: Variable("b".to_string()),
+                                            }),
+                                        ),
+                                    }),
+                                }),
+                            ],
+                        }),
+                    }),
+                },
+            ],
+        });
+        assert_eq!(expected, actual, "expected:\n{:#?}\nactual:\n{:#?}\n", expected, actual);
+    }
+
+    #[test]
+    fn test_parse_function_declarations() {
+        let src = indoc! {r#"
+        int add(int a, int b);
+        int do_foo(void);
+        "#};
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse();
+        let expected = Ok(Program {
+            declarations: vec![
+                Declaration {
+                    location: (1,1).into(),
+                    kind: FunctionDeclaration(Function {
+                        location: (1,1).into(),
+                        name: Symbol { location: (1,5).into(), name: "add".to_string() },
+                        params: vec![
+                            FunctionParameter {
+                                loc: (1,9).into(),
+                                param_name: "a".to_string(),
+                                param_type: Box::new(TypeExpression {
+                                    location: (1,9).into(),
+                                    kind: Primitive(Integer),
+                                }),
+                            },
+                            FunctionParameter {
+                                loc: (1,16).into(),
+                                param_name: "b".to_string(),
+                                param_type: Box::new(TypeExpression {
+                                    location: (1,16).into(),
+                                    kind: Primitive(Integer),
+                                }),
+                            }
+                        ],
+                        body: None,
+                    }),
+                },
+                Declaration {
+                    location: (2,1).into(),
+                    kind: FunctionDeclaration(Function {
+                        location: (2,1).into(),
+                        name: Symbol { location: (2,5).into(), name: "do_foo".to_string() },
+                        params: vec![],
+                        body: None,
+                    }),
+                }
+            ],
+        });
+        assert_eq!(expected, actual, "expected:\n{:#?}\nactual:\n{:#?}\n", expected, actual);
     }
 
     #[test]
