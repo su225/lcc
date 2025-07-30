@@ -223,7 +223,7 @@ pub struct TypeExpression {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForInit {
-    InitDecl(Box<Declaration>),
+    InitDecl(Box<VariableDeclaration>),
     InitExpr(Box<Expression>),
     Null,
 }
@@ -374,7 +374,10 @@ pub enum ParserError {
     },
 
     #[error("{location:?}: void must be the only parameter and unnamed")]
-    InvalidFunctionDeclarationVoidMustBeOnlyParam { location: Location }
+    InvalidFunctionDeclarationVoidMustBeOnlyParam { location: Location },
+
+    #[error("{location:?}: function declaration is not allowed in for-loop initialization")]
+    ForLoopInitDoesNotAllowFunctionDeclaration { location: Location },
 }
 
 pub struct Parser<'a> {
@@ -851,9 +854,17 @@ impl<'a> Parser<'a> {
                 Ok(ForInit::Null)
             },
             Ok(tok) => {
+                let tok_loc = tok.location.clone();
                 if is_declaration(tok) {
                     let decl = self.parse_declaration()?;
-                    Ok(ForInit::InitDecl(Box::new(decl)))
+                    match decl.kind {
+                        DeclarationKind::VarDeclaration(v) => {
+                            Ok(ForInit::InitDecl(Box::new(v)))
+                        }
+                        DeclarationKind::FunctionDeclaration(_) => {
+                            Err(ForLoopInitDoesNotAllowFunctionDeclaration { location: tok_loc })
+                        }
+                    }
                 } else {
                     let expr = self.parse_expression()?;
                     self.expect_semicolon()?;
@@ -1993,17 +2004,14 @@ mod test {
             location: (1, 1).into(),
             labels: vec![],
             kind: For {
-                init: ForInit::InitDecl(Box::new(Declaration {
-                    location: (1, 6).into(),
-                    kind: DeclarationKind::VarDeclaration(VariableDeclaration {
-                        identifier: Symbol {
-                            name: "i".to_string(),
-                            location: (1, 10).into(),
-                        },
-                        init_expression: Some(Expression {
-                            location: (1, 14).into(),
-                            kind: IntConstant("0".to_string(), Decimal),
-                        }),
+                init: ForInit::InitDecl(Box::new(VariableDeclaration {
+                    identifier: Symbol {
+                        name: "i".to_string(),
+                        location: (1, 10).into(),
+                    },
+                    init_expression: Some(Expression {
+                        location: (1, 14).into(),
+                        kind: IntConstant("0".to_string(), Decimal),
                     }),
                 })),
                 condition: Some(Box::new(Expression {

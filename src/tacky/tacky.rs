@@ -320,13 +320,20 @@ fn emit_tacky_for_block_item(ctx: &mut TackyContext, blk_item: &BlockItem) -> Re
 
 fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Result<Vec<TackyInstruction>, TackyError> {
     match &decl.kind {
-        DeclarationKind::VarDeclaration(VariableDeclaration { identifier, init_expression: Some(expr) }) => {
+        DeclarationKind::VarDeclaration(v) => emit_tacky_for_variable_declaration(ctx, v),
+        DeclarationKind::FunctionDeclaration(_) => todo!()
+    }
+}
+
+fn emit_tacky_for_variable_declaration(ctx: &mut TackyContext, var_dec: &VariableDeclaration) -> Result<Vec<TackyInstruction>, TackyError> {
+    let identifier = &var_dec.identifier;
+    match &var_dec.init_expression {
+        None => Ok(vec![]),
+        Some(expr) => {
             let (tacky_val, mut expr_tacky) = emit_tacky_for_expression(ctx, expr)?;
             expr_tacky.push(Copy { src: tacky_val, dst: TackySymbol(identifier.name.clone()) });
             Ok(expr_tacky)
         },
-        DeclarationKind::VarDeclaration(VariableDeclaration { init_expression: None, .. }) => Ok(vec![]),
-        DeclarationKind::FunctionDeclaration(_) => todo!()
     }
 }
 
@@ -463,7 +470,7 @@ fn emit_tacky_for_statement(ctx: &mut TackyContext, s: &Statement) -> Result<Vec
 
 fn emit_tacky_for_forloop_init(ctx: &mut TackyContext, for_init: &ForInit) -> Result<Vec<TackyInstruction>, TackyError> {
     match &for_init {
-        ForInit::InitDecl(decl) => emit_tacky_for_declaration(ctx, &*decl),
+        ForInit::InitDecl(decl) => emit_tacky_for_variable_declaration(ctx, &*decl),
         ForInit::InitExpr(expr) => {
             let (_, init_expr_instrs) = emit_tacky_for_expression(ctx, &*expr)?;
             Ok(init_expr_instrs)
@@ -1011,14 +1018,11 @@ mod test {
             location: (0,0).into(),
             labels: vec![],
             kind: For {
-                init: ForInit::InitDecl(Box::new(Declaration {
-                    location: (0,0).into(),
-                    kind: DeclarationKind::VarDeclaration(VariableDeclaration {
-                        identifier: Symbol { name: "i".to_string(), location: (0,0).into() },
-                        init_expression: Some(Expression {
-                            location: (0,0).into(),
-                            kind: IntConstant("0".to_string(), Decimal),
-                        }),
+                init: ForInit::InitDecl(Box::new(VariableDeclaration {
+                    identifier: Symbol { name: "i".to_string(), location: (0,0).into() },
+                    init_expression: Some(Expression {
+                        location: (0,0).into(),
+                        kind: IntConstant("0".to_string(), Decimal),
                     }),
                 })),
                 condition: None,

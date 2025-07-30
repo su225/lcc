@@ -378,7 +378,7 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
             ctx.with_scope(|sub_ctx| {
                 let resolved_init = match &init {
                     ForInit::InitDecl(decl) => {
-                        let resolved_declaration = resolve_declaration(sub_ctx, &*decl)?;
+                        let resolved_declaration = resolve_variable_declaration(sub_ctx, loc.clone(), &*decl)?;
                         ForInit::InitDecl(Box::new(resolved_declaration))
                     }
                     ForInit::InitExpr(expr) => {
@@ -421,29 +421,32 @@ fn resolve_statement(ctx: &mut IdentifierResolutionContext, stmt: &Statement) ->
 fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration) -> Result<Declaration, IdentifierResolutionError> {
     let decl_loc = decl.location.clone();
     match &decl.kind {
-        DeclarationKind::VarDeclaration(VariableDeclaration { identifier, init_expression }) => {
-            let prev_decl = ctx.get_resolved_identifier_in_current_scope(&identifier);
-            if let Ok(prev_mapped) = prev_decl {
-                return Err(IdentifierResolutionError::AlreadyDeclared {
-                    current_loc: decl_loc.clone(),
-                    original_loc: prev_mapped.location.clone(),
-                    name: identifier.name.clone(),
-                });
-            }
-            let mapped = ctx.add_identifier_mapping(identifier.clone())?;
-            Ok(Declaration {
-                location: decl_loc.clone(),
-                kind: DeclarationKind::VarDeclaration(VariableDeclaration {
-                    identifier: mapped,
-                    init_expression: match init_expression {
-                        None => None,
-                        Some(expr) => Some(resolve_expression(ctx, expr)?),
-                    },
-                }),
-            })
+        DeclarationKind::VarDeclaration(var_decl) => {
+            let resolved = resolve_variable_declaration(ctx, decl_loc.clone(), var_decl)?;
+            Ok(Declaration { location: decl_loc, kind: DeclarationKind::VarDeclaration(resolved) })
         }
         DeclarationKind::FunctionDeclaration(_) => todo!(),
     }
+}
+
+fn resolve_variable_declaration(ctx: &mut IdentifierResolutionContext, loc: Location, var_decl: &VariableDeclaration) -> Result<VariableDeclaration, IdentifierResolutionError> {
+    let identifier = &var_decl.identifier;
+    let prev_decl = ctx.get_resolved_identifier_in_current_scope(identifier);
+    if let Ok(prev_mapped) = prev_decl {
+        return Err(IdentifierResolutionError::AlreadyDeclared {
+            current_loc: loc.clone(),
+            original_loc: prev_mapped.location.clone(),
+            name: identifier.name.clone(),
+        });
+    }
+    let mapped = ctx.add_identifier_mapping(identifier.clone())?;
+    Ok(VariableDeclaration {
+        identifier: mapped,
+        init_expression: match &var_decl.init_expression {
+            None => None,
+            Some(expr) => Some(resolve_expression(ctx, expr)?),
+        },
+    })
 }
 
 fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expression) -> Result<Expression, IdentifierResolutionError> {
