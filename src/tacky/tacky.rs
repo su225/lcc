@@ -4,7 +4,7 @@ use std::num::ParseIntError;
 use derive_more::Display;
 use thiserror::Error;
 
-use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, Symbol, UnaryOperator};
+use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, Symbol, UnaryOperator, VariableDeclaration};
 use crate::tacky::TackyInstruction::*;
 use crate::tacky::TackyValue::{Int32, Variable};
 
@@ -320,12 +320,12 @@ fn emit_tacky_for_block_item(ctx: &mut TackyContext, blk_item: &BlockItem) -> Re
 
 fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Result<Vec<TackyInstruction>, TackyError> {
     match &decl.kind {
-        DeclarationKind::VarDeclaration { identifier, init_expression: Some(expr) } => {
+        DeclarationKind::VarDeclaration(VariableDeclaration { identifier, init_expression: Some(expr) }) => {
             let (tacky_val, mut expr_tacky) = emit_tacky_for_expression(ctx, expr)?;
             expr_tacky.push(Copy { src: tacky_val, dst: TackySymbol(identifier.name.clone()) });
             Ok(expr_tacky)
         },
-        DeclarationKind::VarDeclaration { init_expression: None, .. } => Ok(vec![]),
+        DeclarationKind::VarDeclaration(VariableDeclaration { init_expression: None, .. }) => Ok(vec![]),
         DeclarationKind::FunctionDeclaration(_) => todo!()
     }
 }
@@ -687,7 +687,7 @@ mod test {
 
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Parser, Statement, StatementKind, Symbol, UnaryOperator};
+    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Parser, Statement, StatementKind, Symbol, UnaryOperator, VariableDeclaration};
     use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
     use crate::parser::StatementKind::For;
     use crate::semantic_analysis::identifier_resolution::resolve_program;
@@ -987,7 +987,7 @@ mod test {
     fn test_emit_tacky_for_declaration_and_assignment() {
         let decl = Declaration {
             location: (0,0).into(),
-            kind: DeclarationKind::VarDeclaration {
+            kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                 identifier: Symbol {
                     location: (0, 0).into(),
                     name: "a".to_string(),
@@ -996,7 +996,7 @@ mod test {
                     location: (0,0).into(),
                     kind: IntConstant("10".to_string(), Decimal)
                 }),
-            },
+            }),
         };
         let mut ctx = TackyContext::new();
         let tinstrs = emit_tacky_for_declaration(&mut ctx, &decl).unwrap();
@@ -1013,13 +1013,13 @@ mod test {
             kind: For {
                 init: ForInit::InitDecl(Box::new(Declaration {
                     location: (0,0).into(),
-                    kind: DeclarationKind::VarDeclaration {
+                    kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                         identifier: Symbol { name: "i".to_string(), location: (0,0).into() },
                         init_expression: Some(Expression {
                             location: (0,0).into(),
                             kind: IntConstant("0".to_string(), Decimal),
                         }),
-                    },
+                    }),
                 })),
                 condition: None,
                 post: Some(Box::new(Expression {

@@ -273,11 +273,15 @@ pub struct Statement {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeclarationKind {
-    VarDeclaration {
-        identifier: Symbol,
-        init_expression: Option<Expression>,
-    },
+    VarDeclaration (VariableDeclaration),
     FunctionDeclaration (Function),
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct VariableDeclaration {
+    pub(crate) identifier: Symbol,
+    pub(crate) init_expression: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -291,7 +295,7 @@ impl Declaration {
     pub fn identifier(&self) -> Symbol {
         match &self.kind {
             DeclarationKind::FunctionDeclaration(ref f) => f.name.clone(),
-            DeclarationKind::VarDeclaration { ref identifier, ..} => identifier.clone(),
+            DeclarationKind::VarDeclaration(ref v) => v.identifier.clone(),
         }
     }
 }
@@ -547,19 +551,19 @@ impl<'a> Parser<'a> {
                         self.expect_semicolon()?;
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
-                            kind: DeclarationKind::VarDeclaration {
+                            kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                 identifier: ident,
                                 init_expression: Some(init_expr),
-                            },
+                            }),
                         })
                     }
                     TokenType::Semicolon => {
                         Ok(Declaration {
                             location: ty_decl.location.clone(),
-                            kind: DeclarationKind::VarDeclaration {
+                            kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                 identifier: ident,
                                 init_expression: None,
-                            },
+                            }),
                         })
                     }
                     TokenType::OpenParentheses => {
@@ -1027,12 +1031,37 @@ impl<'a> Parser<'a> {
                         Ok(expr)
                     }
                     TokenType::Identifier(identifier) => {
-                        let res = Ok(Expression {
-                            location: tok_location,
-                            kind: ExpressionKind::Variable(identifier.to_string()),
-                        });
+                        let ident = identifier.to_string();
                         self.token_provider.next();
-                        res
+
+                        let next_tok = self.token_provider.peek();
+                        match next_tok {
+                            None => Ok(Expression {
+                                location: tok_location,
+                                kind: ExpressionKind::Variable(ident),
+                            }),
+                            Some(Err(e)) => Err(TokenizationError(e.clone())),
+                            Some(Ok(tok)) => {
+                                match tok.token_type {
+                                    TokenType::OpenParentheses => {
+                                        self.token_provider.next();
+                                        let args = self.parse_function_call_args()?;
+                                        self.expect_close_parentheses()?;
+                                        Ok(Expression {
+                                            location: tok_location,
+                                            kind: ExpressionKind::FunctionCall {
+                                                func_name: ident,
+                                                actual_params: args,
+                                            }
+                                        })
+                                    }
+                                    _ => Ok(Expression {
+                                        location: tok_location,
+                                        kind: ExpressionKind::Variable(ident),
+                                    })
+                                }
+                            }
+                        }
                     }
                     _ => Err(UnexpectedToken {
                         location: location.clone(),
@@ -1073,6 +1102,53 @@ impl<'a> Parser<'a> {
             },
             Some(Err(e)) => Err(TokenizationError(e.clone())),
         }
+    }
+
+    fn parse_function_call_args(&mut self) -> Result<Vec<Box<Expression>>, ParserError> {
+        let mut args = vec![];
+        loop {
+            let tk = self.token_provider.peek();
+            if tk.is_none() {
+                return Err(UnexpectedEnd(vec![Comma, CloseParentheses]));
+            }
+            let tok_res = tk.unwrap();
+            match tok_res {
+                Ok(Token { token_type, .. }) => {
+                    match token_type {
+                        TokenType::CloseParentheses => break,
+                        _ => {
+                            let cur_arg = self.parse_arg_expression()?;
+                            args.push(cur_arg);
+                        }
+                    }
+                }
+                Err(e) => return Err(TokenizationError(e.clone())),
+            }
+        }
+        Ok(args)
+    }
+
+    fn parse_arg_expression(&mut self) -> Result<Box<Expression>, ParserError> {
+        let arg = self.parse_expression()?;
+        let next_tok = self.token_provider.peek();
+        match next_tok {
+            None => return Err(UnexpectedEnd(vec![Comma, CloseParentheses])),
+            Some(Err(e)) => return Err(TokenizationError(e.clone())),
+            Some(Ok(Token { token_type, location })) => {
+                let tok_loc = location.clone();
+                match token_type {
+                    TokenType::CloseParentheses => {},
+                    TokenType::Comma => {
+                        self.token_provider.next();
+                    }
+                    _ => return Err(UnexpectedToken {
+                        location: tok_loc,
+                        expected_token_tags: vec![Comma, CloseParentheses],
+                    })
+                }
+            }
+        };
+        Ok(Box::new(arg))
     }
 
     fn parse_unary_operator_token(&mut self) -> Result<UnaryOperator, ParserError> {
@@ -1181,7 +1257,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, FunctionParameter, Parser, ParserError, Program, Statement, StatementKind, Symbol, TypeExpression, UnaryOperator};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ForInit, Function, FunctionParameter, Parser, ParserError, Program, Statement, StatementKind, Symbol, TypeExpression, UnaryOperator, VariableDeclaration};
     use crate::parser::DeclarationKind::FunctionDeclaration;
     use crate::parser::ExpressionKind::*;
     use crate::parser::PrimitiveKind::Integer;
@@ -1919,7 +1995,7 @@ mod test {
             kind: For {
                 init: ForInit::InitDecl(Box::new(Declaration {
                     location: (1, 6).into(),
-                    kind: DeclarationKind::VarDeclaration {
+                    kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                         identifier: Symbol {
                             name: "i".to_string(),
                             location: (1, 10).into(),
@@ -1928,7 +2004,7 @@ mod test {
                             location: (1, 14).into(),
                             kind: IntConstant("0".to_string(), Decimal),
                         }),
-                    },
+                    }),
                 })),
                 condition: Some(Box::new(Expression {
                     location: (1, 17).into(),
@@ -3334,13 +3410,13 @@ mod test {
         let src = "int a;";
         let expected = Ok(Declaration {
             location: (1, 1).into(),
-            kind: DeclarationKind::VarDeclaration {
+            kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
                 },
                 init_expression: None,
-            },
+            }),
         });
         run_parse_declaration_test_case(DeclarationTestCase { src, expected });
     }
@@ -3350,7 +3426,7 @@ mod test {
         let src = "int a = 10;";
         let expected = Ok(Declaration {
             location: (1, 1).into(),
-            kind: DeclarationKind::VarDeclaration {
+            kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
@@ -3359,7 +3435,7 @@ mod test {
                     location: (1, 9).into(),
                     kind: IntConstant("10".to_string(), Decimal),
                 }),
-            },
+            }),
         });
         run_parse_declaration_test_case(DeclarationTestCase { src, expected });
     }
@@ -3426,7 +3502,7 @@ mod test {
             items: vec![
                 BlockItem::Declaration(Declaration {
                     location: (2, 5).into(),
-                    kind: DeclarationKind::VarDeclaration {
+                    kind: DeclarationKind::VarDeclaration(VariableDeclaration{
                         identifier: Symbol {
                             location: (2, 9).into(),
                             name: "a".to_string(),
@@ -3435,17 +3511,17 @@ mod test {
                             location: (2, 13).into(),
                             kind: IntConstant("10".to_string(), Decimal),
                         }),
-                    },
+                    }),
                 }),
                 BlockItem::Declaration(Declaration {
                     location: (3, 5).into(),
-                    kind: DeclarationKind::VarDeclaration {
+                    kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                         identifier: Symbol {
                             location: (3, 9).into(),
                             name: "b".to_string(),
                         },
                         init_expression: None,
-                    },
+                    }),
                 }),
                 BlockItem::Statement(Statement {
                     location: (4, 5).into(),
@@ -3489,7 +3565,7 @@ mod test {
             items: vec![
                 BlockItem::Declaration(Declaration {
                     location: (2, 3).into(),
-                    kind: DeclarationKind::VarDeclaration {
+                    kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                         identifier: Symbol {
                             name: "a".to_string(),
                             location: (2, 7).into(),
@@ -3498,7 +3574,7 @@ mod test {
                             location: (2, 11).into(),
                             kind: IntConstant("10".to_string(), Decimal),
                         }),
-                    },
+                    }),
                 }),
                 BlockItem::Statement(Statement {
                     location: (3, 3).into(),
@@ -3509,23 +3585,23 @@ mod test {
                         items: vec![
                             BlockItem::Declaration(Declaration {
                                 location: (4, 5).into(),
-                                kind: DeclarationKind::VarDeclaration {
+                                kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                     identifier: Symbol { location: (4, 9).into(), name: "b".to_string() },
                                     init_expression: Some(Expression {
                                         location: (4, 13).into(),
                                         kind: IntConstant("20".to_string(), Decimal),
                                     }),
-                                },
+                                }),
                             }),
                             BlockItem::Declaration(Declaration {
                                 location: (5, 5).into(),
-                                kind: DeclarationKind::VarDeclaration {
+                                kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                     identifier: Symbol { location: (5, 9).into(), name: "c".to_string() },
                                     init_expression: Some(Expression {
                                         location: (5, 13).into(),
                                         kind: IntConstant("30".to_string(), Decimal),
                                     }),
-                                },
+                                }),
                             }),
                             BlockItem::Statement(Statement {
                                 location: (6, 5).into(),

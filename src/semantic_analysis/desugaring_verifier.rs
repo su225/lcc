@@ -1,4 +1,4 @@
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, VariableDeclaration};
 
 pub fn desugared_compound_assignment(prog: &Program) -> bool {
     prog.declarations.iter().all(|f| desugared_compound_assignment_in_declaration(f))
@@ -64,9 +64,9 @@ fn desugared_compound_assignment_in_for_init(for_init: &ForInit) -> bool {
 
 fn desugared_compound_assignment_in_declaration(decl: &Declaration) -> bool {
     match &decl.kind {
-        DeclarationKind::VarDeclaration { init_expression: Some(init_expr), .. } =>
+        DeclarationKind::VarDeclaration(VariableDeclaration { init_expression: Some(init_expr), .. }) =>
             desugared_compound_assignment_in_expression(init_expr),
-        DeclarationKind::VarDeclaration { .. } => true,
+        DeclarationKind::VarDeclaration(_) => true,
         DeclarationKind::FunctionDeclaration(ref f) => desugared_compound_assignment_in_functions(f),
     }
 }
