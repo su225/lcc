@@ -1057,7 +1057,6 @@ impl<'a> Parser<'a> {
                                     TokenType::OpenParentheses => {
                                         self.token_provider.next();
                                         let args = self.parse_function_call_args()?;
-                                        self.expect_close_parentheses()?;
                                         Ok(Expression {
                                             location: tok_location,
                                             kind: ExpressionKind::FunctionCall {
@@ -1116,50 +1115,51 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function_call_args(&mut self) -> Result<Vec<Box<Expression>>, ParserError> {
+        let tk = self.token_provider.peek();
+        match tk {
+            None => return Err(UnexpectedEnd(vec![Comma, CloseParentheses])),
+            Some(Err(e)) => return Err(TokenizationError(e.clone())),
+            Some(Ok(Token { token_type: TokenType::CloseParentheses, .. })) => {
+                self.token_provider.next();
+                return Ok(vec![]);
+            }
+            _ => {},
+        };
         let mut args = vec![];
         loop {
-            let tk = self.token_provider.peek();
-            if tk.is_none() {
-                return Err(UnexpectedEnd(vec![Comma, CloseParentheses]));
-            }
-            let tok_res = tk.unwrap();
-            match tok_res {
-                Ok(Token { token_type, .. }) => {
-                    match token_type {
-                        TokenType::CloseParentheses => break,
-                        _ => {
-                            let cur_arg = self.parse_arg_expression()?;
-                            args.push(cur_arg);
-                        }
-                    }
-                }
-                Err(e) => return Err(TokenizationError(e.clone())),
+            let (cur_arg, should_continue) = self.parse_arg_expression()?;
+            args.push(cur_arg);
+            if !should_continue {
+                break;
             }
         }
         Ok(args)
     }
 
-    fn parse_arg_expression(&mut self) -> Result<Box<Expression>, ParserError> {
+    fn parse_arg_expression(&mut self) -> Result<(Box<Expression>, bool), ParserError> {
         let arg = self.parse_expression()?;
         let next_tok = self.token_provider.peek();
-        match next_tok {
-            None => return Err(UnexpectedEnd(vec![Comma, CloseParentheses])),
-            Some(Err(e)) => return Err(TokenizationError(e.clone())),
+        return match next_tok {
+            None => Err(UnexpectedEnd(vec![Comma, CloseParentheses])),
+            Some(Err(e)) => Err(TokenizationError(e.clone())),
             Some(Ok(Token { token_type, location })) => {
                 let tok_loc = location.clone();
                 match token_type {
-                    TokenType::CloseParentheses => {},
+                    TokenType::CloseParentheses => {
+                        self.token_provider.next();
+                        Ok((Box::new(arg), false))
+                    },
                     TokenType::Comma => {
                         self.token_provider.next();
+                        Ok((Box::new(arg), true))
                     }
-                    _ => return Err(UnexpectedToken {
+                    _ => Err(UnexpectedToken {
                         location: tok_loc,
                         expected_token_tags: vec![Comma, CloseParentheses],
                     })
                 }
             }
         };
-        Ok(Box::new(arg))
     }
 
     fn parse_unary_operator_token(&mut self) -> Result<UnaryOperator, ParserError> {
@@ -1541,6 +1541,19 @@ mod test {
             ],
         });
         assert_eq!(expected, actual, "expected:\n{:#?}\nactual:\n{:#?}\n", expected, actual);
+    }
+
+    #[test]
+    fn test_parse_should_fail_for_actual_param_list_with_trailing_comma() {
+        let src = indoc! {r#"
+        int main(void) {
+            return foo(1,2,);
+        }
+        "#};
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse();
+        assert!(actual.is_err());
     }
 
     struct StatementTestCase<'a> {
@@ -2383,6 +2396,36 @@ mod test {
         let mut parser = Parser::new(lexer);
         let actual = parser.parse_expression();
         assert_eq!(test_case.expected, actual);
+    }
+    
+    #[test]
+    fn test_parse_expression_function_call() {
+        let src = "foo(1,2,3)";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: FunctionCall {
+                func_name: "foo".to_string(),
+                actual_params: vec![
+                    Box::new(Expression { location: (1,5).into(), kind: IntConstant("1".to_string(), Decimal) }),
+                    Box::new(Expression { location: (1,7).into(), kind: IntConstant("2".to_string(), Decimal) }),
+                    Box::new(Expression { location: (1,9).into(), kind: IntConstant("3".to_string(), Decimal) }),
+                ],
+            },
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
+    }
+
+    #[test]
+    fn test_parse_expression_function_call_without_args() {
+        let src = "foo()";
+        let expected = Ok(Expression {
+            location: (1,1).into(),
+            kind: FunctionCall {
+                func_name: "foo".to_string(),
+                actual_params: vec![],
+            }
+        });
+        run_parse_expression_test_case(ExprTestCase { src, expected })
     }
 
     #[test]
