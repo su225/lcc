@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, ForInit, Function, Program, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, ForInit, Function, Program, Statement, StatementKind, VariableDeclaration};
 
 pub fn program_identifiers_are_unique(prog: &Program) -> bool {
     let mut identifier_names = HashSet::with_capacity(prog.declarations.len());
@@ -57,7 +57,16 @@ fn statement_identifiers_are_unique(identifiers: &mut HashSet<String>, s: &State
         StatementKind::While { loop_body, .. } => statement_identifiers_are_unique(identifiers, loop_body),
         StatementKind::For { init, loop_body, .. } => {
             let is_init_uniq = match &init {
-                ForInit::InitDecl(d) => declaration_identifiers_are_unique(identifiers, &*d),
+                ForInit::InitDecl(d) => {
+                    let decl = Declaration {
+                        location: (0,0).into(),
+                        kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                            identifier: d.identifier.clone(),
+                            init_expression: None, // init expression does not matter in this case
+                        }),
+                    };
+                    declaration_identifiers_are_unique(identifiers, &decl)
+                },
                 ForInit::InitExpr(_) | ForInit::Null => true,
             };
             let is_loop_body_uniq = statement_identifiers_are_unique(identifiers, &*loop_body);
