@@ -23,8 +23,26 @@ pub enum IdentifierResolutionError {
     LabelNotDeclared { label: String }
 }
 
+#[derive(Debug, Clone)]
+enum LinkageType {
+    Internal,
+    External,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedIdentifier {
+    symbol: Symbol,
+    linkage_type: LinkageType,
+}
+
+impl ResolvedIdentifier {
+    pub fn location(&self) -> Location {
+        self.symbol.location.clone()
+    }
+}
+
 struct Scope {
-    identifier_map: HashMap<String, Symbol>,
+    identifier_map: HashMap<String, ResolvedIdentifier>,
 }
 
 impl Scope {
@@ -34,12 +52,12 @@ impl Scope {
         }
     }
 
-    fn add_mapping(&mut self, raw_ident: Symbol, mapped_ident: Symbol) -> Result<(), IdentifierResolutionError> {
+    fn add_mapping(&mut self, raw_ident: Symbol, mapped_ident: ResolvedIdentifier) -> Result<(), IdentifierResolutionError> {
         let existing_mapping = self.identifier_map.get(&raw_ident.name);
         if existing_mapping.is_some() {
             return Err(IdentifierResolutionError::AlreadyDeclared {
                 current_loc: raw_ident.location.clone(),
-                original_loc: existing_mapping.unwrap().location.clone(),
+                original_loc: existing_mapping.unwrap().location(),
                 name: raw_ident.name.clone(),
             })
         }
@@ -47,7 +65,7 @@ impl Scope {
         Ok(())
     }
 
-    fn lookup(&self, raw_ident: &Symbol) -> Result<Symbol, IdentifierResolutionError> {
+    fn lookup(&self, raw_ident: &Symbol) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
         let existing_mapping = self.identifier_map.get(&raw_ident.name);
         match existing_mapping {
             Some(mapped_ident) => Ok(mapped_ident.clone()),
@@ -79,16 +97,19 @@ impl IdentifierResolutionContext {
         }
     }
 
-    fn add_identifier_mapping(&mut self, ident: Symbol) -> Result<Symbol, IdentifierResolutionError> {
+    fn add_identifier_mapping(&mut self, ident: Symbol, linkage: LinkageType) -> Result<Symbol, IdentifierResolutionError> {
         let next = self.next_num_id;
         self.next_num_id += 1;
         let mapped_ident = format!("{}${}", ident.name, next);
-        let mapped_symbol = Symbol {
-            name: mapped_ident,
-            location: ident.location.clone(),
+        let mapped_symbol = match linkage {
+            LinkageType::Internal => Symbol { name: mapped_ident, location: ident.location.clone() },
+            LinkageType::External => ident.clone(),
         };
         let current_scope = self.get_current_scope_mut();
-        current_scope.add_mapping(ident, mapped_symbol.clone())?;
+        current_scope.add_mapping(ident, ResolvedIdentifier {
+            symbol: mapped_symbol.clone(),
+            linkage_type: linkage,
+        })?;
         Ok(mapped_symbol)
     }
 
@@ -117,7 +138,7 @@ impl IdentifierResolutionContext {
         }
     }
 
-    fn get_resolved_identifier(&self, raw_ident: &Symbol) -> Result<Symbol, IdentifierResolutionError> {
+    fn get_resolved_identifier(&self, raw_ident: &Symbol) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
         for scope in self.scopes.iter().rev() {
             let lookup_result = scope.lookup(raw_ident);
             match lookup_result {
@@ -134,7 +155,7 @@ impl IdentifierResolutionContext {
         })
     }
 
-    fn get_resolved_identifier_in_current_scope(&self, raw_ident: &Symbol) -> Result<Symbol, IdentifierResolutionError> {
+    fn get_resolved_identifier_in_current_scope(&self, raw_ident: &Symbol) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
         let current_scope = self.get_current_scope();
         current_scope.lookup(raw_ident)
     }
@@ -174,7 +195,7 @@ pub fn resolve_program(program: Program) -> Result<Program, IdentifierResolution
         let decl_loc = decl.location.clone();
         match &decl.kind {
             DeclarationKind::FunctionDeclaration(ref f) => {
-                ctx.add_identifier_mapping(f.name.clone())?;
+                ctx.add_identifier_mapping(f.name.clone(), LinkageType::External)?;
                 let resolved_f = resolve_function(&mut ctx, f)?;
                 resolved_funcs.push(Declaration {
                     location: decl_loc,
@@ -435,11 +456,11 @@ fn resolve_variable_declaration(ctx: &mut IdentifierResolutionContext, loc: Loca
     if let Ok(prev_mapped) = prev_decl {
         return Err(IdentifierResolutionError::AlreadyDeclared {
             current_loc: loc.clone(),
-            original_loc: prev_mapped.location.clone(),
+            original_loc: prev_mapped.location(),
             name: identifier.name.clone(),
         });
     }
-    let mapped = ctx.add_identifier_mapping(identifier.clone())?;
+    let mapped = ctx.add_identifier_mapping(identifier.clone(), LinkageType::Internal)?;
     Ok(VariableDeclaration {
         identifier: mapped,
         init_expression: match &var_decl.init_expression {
@@ -458,7 +479,7 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
             ExpressionKind::Variable(v) => {
                 let ident = Symbol { location: loc.clone(), name: v.to_string() };
                 let resolved = ctx.get_resolved_identifier(&ident)?;
-                ExpressionKind::Variable(resolved.name.clone())
+                ExpressionKind::Variable(resolved.symbol.name.clone())
             },
             ExpressionKind::Unary(unary_op, op_expr) => {
                 let resolved_expr = resolve_expression(ctx, op_expr)?;
