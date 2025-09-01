@@ -1240,7 +1240,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn get_token_with_tag(&mut self, expected_token_tag: TokenTag) -> Result<Token, ParserError> {
+    fn get_token_with_tag(&mut self, expected_token_tag: TokenTag) -> Result<Token<'_>, ParserError> {
         let token = self.token_provider.next();
         match token {
             Some(Ok(token)) => {
