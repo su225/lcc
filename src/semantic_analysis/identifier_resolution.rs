@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, Symbol, VariableDeclaration};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Program, Statement, StatementKind, Symbol, TypeExpression, TypeExpressionKind, VariableDeclaration};
 
 #[derive(Debug, Error)]
 pub enum IdentifierResolutionError {
@@ -20,7 +20,13 @@ pub enum IdentifierResolutionError {
     LabelAlreadyUsed { prev_location: Location, cur_location: Location, label: String },
 
     #[error("label '{label:?}' not declared")]
-    LabelNotDeclared { label: String }
+    LabelNotDeclared { label: String },
+
+    #[error("cannot declare function ({name:?}) inside another function")]
+    CannotDefineFunctionInsideAnotherFunction { name: String },
+
+    #[error("cannot redeclare function {name:?} as it is already declared at {location:?}")]
+    CannotRedefineFunction { name: String, location: Location },
 }
 
 #[derive(Debug, Clone)]
@@ -43,18 +49,30 @@ impl ResolvedIdentifier {
 
 struct Scope {
     identifier_map: HashMap<String, ResolvedIdentifier>,
+    is_function: bool,
 }
 
 impl Scope {
     fn new() -> Self {
         return Scope {
             identifier_map: HashMap::new(),
+            is_function: false,
         }
     }
 
-    fn add_mapping(&mut self, raw_ident: Symbol, mapped_ident: ResolvedIdentifier) -> Result<(), IdentifierResolutionError> {
+    fn with_function() -> Self {
+        return Scope {
+            identifier_map: HashMap::new(),
+            is_function: true,
+        }
+    }
+
+    fn add_mapping(&mut self, raw_ident: Symbol, mapped_ident: ResolvedIdentifier, should_ignore_if_existing: bool) -> Result<(), IdentifierResolutionError> {
         let existing_mapping = self.identifier_map.get(&raw_ident.name);
         if existing_mapping.is_some() {
+            if should_ignore_if_existing {
+                return Ok(());
+            }
             return Err(IdentifierResolutionError::AlreadyDeclared {
                 current_loc: raw_ident.location.clone(),
                 original_loc: existing_mapping.unwrap().location(),
@@ -74,6 +92,7 @@ impl Scope {
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct ResolvedLabel {
     label: String,
     location: Location,
@@ -82,6 +101,7 @@ struct ResolvedLabel {
 struct IdentifierResolutionContext {
     scopes: Vec<Scope>,
     labels: HashMap<String, ResolvedLabel>,
+    defined_functions: HashMap<String, Location>,
     next_num_id: u64,
 }
 
@@ -90,24 +110,49 @@ impl IdentifierResolutionContext {
         return IdentifierResolutionContext {
             scopes: vec![Scope::new()],
             labels: HashMap::new(),
+            defined_functions: HashMap::new(),
             next_num_id: 0,
         }
     }
 
-    fn add_identifier_mapping(&mut self, ident: Symbol, linkage: LinkageType) -> Result<Symbol, IdentifierResolutionError> {
+    fn add_identifier_mapping(&mut self, ident: Symbol) -> Result<Symbol, IdentifierResolutionError> {
         let next = self.next_num_id;
         self.next_num_id += 1;
         let mapped_ident = format!("{}${}", ident.name, next);
-        let mapped_symbol = match linkage {
-            LinkageType::Internal => Symbol { name: mapped_ident, location: ident.location.clone() },
-            LinkageType::External => ident.clone(),
-        };
+        let mapped_symbol = Symbol { name: mapped_ident, location: ident.location.clone() };
         let current_scope = self.get_current_scope_mut();
         current_scope.add_mapping(ident, ResolvedIdentifier {
             symbol: mapped_symbol.clone(),
-            linkage_type: linkage,
-        })?;
+            linkage_type: LinkageType::Internal,
+        }, false /* should_ignore_if_existing */)?;
         Ok(mapped_symbol)
+    }
+
+    fn add_function(&mut self, ident: Symbol, is_defined: bool) -> Result<Symbol, IdentifierResolutionError> {
+        if is_defined {
+            self.add_defined_function(ident.clone())?;
+        }
+        let mapped_symbol = ident.clone();
+        let current_scope = self.get_current_scope_mut();
+        current_scope.add_mapping(ident, ResolvedIdentifier {
+            symbol: mapped_symbol.clone(),
+            linkage_type: LinkageType::External,
+        }, true /* should_ignore_if_existing */)?;
+        Ok(mapped_symbol)
+    }
+
+    fn add_defined_function(&mut self, func: Symbol) -> Result<(), IdentifierResolutionError> {
+        if self.get_current_scope().is_function {
+            return Err(IdentifierResolutionError::CannotDefineFunctionInsideAnotherFunction { name: func.name});
+        }
+        if let Some(prev_location) = self.defined_functions.get(&func.name) {
+            return Err(IdentifierResolutionError::CannotRedefineFunction {
+                name: func.name,
+                location: *prev_location,
+            });
+        }
+        self.defined_functions.insert(func.name, func.location);
+        Ok(())
     }
 
     fn add_label(&mut self, lbl: String, loc: Location) -> Result<(), IdentifierResolutionError> {
@@ -154,23 +199,31 @@ impl IdentifierResolutionContext {
         current_scope.lookup(raw_ident)
     }
 
-    fn with_scope<T, F>(&mut self, f: F) -> Result<T, IdentifierResolutionError>
-    where
-        F: Fn(&mut IdentifierResolutionContext) -> Result<T, IdentifierResolutionError>
-    {
-        self.scopes.push(Scope::new());
-        let result = { f(self) };
-        self.scopes.pop();
-        result
-    }
-
     #[inline]
     fn with_function_scope<T, F>(&mut self, f: F) -> Result<T, IdentifierResolutionError>
     where
         F: Fn(&mut IdentifierResolutionContext) -> Result<T, IdentifierResolutionError>
     {
         self.labels.clear();
-        self.with_scope(f)
+        self.with_scope_internal(Scope::with_function(), f)
+    }
+
+    #[inline]
+    fn with_scope<T, F>(&mut self, f: F) -> Result<T, IdentifierResolutionError>
+    where
+        F: Fn(&mut IdentifierResolutionContext) -> Result<T, IdentifierResolutionError>
+    {
+        self.with_scope_internal(Scope::new(), f)
+    }
+
+    fn with_scope_internal<T, F>(&mut self, scope: Scope, f: F) -> Result<T, IdentifierResolutionError>
+    where
+        F: Fn(&mut IdentifierResolutionContext) -> Result<T, IdentifierResolutionError>
+    {
+        self.scopes.push(scope);
+        let result = { f(self) };
+        self.scopes.pop();
+        result
     }
 
     fn get_current_scope(&self) -> &Scope {
@@ -189,7 +242,6 @@ pub fn resolve_program(program: Program) -> Result<Program, IdentifierResolution
         let decl_loc = decl.location.clone();
         match &decl.kind {
             DeclarationKind::FunctionDeclaration(ref f) => {
-                ctx.add_identifier_mapping(f.name.clone(), LinkageType::External)?;
                 let resolved_f = resolve_function(&mut ctx, f)?;
                 resolved_funcs.push(Declaration {
                     location: decl_loc,
@@ -203,34 +255,54 @@ pub fn resolve_program(program: Program) -> Result<Program, IdentifierResolution
 }
 
 fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> Result<Function, IdentifierResolutionError> {
+    ctx.add_function(f.name.clone(), f.body.is_some())?;
     ctx.with_function_scope(|sub_ctx| {
-        sub_ctx.add_identifier_mapping(f.name.clone(), LinkageType::External)?;
+        let mut resolved_params = Vec::with_capacity(f.params.len());
         for p in &f.params {
+            resolved_params.push(FunctionParameter {
+                loc: p.loc.clone(),
+                param_type: Box::new(resolve_type_expression(sub_ctx, &p.param_type)?),
+                param_name: p.param_name.clone(),
+            });
             sub_ctx.add_identifier_mapping(Symbol{
                 name: p.param_name.clone(),
                 location: f.location.clone(),
-            }, LinkageType::Internal)?;
+            })?;
         }
         match &f.body {
             None => {
-                // This is just a function declaration. It does not require
-                // any resolution step other than adding it to the context
-                unimplemented!()
+                Ok(Function {
+                    location: f.location.clone(),
+                    name: f.name.clone(),
+                    params: resolved_params,
+                    body: None,
+                })
             }
             Some(func_definition) => {
                 collect_labels_from_block(sub_ctx, func_definition)?;
-                resolve_block(sub_ctx, func_definition).map(|resolved_block| {
-                    Function {
-                        location: f.location.clone(),
-                        name: f.name.clone(),
-                        params: vec![],
-                        body: Some(resolved_block),
-                    }
-                })
+                resolve_block(sub_ctx, func_definition)
+                    .map(|resolved_block| {
+                        Function {
+                            location: f.location.clone(),
+                            name: f.name.clone(),
+                            params: resolved_params,
+                            body: Some(resolved_block),
+                        }
+                    })
             }
         }
 
     })
+}
+
+fn resolve_type_expression(_: &mut IdentifierResolutionContext, ty_expr: &TypeExpression) -> Result<TypeExpression, IdentifierResolutionError> {
+    let loc = ty_expr.location.clone();
+    match &ty_expr.kind {
+        TypeExpressionKind::Primitive(p) => Ok(TypeExpression {
+            location: loc,
+            kind: TypeExpressionKind::Primitive(p.clone()),
+        })
+    }
 }
 
 fn collect_labels_from_block(ctx: &mut IdentifierResolutionContext, block: &Block) -> Result<(), IdentifierResolutionError> {
@@ -461,7 +533,7 @@ fn resolve_variable_declaration(ctx: &mut IdentifierResolutionContext, loc: Loca
             name: identifier.name.clone(),
         });
     }
-    let mapped = ctx.add_identifier_mapping(identifier.clone(), LinkageType::Internal)?;
+    let mapped = ctx.add_identifier_mapping(identifier.clone())?;
     Ok(VariableDeclaration {
         identifier: mapped,
         init_expression: match &var_decl.init_expression {
@@ -478,7 +550,6 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
         kind: match &expr.kind {
             ExpressionKind::IntConstant(x, radix) => ExpressionKind::IntConstant(x.to_string(), *radix),
             ExpressionKind::Variable(v) => {
-                let ident = Symbol { location: loc.clone(), name: v.to_string() };
                 let resolved = ctx.get_resolved_identifier(&v)?;
                 ExpressionKind::Variable(resolved.symbol.name.clone())
             },
@@ -584,9 +655,8 @@ mod test {
         let resolved_ast = run_program_resolution(program);
         assert!(resolved_ast.is_err());
 
-        let IdentifierResolutionError::NotFound { location, name } = resolved_ast.unwrap_err() else { panic!("unexpected error") };
+        let IdentifierResolutionError::NotFound { name } = resolved_ast.unwrap_err() else { panic!("unexpected error") };
         assert_eq!(name, "a".to_string());
-        assert_eq!(location, (2,5).into());
     }
 
     #[test]
@@ -651,11 +721,10 @@ mod test {
         }
         "#};
         let resolved_ast = run_program_resolution(program);
-        let IdentifierResolutionError::NotFound { name, location } = resolved_ast.unwrap_err() else {
+        let IdentifierResolutionError::NotFound { name } = resolved_ast.unwrap_err() else {
             panic!("unexpected error");
         };
         assert_eq!(name, "x");
-        assert_eq!(location, (2,12).into());
     }
 
     #[test]
@@ -686,11 +755,10 @@ mod test {
         let resolved_ast = run_program_resolution(program);
         assert!(resolved_ast.is_err());
 
-        let IdentifierResolutionError::NotFound { location, name } = resolved_ast.unwrap_err() else {
+        let IdentifierResolutionError::NotFound { name } = resolved_ast.unwrap_err() else {
             panic!("unexpected error type");
         };
         assert_eq!(name, "a");
-        assert_eq!(location, (5,5).into()); // location of `a = 2;`
     }
 
     #[test]

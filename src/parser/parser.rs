@@ -199,7 +199,7 @@ pub struct Expression {
     pub kind: ExpressionKind,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum PrimitiveKind {
     Integer,
