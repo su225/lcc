@@ -7,8 +7,8 @@ use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, 
 
 #[derive(Debug, Error)]
 pub enum IdentifierResolutionError {
-    #[error("{location:?}: identifier '{name:?}' not found")]
-    NotFound { location: Location, name: String },
+    #[error("identifier '{name:?}' not found")]
+    NotFound { name: String },
 
     #[error("{current_loc:?}: identifier '{name:?}' already declared at {original_loc:?}")]
     AlreadyDeclared { current_loc: Location, original_loc: Location, name: String },
@@ -65,14 +65,11 @@ impl Scope {
         Ok(())
     }
 
-    fn lookup(&self, raw_ident: &Symbol) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
-        let existing_mapping = self.identifier_map.get(&raw_ident.name);
+    fn lookup(&self, raw_ident: &String) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
+        let existing_mapping = self.identifier_map.get(raw_ident);
         match existing_mapping {
             Some(mapped_ident) => Ok(mapped_ident.clone()),
-            None => Err(IdentifierResolutionError::NotFound {
-                location: raw_ident.location.clone(),
-                name: raw_ident.name.clone(),
-            }),
+            None => Err(IdentifierResolutionError::NotFound { name: raw_ident.clone() }),
         }
     }
 }
@@ -138,7 +135,7 @@ impl IdentifierResolutionContext {
         }
     }
 
-    fn get_resolved_identifier(&self, raw_ident: &Symbol) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
+    fn get_resolved_identifier(&self, raw_ident: &String) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
         for scope in self.scopes.iter().rev() {
             let lookup_result = scope.lookup(raw_ident);
             match lookup_result {
@@ -149,13 +146,10 @@ impl IdentifierResolutionContext {
                 Err(e) => return Err(e),
             };
         }
-        Err(IdentifierResolutionError::NotFound {
-            location: raw_ident.location.clone(),
-            name: raw_ident.name.clone(),
-        })
+        Err(IdentifierResolutionError::NotFound { name: raw_ident.clone() })
     }
 
-    fn get_resolved_identifier_in_current_scope(&self, raw_ident: &Symbol) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
+    fn get_resolved_identifier_in_current_scope(&self, raw_ident: &String) -> Result<ResolvedIdentifier, IdentifierResolutionError> {
         let current_scope = self.get_current_scope();
         current_scope.lookup(raw_ident)
     }
@@ -210,6 +204,13 @@ pub fn resolve_program(program: Program) -> Result<Program, IdentifierResolution
 
 fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> Result<Function, IdentifierResolutionError> {
     ctx.with_function_scope(|sub_ctx| {
+        sub_ctx.add_identifier_mapping(f.name.clone(), LinkageType::External)?;
+        for p in &f.params {
+            sub_ctx.add_identifier_mapping(Symbol{
+                name: p.param_name.clone(),
+                location: f.location.clone(),
+            }, LinkageType::Internal)?;
+        }
         match &f.body {
             None => {
                 // This is just a function declaration. It does not require
@@ -452,7 +453,7 @@ fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration
 
 fn resolve_variable_declaration(ctx: &mut IdentifierResolutionContext, loc: Location, var_decl: &VariableDeclaration) -> Result<VariableDeclaration, IdentifierResolutionError> {
     let identifier = &var_decl.identifier;
-    let prev_decl = ctx.get_resolved_identifier_in_current_scope(identifier);
+    let prev_decl = ctx.get_resolved_identifier_in_current_scope(&identifier.name);
     if let Ok(prev_mapped) = prev_decl {
         return Err(IdentifierResolutionError::AlreadyDeclared {
             current_loc: loc.clone(),
@@ -478,7 +479,7 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
             ExpressionKind::IntConstant(x, radix) => ExpressionKind::IntConstant(x.to_string(), *radix),
             ExpressionKind::Variable(v) => {
                 let ident = Symbol { location: loc.clone(), name: v.to_string() };
-                let resolved = ctx.get_resolved_identifier(&ident)?;
+                let resolved = ctx.get_resolved_identifier(&v)?;
                 ExpressionKind::Variable(resolved.symbol.name.clone())
             },
             ExpressionKind::Unary(unary_op, op_expr) => {
@@ -545,7 +546,18 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                     else_expr: Box::new(resolved_else_expr),
                 }
             },
-            ExpressionKind::FunctionCall {..} => todo!(),
+            ExpressionKind::FunctionCall { func_name, actual_params } => {
+                let resolved_func_name = ctx.get_resolved_identifier(&func_name)?;
+                let mut resolved_actual_params = Vec::with_capacity(actual_params.len());
+                for ap in actual_params.iter() {
+                    let resolved_param_expr = resolve_expression(ctx, ap)?;
+                    resolved_actual_params.push(Box::new(resolved_param_expr));
+                }
+                ExpressionKind::FunctionCall {
+                    func_name: resolved_func_name.symbol.name.clone(),
+                    actual_params: resolved_actual_params,
+                }
+            },
         },
     })
 }
