@@ -5,18 +5,18 @@ expression: tacky
 info: loops/simple_for.c
 ---
 int main(void) {
-    a$1 = (int32 0);
-    i$2 = (int32 0);
+    a$0 = (int32 0);
+    i$1 = (int32 0);
 .loop.0.start:
-    <t>.0 = i$2 < (int32 10);
+    <t>.0 = i$1 < (int32 10);
     <t>.1 = <t>.0;
     jump_if_zero (<t>.1) .loop.0.break;
-    <t>.2 = a$1 + i$2;
-    a$1 = <t>.2;
+    <t>.2 = a$0 + i$1;
+    a$0 = <t>.2;
 .loop.0.continue:
-    <t>.3 = i$2;
-    i$2 = i$2 + (int32 1);
+    <t>.3 = i$1;
+    i$1 = i$1 + (int32 1);
     jump .loop.0.start;
 .loop.0.break:
-    return a$1;
+    return a$0;
 }

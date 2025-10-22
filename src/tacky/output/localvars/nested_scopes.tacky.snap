@@ -5,8 +5,8 @@ expression: tacky
 info: localvars/nested_scopes.c
 ---
 int main(void) {
-    a$1 = (int32 10);
-    a$3 = (int32 20);
-    b$2 = a$3;
-    return a$1;
+    a$0 = (int32 10);
+    a$2 = (int32 20);
+    b$1 = a$2;
+    return a$0;
 }

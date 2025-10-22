@@ -5,10 +5,10 @@ expression: tacky
 info: localvars/expression_with_var.c
 ---
 int main(void) {
-    a$1 = (int32 10);
-    b$2 = (int32 20);
-    c$3 = (int32 30);
-    <t>.0 = a$1 + b$2;
-    <t>.1 = <t>.0 + c$3;
+    a$0 = (int32 10);
+    b$1 = (int32 20);
+    c$2 = (int32 30);
+    <t>.0 = a$0 + b$1;
+    <t>.1 = <t>.0 + c$2;
     return <t>.1;
 }

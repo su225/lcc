@@ -5,17 +5,17 @@ expression: tacky
 info: loops/simple_dowhile.c
 ---
 int main(void) {
-    i$1 = (int32 0);
-    a$2 = (int32 0);
+    i$0 = (int32 0);
+    a$1 = (int32 0);
 .loop.0.start:
-    <t>.0 = a$2 + i$1;
-    a$2 = <t>.0;
-    <t>.1 = i$1;
-    i$1 = i$1 + (int32 1);
+    <t>.0 = a$1 + i$0;
+    a$1 = <t>.0;
+    <t>.1 = i$0;
+    i$0 = i$0 + (int32 1);
 .loop.0.continue:
-    <t>.2 = i$1 < (int32 10);
+    <t>.2 = i$0 < (int32 10);
     <t>.3 = <t>.2;
     jump_if_not_zero (<t>.3) .loop.0.start;
 .loop.0.break:
-    return a$2;
+    return a$1;
 }

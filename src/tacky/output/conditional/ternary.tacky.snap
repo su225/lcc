@@ -5,8 +5,8 @@ expression: tacky
 info: conditional/ternary.c
 ---
 int main(void) {
-    b$2 = (int32 8);
-    <t>.0 = b$2 > (int32 10);
+    b$1 = (int32 8);
+    <t>.0 = b$1 > (int32 10);
     <t>.1 = <t>.0;
     jump_if_zero (<t>.1) _L.cond_else.0;
     <t>.2 = (int32 1);
@@ -14,6 +14,6 @@ int main(void) {
 _L.cond_else.0:
     <t>.2 = (int32 0);
 _L.cond_end.1:
-    a$1 = <t>.2;
-    return a$1;
+    a$0 = <t>.2;
+    return a$0;
 }

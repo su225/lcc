@@ -5,7 +5,7 @@ expression: tacky
 info: unary/pre_decrement.c
 ---
 int main(void) {
-    a$1 = (int32 10);
-    a$1 = a$1 - (int32 1);
-    return a$1;
+    a$0 = (int32 10);
+    a$0 = a$0 - (int32 1);
+    return a$0;
 }

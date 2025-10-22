@@ -5,8 +5,8 @@ expression: tacky
 info: unary/increment.c
 ---
 int main(void) {
-    a$1 = (int32 10);
-    <t>.0 = a$1;
-    a$1 = a$1 + (int32 1);
-    return a$1;
+    a$0 = (int32 10);
+    <t>.0 = a$0;
+    a$0 = a$0 + (int32 1);
+    return a$0;
 }
