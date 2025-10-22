@@ -233,6 +233,10 @@ impl IdentifierResolutionContext {
     fn get_current_scope_mut(&mut self) -> &mut Scope {
         self.scopes.last_mut().expect("expected at least one scope")
     }
+
+    fn is_within_function(&self) -> bool {
+        self.get_current_scope().is_function
+    }
 }
 
 pub fn resolve_program(program: Program) -> Result<Program, IdentifierResolutionError> {
@@ -519,7 +523,13 @@ fn resolve_declaration(ctx: &mut IdentifierResolutionContext, decl: &Declaration
             let resolved = resolve_variable_declaration(ctx, decl_loc.clone(), var_decl)?;
             Ok(Declaration { location: decl_loc, kind: DeclarationKind::VarDeclaration(resolved) })
         }
-        DeclarationKind::FunctionDeclaration(_) => todo!(),
+        DeclarationKind::FunctionDeclaration(func_decl) => {
+            let resolved = resolve_function(ctx, func_decl)?;
+            Ok(Declaration {
+                location: decl_loc,
+                kind: DeclarationKind::FunctionDeclaration(resolved),
+            })
+        },
     }
 }
 
@@ -1080,6 +1090,92 @@ mod test {
             panic!("unexpected error")
         };
     }
+
+    #[test]
+    fn test_should_error_when_function_is_defined_inside_another_function() {
+        let program = indoc!{r#"
+        int main(void) {
+            int foo(void) {
+                return 10;
+            }
+            return 0;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::CannotDefineFunctionInsideAnotherFunction { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    #[test]
+    fn test_should_error_when_function_is_declared_more_than_once() {
+        let program = indoc!{r#"
+        int main(void) {
+            return 10;
+        }
+
+        int foo(void) {
+            return 10;
+        }
+
+        int foo(void) {
+            return 20;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::CannotRedefineFunction { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    #[test]
+    fn test_multiple_function_declarations_are_allowed() {
+        let program = indoc!{r#"
+        int foo(int a, int b);
+
+        int main(void) {
+            return 0;
+        }
+
+        int foo(int a0, int b0);
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_ok(), "{:#?}", resolv_result);
+    }
+
+    #[test]
+    fn test_function_declaration_inside_function_is_allowed() {
+        let program = indoc! {r#"
+        int foo(int a);
+
+        int main(void) {
+            int foo(int a);  // inner declaration
+            return 0;
+        }
+
+        int foo(int a) { return a; }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_ok(), "{:#?}", resolv_result);
+    }
+
+    #[test]
+    fn test_multiple_duplicate_function_declarations_inside_function() {
+        let program = indoc! {r#"
+        int bar(int x);
+
+        int main(void) {
+            int bar(int y);
+            int bar(int y0);  // duplicate declaration
+            return 0;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_ok(), "{:#?}", resolv_result);
+    }
+
 
     fn assert_successful_identifier_resolution(program: &str) {
         let resolved = run_program_resolution(program);
