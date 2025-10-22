@@ -27,18 +27,31 @@ pub enum IdentifierResolutionError {
 
     #[error("cannot redeclare function {name:?} as it is already declared at {location:?}")]
     CannotRedefineFunction { name: String, location: Location },
+
+    #[error("{location:?} cannot redeclare variable as function: {name:?}. Previously declared at {prev_location:?}")]
+    CannotRedeclareVariableAsFunction { name: String, location: Location, prev_location: Location },
+
+    #[error("{location:?} cannot redeclare function as variable: {name:?}. Previously declared at {prev_location:?}")]
+    CannotRedeclareFunctionAsVariable { name: String, location: Location, prev_location: Location },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum LinkageType {
     Internal,
     External,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MappingType {
+    Variable,
+    Function,
 }
 
 #[derive(Debug, Clone)]
 struct ResolvedIdentifier {
     symbol: Symbol,
     linkage_type: LinkageType,
+    mapping_type: MappingType,
 }
 
 impl ResolvedIdentifier {
@@ -67,17 +80,31 @@ impl Scope {
         }
     }
 
-    fn add_mapping(&mut self, raw_ident: Symbol, mapped_ident: ResolvedIdentifier, should_ignore_if_existing: bool) -> Result<(), IdentifierResolutionError> {
+    fn add_mapping(&mut self, raw_ident: Symbol, mapped_ident: ResolvedIdentifier) -> Result<(), IdentifierResolutionError> {
         let existing_mapping = self.identifier_map.get(&raw_ident.name);
-        if existing_mapping.is_some() {
-            if should_ignore_if_existing {
-                return Ok(());
+        if let Some(cur_mapping) = existing_mapping {
+            let existing_mapping_loc = cur_mapping.location().clone();
+            let existing_mapping_type = cur_mapping.mapping_type;
+            let incoming_mapping_loc = mapped_ident.location().clone();
+            let incoming_mapping_type = mapped_ident.mapping_type;
+            return match (existing_mapping_type, incoming_mapping_type) {
+                (MappingType::Function, MappingType::Function) => Ok(()),
+                (MappingType::Function, MappingType::Variable) => Err(IdentifierResolutionError::CannotRedeclareVariableAsFunction {
+                    name: raw_ident.name.clone(),
+                    location: incoming_mapping_loc,
+                    prev_location: existing_mapping_loc,
+                }),
+                (MappingType::Variable, MappingType::Variable) => Err(IdentifierResolutionError::AlreadyDeclared {
+                    current_loc: incoming_mapping_loc,
+                    original_loc: existing_mapping_loc,
+                    name: raw_ident.name.clone(),
+                }),
+                (MappingType::Variable, MappingType::Function) => Err(IdentifierResolutionError::CannotRedeclareFunctionAsVariable {
+                    name: raw_ident.name.clone(),
+                    location: incoming_mapping_loc,
+                    prev_location: existing_mapping_loc,
+                })
             }
-            return Err(IdentifierResolutionError::AlreadyDeclared {
-                current_loc: raw_ident.location.clone(),
-                original_loc: existing_mapping.unwrap().location(),
-                name: raw_ident.name.clone(),
-            })
         }
         self.identifier_map.insert(raw_ident.name, mapped_ident);
         Ok(())
@@ -124,7 +151,8 @@ impl IdentifierResolutionContext {
         current_scope.add_mapping(ident, ResolvedIdentifier {
             symbol: mapped_symbol.clone(),
             linkage_type: LinkageType::Internal,
-        }, false /* should_ignore_if_existing */)?;
+            mapping_type: MappingType::Variable,
+        })?;
         Ok(mapped_symbol)
     }
 
@@ -137,7 +165,8 @@ impl IdentifierResolutionContext {
         current_scope.add_mapping(ident, ResolvedIdentifier {
             symbol: mapped_symbol.clone(),
             linkage_type: LinkageType::External,
-        }, true /* should_ignore_if_existing */)?;
+            mapping_type: MappingType::Function,
+        })?;
         Ok(mapped_symbol)
     }
 
@@ -1176,6 +1205,44 @@ mod test {
         assert!(resolv_result.is_ok(), "{:#?}", resolv_result);
     }
 
+    #[test]
+    fn test_redefining_variable_as_function_in_the_same_scope_is_illegal() {
+        let program = indoc! {r#"
+        int main(void) {
+            int foo = 1;
+            int foo(void);
+            return foo;
+        }
+
+        int foo(void) {
+            return 1;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::CannotRedeclareVariableAsFunction { .. } = resolv_result.unwrap_err() else {
+            panic!("unexpected error")
+        };
+    }
+
+    #[test]
+    fn test_redefining_variable_as_function_in_a_nested_scope_is_legal() {
+        let program = indoc! {r#"
+        int main(void) {
+            int foo = 1;
+            {
+                int foo(void);
+            }
+            return foo;
+        }
+
+        int foo(void) {
+            return 1;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_ok());
+    }
 
     fn assert_successful_identifier_resolution(program: &str) {
         let resolved = run_program_resolution(program);
