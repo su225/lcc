@@ -9,3 +9,4 @@ mod unique_identifier_verifier;
 
 #[cfg(test)]
 mod loop_label_verifier;
+mod typechecking;
