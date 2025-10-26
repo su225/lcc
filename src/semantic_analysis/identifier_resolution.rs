@@ -35,7 +35,7 @@ pub enum IdentifierResolutionError {
     CannotRedeclareFunctionAsVariable { name: String, location: Location, prev_location: Location },
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum LinkageType {
     Internal,
     External,
@@ -142,15 +142,19 @@ impl IdentifierResolutionContext {
         }
     }
 
-    fn add_identifier_mapping(&mut self, ident: Symbol) -> Result<Symbol, IdentifierResolutionError> {
+    fn add_identifier_mapping(&mut self, ident: Symbol, linkage_type: LinkageType) -> Result<Symbol, IdentifierResolutionError> {
         let next = self.next_num_id;
         self.next_num_id += 1;
-        let mapped_ident = format!("{}${}", ident.name, next);
-        let mapped_symbol = Symbol { name: mapped_ident, location: ident.location.clone() };
-        let current_scope = self.get_current_scope_mut();
-        current_scope.add_mapping(ident, ResolvedIdentifier {
+        let mapped_symbol = match linkage_type {
+            LinkageType::External => ident.clone(),
+            LinkageType::Internal => {
+                let mapped_ident = format!("{}${}", ident.name, next);
+                Symbol { name: mapped_ident, location: ident.location.clone() }
+            }
+        };
+        self.get_current_scope_mut().add_mapping(ident, ResolvedIdentifier {
             symbol: mapped_symbol.clone(),
-            linkage_type: LinkageType::Internal,
+            linkage_type,
             mapping_type: MappingType::Variable,
         })?;
         Ok(mapped_symbol)
@@ -171,7 +175,7 @@ impl IdentifierResolutionContext {
     }
 
     fn add_defined_function(&mut self, func: Symbol) -> Result<(), IdentifierResolutionError> {
-        if self.get_current_scope().is_function {
+        if self.is_within_function() {
             return Err(IdentifierResolutionError::CannotDefineFunctionInsideAnotherFunction { name: func.name});
         }
         if let Some(prev_location) = self.defined_functions.get(&func.name) {
@@ -300,7 +304,7 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> 
             sub_ctx.add_identifier_mapping(Symbol{
                 name: p.param_name.clone(),
                 location: f.location.clone(),
-            })?;
+            }, LinkageType::Internal)?;
         }
         match &f.body {
             None => {
@@ -572,7 +576,7 @@ fn resolve_variable_declaration(ctx: &mut IdentifierResolutionContext, loc: Loca
             name: identifier.name.clone(),
         });
     }
-    let mapped = ctx.add_identifier_mapping(identifier.clone())?;
+    let mapped = ctx.add_identifier_mapping(identifier.clone(), LinkageType::Internal)?;
     Ok(VariableDeclaration {
         identifier: mapped,
         init_expression: match &var_decl.init_expression {
