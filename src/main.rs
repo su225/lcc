@@ -9,6 +9,7 @@ use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
 use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
 use lcc::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
+use lcc::semantic_analysis::typechecking::{TypecheckError, typecheck_program};
 use lcc::semantic_analysis::loop_labeling::{loop_label_program_definition, LoopLabelingError};
 use lcc::tacky;
 use lcc::tacky::TackyError;
@@ -70,6 +71,9 @@ enum CompilerDriverError {
     #[error("error during semantic-analysis/identifier-resolution: {0}")]
     IdentifierResolutionError(#[from] IdentifierResolutionError),
 
+    #[error("error during semantic-analysis/typechecking: {0}")]
+    TypecheckingError(#[from] TypecheckError),
+
     #[error("error during semantic-analyis/loop-labeling: {0}")]
     LoopLabelingError(#[from] LoopLabelingError),
 
@@ -111,6 +115,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
 
     // Semantic analysis
     let ident_resolved_ast = resolve_program(ast)?;
+    typecheck_program(&ident_resolved_ast)?;
     let loop_labeled_ast = loop_label_program_definition(ident_resolved_ast)?;
     if args.validate {
         println!("{:#?}", loop_labeled_ast);
