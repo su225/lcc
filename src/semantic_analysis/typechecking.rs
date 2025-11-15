@@ -462,8 +462,8 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
 #[cfg(test)]
 mod test {
     use crate::lexer::Lexer;
-    use crate::parser::{Parser, Program};
-    use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
+    use crate::parser::{Parser};
+    use crate::semantic_analysis::identifier_resolution::{resolve_program};
     use crate::semantic_analysis::typechecking::{FunctionType, typecheck_program, TypecheckError, TypeDescriptor};
 
     #[test]
@@ -499,13 +499,853 @@ mod test {
         assert!(res.is_err(), "{:?}", res);
     }
 
+    #[test]
+    fn test_valid_basic_program() {
+        let program = r#"
+        int add(int a, int b);
+        int multiply(int x, int y);
+
+        int main(void) {
+            int x = 5;
+            int y = add(2, 3);
+            int z = multiply(x, y);
+            return z;
+        }
+
+        int add(int a, int b) {
+            return a + b;
+        }
+
+        int multiply(int x, int y) {
+            return x * y;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_variable_declarations() {
+        let program = r#"
+        int main(void) {
+            int a;
+            int b = 10;
+            int c = 20 + 30;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_all_binary_operators() {
+        let program = r#"
+        int main(void) {
+            int a = 10 + 5;
+            int b = 10 - 5;
+            int c = 10 * 5;
+            int d = 10 / 5;
+            int e = 10 % 5;
+            int f = 10 & 5;
+            int g = 10 | 5;
+            int h = 10 ^ 5;
+            int i = 10 << 2;
+            int j = 10 >> 2;
+            int k = 10 && 5;
+            int l = 10 || 5;
+            int m = 10 == 5;
+            int n = 10 != 5;
+            int o = 10 < 5;
+            int p = 10 <= 5;
+            int q = 10 > 5;
+            int r = 10 >= 5;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_all_unary_operators() {
+        let program = r#"
+        int main(void) {
+            int a = 10;
+            int b = -a;
+            int c = ~a;
+            int d = !a;
+            int e = ++a;
+            int f = a++;
+            int g = --a;
+            int h = a--;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_control_flow() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            if (x > 0) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_while_loop() {
+        let program = r#"
+        int main(void) {
+            int i = 0;
+            while (i < 10) {
+                i = i + 1;
+            }
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_do_while_loop() {
+        let program = r#"
+        int main(void) {
+            int i = 0;
+            do {
+                i = i + 1;
+            } while (i < 10);
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_for_loop_with_decl() {
+        let program = r#"
+        int main(void) {
+            for (int i = 0; i < 10; i = i + 1) {
+                int x = i;
+            }
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_for_loop_with_expr() {
+        let program = r#"
+        int main(void) {
+            int i = 0;
+            for (i = 0; i < 10; i = i + 1) {
+                int x = i;
+            }
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_for_loop_empty_parts() {
+        let program = r#"
+        int main(void) {
+            for (;;) {
+                break;
+            }
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_nested_scopes() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            {
+                int y = 10;
+                {
+                    int z = 15;
+                    x = x + y + z;
+                }
+            }
+            return x;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_variable_shadowing() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            {
+                int x = 10;
+                {
+                    int x = 15;
+                }
+            }
+            return x;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_function_redeclaration_same_signature() {
+        let program = r#"
+        int foo(int a);
+        int foo(int a);
+
+        int main(void) {
+            int foo(int a);
+            return foo(5);
+        }
+
+        int foo(int a) {
+            return a;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_ternary_operator() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            int y = x > 0 ? 10 : 20;
+            return y;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_assignment_expressions() {
+        let program = r#"
+        int main(void) {
+            int a = 5;
+            int b = 10;
+            a = b = 15;
+            a += 5;
+            a -= 3;
+            a *= 2;
+            a /= 4;
+            a %= 3;
+            return a;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_nested_function_calls() {
+        let program = r#"
+        int add(int a, int b);
+        int multiply(int x, int y);
+
+        int main(void) {
+            int result = multiply(add(1, 2), add(3, 4));
+            return result;
+        }
+
+        int add(int a, int b) {
+            return a + b;
+        }
+
+        int multiply(int x, int y) {
+            return x * y;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_recursive_function() {
+        let program = r#"
+        int factorial(int n);
+
+        int main(void) {
+            return factorial(5);
+        }
+
+        int factorial(int n) {
+            if (n <= 1) {
+                return 1;
+            } else {
+                return n * factorial(n - 1);
+            }
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_break_continue() {
+        let program = r#"
+        int main(void) {
+            int i = 0;
+            while (i < 10) {
+                if (i == 5) {
+                    break;
+                }
+                if (i == 3) {
+                    i = i + 1;
+                    continue;
+                }
+                i = i + 1;
+            }
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_used_as_variable_in_assignment() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = foo;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_used_as_variable_in_binary_op() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = foo + 5;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_used_as_variable_in_unary_op() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = -foo;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_used_in_increment() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            foo++;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_used_in_ternary() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = 5 > 0 ? foo : 10;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_variable_used_as_function() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            int y = x();
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_variable_used_as_function_with_args() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            int y = x(1, 2, 3);
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_called_with_too_few_args() {
+        let program = r#"
+        int add(int a, int b);
+
+        int main(void) {
+            int x = add(5);
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_called_with_too_many_args() {
+        let program = r#"
+        int add(int a, int b);
+
+        int main(void) {
+            int x = add(5, 10, 15);
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_called_with_args_when_expects_none() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = foo(5);
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_called_with_no_args_when_expects_some() {
+        let program = r#"
+        int add(int a, int b);
+
+        int main(void) {
+            int x = add();
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_redeclared_different_param_count() {
+        let program = r#"
+        int foo(int a);
+        int foo(int a, int b);
+
+        int main(void) {
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_function_redeclared_different_signature_same_scope() {
+        let program = r#"
+        int main(void) {
+            int foo(int a);
+            int foo(int a, int b);
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_variable_redeclared_same_scope() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            int x = 10;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_parameter_redeclared_in_function_body() {
+        let program = r#"
+        int main(int a) {
+            int a = 5;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_unknown_variable() {
+        let program = r#"
+        int main(void) {
+            int x = y;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_unknown_function() {
+        let program = r#"
+        int main(void) {
+            int x = foo();
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_variable_used_before_declaration() {
+        let program = r#"
+        int main(void) {
+            int x = y;
+            int y = 5;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_unary_op_on_function() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = -foo();
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_unary_op_on_function_as_operand() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = ~foo;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_binary_op_with_function_type() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = foo + 5;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_assignment_incompatible_types() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = 5;
+            x = foo;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_variable_init_incompatible_type() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = foo;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_ternary_incompatible_branch_types() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = 5 > 0 ? foo : 10;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_ternary_incompatible_branch_types_reverse() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = 5 > 0 ? 10 : foo;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_ternary_condition_not_integer() {
+        let program = r#"
+        int foo(void);
+
+        int main(void) {
+            int x = foo() ? 10 : 20;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_complex_program() {
+        let program = r#"
+        int add(int a, int b);
+        int multiply(int x, int y);
+        int factorial(int n);
+
+        int main(void) {
+            int result = 0;
+            int i = 0;
+            while (i < 5) {
+                int temp = add(i, 1);
+                result = multiply(result, temp);
+                i = i + 1;
+            }
+            if (result > 0) {
+                return factorial(result);
+            } else {
+                return 0;
+            }
+        }
+
+        int add(int a, int b) {
+            return a + b;
+        }
+
+        int multiply(int x, int y) {
+            return x * y;
+        }
+
+        int factorial(int n) {
+            if (n <= 1) {
+                return 1;
+            } else {
+                return n * factorial(n - 1);
+            }
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_nested_control_flow() {
+        let program = r#"
+        int main(void) {
+            int i = 0;
+            while (i < 10) {
+                if (i % 2 == 0) {
+                    int j = 0;
+                    for (j = 0; j < 5; j = j + 1) {
+                        if (j == 3) {
+                            break;
+                        }
+                    }
+                } else {
+                    do {
+                        i = i + 1;
+                    } while (i < 8);
+                }
+                i = i + 1;
+            }
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_function_in_function() {
+        let program = r#"
+        int main(void) {
+            int inner(int x) {
+                return x + 1;
+            }
+            return inner(5);
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_deeply_nested_scopes() {
+        let program = r#"
+        int main(void) {
+            int a = 1;
+            {
+                int b = 2;
+                {
+                    int c = 3;
+                    {
+                        int d = 4;
+                        a = a + b + c + d;
+                    }
+                }
+            }
+            return a;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_for_loop_variable_scope() {
+        let program = r#"
+        int main(void) {
+            int x = 0;
+            for (int i = 0; i < 5; i = i + 1) {
+                x = x + i;
+            }
+            return x;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_ternary_nested() {
+        let program = r#"
+        int main(void) {
+            int x = 5;
+            int y = x > 0 ? (x > 10 ? 20 : 15) : 0;
+            return y;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_valid_function_call_in_ternary() {
+        let program = r#"
+        int add(int a, int b);
+        int sub(int a, int b);
+
+        int main(void) {
+            int x = 5 > 0 ? add(1, 2) : sub(3, 4);
+            return x;
+        }
+
+        int add(int a, int b) {
+            return a + b;
+        }
+
+        int sub(int a, int b) {
+            return a - b;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_ok(), "{:?}", res);
+    }
+
     fn run_program_typechecks(program: &str) -> Result<(), TypecheckError> {
         let lexer = Lexer::new(program);
         let mut parser = Parser::new(lexer);
         let parsed = parser.parse();
-        assert!(parsed.is_ok());
+        assert!(parsed.is_ok(), "{:?}", parsed);
         let resolved_ast = resolve_program(parsed.unwrap());
-        assert!(resolved_ast.is_ok());
+        assert!(resolved_ast.is_ok(), "{:?}", resolved_ast);
         let typechecked_ast = typecheck_program(&resolved_ast.unwrap());
         typechecked_ast
     }
