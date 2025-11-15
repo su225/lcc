@@ -253,8 +253,8 @@ fn typecheck_function_declaration(ctx: &mut TypecheckContext, decl: &Function) -
             for formal_param in decl.params.iter() {
                 let p = Type::from(&*formal_param.param_type);
                 let formal_param_symbol = Symbol {
-                    name: formal_param.param_name.clone(),
-                    location: formal_param.loc.clone(),
+                    name: formal_param.param_name.name.clone(),
+                    location: formal_param.param_name.location.clone(),
                     original_name: None,
                 };
                 sub_ctx.add_variable_declaration(formal_param_symbol, p)?;

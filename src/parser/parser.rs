@@ -328,9 +328,8 @@ pub struct Block {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct FunctionParameter {
-    pub loc: Location,
     pub param_type: Box<TypeExpression>,
-    pub param_name: String,
+    pub param_name: Symbol,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -473,9 +472,8 @@ impl<'a> Parser<'a> {
             let param_type = self.parse_type_expression()?;
             let param_ident = self.parse_identifier()?;
             params.push(FunctionParameter {
-                loc: param_type.location.clone(),
                 param_type: Box::new(param_type),
-                param_name: param_ident.name,
+                param_name: param_ident,
             });
 
             // decide whether to stop or to continue parsing parameters
@@ -1417,20 +1415,26 @@ mod test {
                         },
                         params: vec![
                             FunctionParameter {
-                                loc: (1,9).into(),
                                 param_type: Box::new(TypeExpression {
                                     location: (1,9).into(),
                                     kind: Primitive(Integer),
                                 }),
-                                param_name: "a".to_string(),
+                                param_name: Symbol {
+                                    name: "a".to_string(),
+                                    location: (1,9).into(),
+                                    original_name: None,
+                                },
                             },
                             FunctionParameter {
-                                loc: (1,16).into(),
                                 param_type: Box::new(TypeExpression {
                                     location: (1,16).into(),
                                     kind: Primitive(Integer),
                                 }),
-                                param_name: "b".to_string(),
+                                param_name: Symbol {
+                                    name: "b".to_string(),
+                                    location: (1,16).into(),
+                                    original_name: None,
+                                },
                             }
                         ],
                         body: Some(Block {
@@ -1482,20 +1486,26 @@ mod test {
                         name: Symbol { location: (1,5).into(), name: "add".to_string(), original_name: None },
                         params: vec![
                             FunctionParameter {
-                                loc: (1,9).into(),
-                                param_name: "a".to_string(),
                                 param_type: Box::new(TypeExpression {
                                     location: (1,9).into(),
                                     kind: Primitive(Integer),
                                 }),
+                                param_name: Symbol {
+                                    name: "a".to_string(),
+                                    location: (1,9).into(),
+                                    original_name: None,
+                                },
                             },
                             FunctionParameter {
-                                loc: (1,16).into(),
-                                param_name: "b".to_string(),
                                 param_type: Box::new(TypeExpression {
                                     location: (1,16).into(),
                                     kind: Primitive(Integer),
                                 }),
+                                param_name: Symbol {
+                                    name: "b".to_string(),
+                                    location: (1,16).into(),
+                                    original_name: None,
+                                },
                             }
                         ],
                         body: None,

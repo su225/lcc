@@ -297,14 +297,13 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> 
         let mut resolved_params = Vec::with_capacity(f.params.len());
         for p in &f.params {
             let mapped_symbol = sub_ctx.add_identifier_mapping(Symbol{
-                name: p.param_name.clone(),
-                location: f.location.clone(),
+                name: p.param_name.name.clone(),
+                location: p.param_name.location.clone(),
                 original_name: None,
             }, LinkageType::Internal)?;
             resolved_params.push(FunctionParameter {
-                loc: p.loc.clone(),
                 param_type: Box::new(resolve_type_expression(sub_ctx, &p.param_type)?),
-                param_name: mapped_symbol.name.clone(),
+                param_name: mapped_symbol,
             });
         }
         match &f.body {
