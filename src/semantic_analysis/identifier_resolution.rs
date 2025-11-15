@@ -1248,6 +1248,54 @@ mod test {
         assert!(resolv_result.is_ok());
     }
 
+    #[test]
+    fn test_should_error_when_parameter_redeclared_in_function_body() {
+        let program = indoc! {r#"
+        int main(int a) {
+            int a = 5;
+            return 0;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::AlreadyDeclared { name, current_loc: _, original_loc: _ } = resolv_result.unwrap_err() else {
+            panic!("unexpected error");
+        };
+        assert_eq!(name, "a".to_string());
+    }
+
+    #[test]
+    fn test_should_error_on_undeclared_function_use() {
+        let program = indoc! {r#"
+        int main(void) {
+            int x = foo();
+            return 0;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::NotFound { name } = resolv_result.unwrap_err() else {
+            panic!("unexpected error");
+        };
+        assert_eq!(name, "foo".to_string());
+    }
+
+    #[test]
+    fn test_should_error_on_undeclared_variable_in_assignment() {
+        let program = indoc! {r#"
+        int main(void) {
+            int x = y;
+            return 0;
+        }
+        "#};
+        let resolv_result = run_program_resolution(program);
+        assert!(resolv_result.is_err());
+        let IdentifierResolutionError::NotFound { name } = resolv_result.unwrap_err() else {
+            panic!("unexpected error");
+        };
+        assert_eq!(name, "y".to_string());
+    }
+
     fn assert_successful_identifier_resolution(program: &str) {
         let resolved = run_program_resolution(program);
         assert!(resolved.is_ok(), "{:#?}", resolved);

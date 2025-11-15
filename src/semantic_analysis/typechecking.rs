@@ -1008,67 +1008,6 @@ mod test {
         assert!(res.is_err(), "{:?}", res);
     }
 
-    #[test]
-    fn test_variable_redeclared_same_scope() {
-        let program = r#"
-        int main(void) {
-            int x = 5;
-            int x = 10;
-            return 0;
-        }
-        "#;
-        let res = run_program_typechecks(program);
-        assert!(res.is_err(), "{:?}", res);
-    }
-
-    #[test]
-    fn test_parameter_redeclared_in_function_body() {
-        let program = r#"
-        int main(int a) {
-            int a = 5;
-            return 0;
-        }
-        "#;
-        let res = run_program_typechecks(program);
-        assert!(res.is_err(), "{:?}", res);
-    }
-
-    #[test]
-    fn test_unknown_variable() {
-        let program = r#"
-        int main(void) {
-            int x = y;
-            return 0;
-        }
-        "#;
-        let res = run_program_typechecks(program);
-        assert!(res.is_err(), "{:?}", res);
-    }
-
-    #[test]
-    fn test_unknown_function() {
-        let program = r#"
-        int main(void) {
-            int x = foo();
-            return 0;
-        }
-        "#;
-        let res = run_program_typechecks(program);
-        assert!(res.is_err(), "{:?}", res);
-    }
-
-    #[test]
-    fn test_variable_used_before_declaration() {
-        let program = r#"
-        int main(void) {
-            int x = y;
-            int y = 5;
-            return 0;
-        }
-        "#;
-        let res = run_program_typechecks(program);
-        assert!(res.is_err(), "{:?}", res);
-    }
 
     #[test]
     fn test_unary_op_on_function() {
@@ -1252,19 +1191,6 @@ mod test {
         assert!(res.is_ok(), "{:?}", res);
     }
 
-    #[test]
-    fn test_valid_function_in_function() {
-        let program = r#"
-        int main(void) {
-            int inner(int x) {
-                return x + 1;
-            }
-            return inner(5);
-        }
-        "#;
-        let res = run_program_typechecks(program);
-        assert!(res.is_ok(), "{:?}", res);
-    }
 
     #[test]
     fn test_valid_deeply_nested_scopes() {
