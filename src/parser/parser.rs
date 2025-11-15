@@ -16,6 +16,16 @@ use crate::parser::ParserError::*;
 pub struct Symbol {
     pub name: String,
     pub(crate) location: Location,
+    pub(crate) original_name: Option<String>,
+}
+
+impl Symbol {
+    fn get_canonical_name(&self) -> String {
+        match &self.original_name {
+            Some(original) => original.clone(),
+            None => self.name.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize)]
@@ -166,7 +176,7 @@ impl BinaryOperator {
 #[serde(rename_all = "snake_case")]
 pub enum ExpressionKind {
     IntConstant(String, Radix),
-    Variable(String),
+    Variable(Symbol),
     Unary(UnaryOperator, Box<Expression>),
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Conditional {
@@ -177,7 +187,7 @@ pub enum ExpressionKind {
     Assignment { lvalue: Box<Expression>, rvalue: Box<Expression>, op: Option<CompoundAssignmentType> },
     Increment { is_post: bool, e: Box<Expression> },
     Decrement { is_post: bool, e: Box<Expression> },
-    FunctionCall { func_name: String, actual_params: Vec<Box<Expression>> },
+    FunctionCall { func_name: Symbol, actual_params: Vec<Box<Expression>> },
 }
 
 impl ExpressionKind {
@@ -623,7 +633,7 @@ impl<'a> Parser<'a> {
         match self.token_provider.next() {
             Some(Ok(Token { location, token_type })) => {
                 match token_type {
-                    TokenType::Identifier(name) => Ok(Symbol { name: name.to_string(), location }),
+                    TokenType::Identifier(name) => Ok(Symbol { name: name.to_string(), location, original_name: None }),
                     TokenType::Keyword(kwd) => Err(KeywordUsedAsIdentifier { location, kwd }),
                     _ => Err(UnexpectedToken { location, expected_token_tags: vec![TokenTag::Identifier] })
                 }
@@ -1043,13 +1053,18 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::Identifier(identifier) => {
                         let ident = identifier.to_string();
+                        let ident_symbol = Symbol {
+                            name: ident.clone(),
+                            location: tok_location,
+                            original_name: None,
+                        };
                         self.token_provider.next();
 
                         let next_tok = self.token_provider.peek();
                         match next_tok {
                             None => Ok(Expression {
                                 location: tok_location,
-                                kind: ExpressionKind::Variable(ident),
+                                kind: ExpressionKind::Variable(ident_symbol),
                             }),
                             Some(Err(e)) => Err(TokenizationError(e.clone())),
                             Some(Ok(tok)) => {
@@ -1060,14 +1075,14 @@ impl<'a> Parser<'a> {
                                         Ok(Expression {
                                             location: tok_location,
                                             kind: ExpressionKind::FunctionCall {
-                                                func_name: ident,
+                                                func_name: ident_symbol,
                                                 actual_params: args,
                                             }
                                         })
                                     }
                                     _ => Ok(Expression {
                                         location: tok_location,
-                                        kind: ExpressionKind::Variable(ident),
+                                        kind: ExpressionKind::Variable(ident_symbol),
                                     })
                                 }
                             }
@@ -1290,6 +1305,7 @@ mod test {
                         name: Symbol {
                             name: "main".to_string(),
                             location: (1,8).into(),
+                            original_name: None,
                         },
                         params: vec![],
                         body: Some(Block {
@@ -1334,7 +1350,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1, 1).into(),
-                        name: Symbol { name: "main".to_string(), location: (1, 5).into() },
+                        name: Symbol { name: "main".to_string(), location: (1, 5).into(), original_name: None  },
                         params: vec![],
                         body: Some(Block {
                             start_loc: (1, 16).into(),
@@ -1356,7 +1372,7 @@ mod test {
                     location: (5,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (5,1).into(),
-                        name: Symbol { name: "foo".to_string(), location: (5,5).into() },
+                        name: Symbol { name: "foo".to_string(), location: (5,5).into(), original_name: None },
                         params: vec![],
                         body: Some(Block {
                             start_loc: (5,15).into(),
@@ -1397,6 +1413,7 @@ mod test {
                         name: Symbol {
                             name: "add".to_string(),
                             location: (1,5).into(),
+                            original_name: None,
                         },
                         params: vec![
                             FunctionParameter {
@@ -1429,11 +1446,11 @@ mod test {
                                             BinaryOperator::Add,
                                             Box::new(Expression {
                                                 location: (2,12).into(),
-                                                kind: Variable("a".to_string()),
+                                                kind: Variable(Symbol{ name: "a".to_string(), location: (2,12).into(), original_name: None }),
                                             }),
                                             Box::new(Expression {
                                                 location: (2,16).into(),
-                                                kind: Variable("b".to_string()),
+                                                kind: Variable(Symbol{ name: "b".to_string(), location: (2,16).into(), original_name: None }),
                                             }),
                                         ),
                                     }),
@@ -1462,7 +1479,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
-                        name: Symbol { location: (1,5).into(), name: "add".to_string() },
+                        name: Symbol { location: (1,5).into(), name: "add".to_string(), original_name: None },
                         params: vec![
                             FunctionParameter {
                                 loc: (1,9).into(),
@@ -1488,7 +1505,7 @@ mod test {
                     location: (2,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (2,1).into(),
-                        name: Symbol { location: (2,5).into(), name: "do_foo".to_string() },
+                        name: Symbol { location: (2,5).into(), name: "do_foo".to_string(), original_name: None },
                         params: vec![],
                         body: None,
                     }),
@@ -1514,7 +1531,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
-                        name: Symbol { name: "main".to_string(), location: (1,5).into() },
+                        name: Symbol { name: "main".to_string(), location: (1,5).into(), original_name: None },
                         params: vec![],
                         body: Some(Block {
                             start_loc: (1,16).into(),
@@ -1602,7 +1619,7 @@ mod test {
                     is_post: true,
                     e: Box::new(Expression {
                         location: (1,1).into(),
-                        kind: Variable("a".into()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1,1).into(), original_name: None }),
                     }),
                 },
             }),
@@ -1622,7 +1639,7 @@ mod test {
                     is_post: true,
                     e: Box::new(Expression {
                         location: (1,1).into(),
-                        kind: Variable("a".into()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1,1).into(), original_name: None }),
                     }),
                 },
             }),
@@ -1641,7 +1658,7 @@ mod test {
                 kind: Assignment {
                     lvalue: Box::new(Expression {
                         location: (1, 1).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), original_name: None, location: (1,1).into() }),
                     }),
                     rvalue: Box::new(Expression {
                         location: (1, 5).into(),
@@ -1663,14 +1680,14 @@ mod test {
             kind: If {
                 condition: Box::new(Expression {
                     location: (1,5).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), original_name: None, location: (1,5).into() }),
                 }),
                 then_statement: Box::new(Statement {
                     location: (1,8).into(),
                     labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (1,8).into(),
-                        kind: Variable("b".to_string()),
+                        kind: Variable(Symbol { name: "b".to_string(), original_name: None, location: (1,8).into() }),
                     }),
                 }),
                 else_statement: None,
@@ -1688,14 +1705,14 @@ mod test {
             kind: If {
                 condition: Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1,5).into(), original_name: None }),
                 }),
                 then_statement: Box::new(Statement {
                     location: (1, 8).into(),
                     labels: vec![],
                     kind: Expression(Expression {
                         location: (1, 8).into(),
-                        kind: Variable("b".to_string()),
+                        kind: Variable(Symbol { name: "b".to_string(), location: (1, 8).into(), original_name: None }),
                     }),
                 }),
                 else_statement: Some(Box::new(Statement {
@@ -1703,7 +1720,7 @@ mod test {
                     labels: vec![],
                     kind: Expression(Expression {
                         location: (1, 16).into(),
-                        kind: Variable("c".to_string()),
+                        kind: Variable(Symbol { name: "c".to_string(), location: (1, 16).into(), original_name: None }),
                     }),
                 })),
             },
@@ -1721,7 +1738,7 @@ mod test {
             kind: If {
                 condition: Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 then_statement: Box::new(Statement {
                     labels: vec![],
@@ -1734,7 +1751,7 @@ mod test {
                             location: (1, 10).into(),
                             kind: Return(Expression {
                                 location: (1, 17).into(),
-                                kind: Variable("b".to_string()),
+                                kind: Variable(Symbol { name: "b".to_string(), location: (1, 17).into(), original_name: None }),
                             }),
                         })],
                     }),
@@ -1754,7 +1771,7 @@ mod test {
                                     kind: Assignment {
                                         lvalue: Box::new(Expression {
                                             location: (1, 29).into(),
-                                            kind: Variable("b".to_string()),
+                                            kind: Variable(Symbol { name: "b".to_string(), location: (1, 29).into(), original_name: None }),
                                         }),
                                         rvalue: Box::new(Expression {
                                             location: (1, 34).into(),
@@ -1769,7 +1786,7 @@ mod test {
                                 location: (1, 38).into(),
                                 kind: Return(Expression {
                                     location: (1, 45).into(),
-                                    kind: Variable("b".to_string()),
+                                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 45).into(), original_name: None }),
                                 }),
                             }),
                         ],
@@ -1801,7 +1818,7 @@ mod test {
                         BinaryOperator::LessThan,
                         Box::new(Expression {
                             location: (1, 5).into(),
-                            kind: Variable("a".to_string()),
+                            kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                         }),
                         Box::new(Expression {
                             location: (1, 9).into(),
@@ -1827,7 +1844,7 @@ mod test {
                                 BinaryOperator::LessThan,
                                 Box::new(Expression {
                                     location: (3, 10).into(),
-                                    kind: Variable("a".to_string()),
+                                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                                 }),
                                 Box::new(Expression {
                                     location: (3, 14).into(),
@@ -1885,7 +1902,7 @@ mod test {
             kind: If {
                 condition: Box::new(Expression {
                     location: (1, 5).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 then_statement: Box::new(Statement {
                     labels: vec![],
@@ -1893,7 +1910,7 @@ mod test {
                     kind: If {
                         condition: Box::new(Expression {
                             location: (2, 9).into(),
-                            kind: Variable("b".to_string()),
+                            kind: Variable(Symbol { name: "b".to_string(), location: (2, 9).into(), original_name: None }),
                         }),
                         then_statement: Box::new(Statement {
                             labels: vec![],
@@ -1931,7 +1948,7 @@ mod test {
                 kind: Assignment {
                     lvalue: Box::new(Expression {
                         location: (1, 4).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                     rvalue: Box::new(Expression {
                         location: (1, 8).into(),
@@ -1959,7 +1976,7 @@ mod test {
                 kind: Assignment {
                     lvalue: Box::new(Expression {
                         location: (1,10).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                     rvalue: Box::new(Expression {
                         location: (1, 14).into(),
@@ -1984,14 +2001,14 @@ mod test {
             kind: If {
                 condition: Box::new(Expression {
                     location: (2, 9).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 then_statement: Box::new(Statement {
                     location: (2, 12).into(),
                     labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (2, 12).into(),
-                        kind: Variable("b".to_string()),
+                        kind: Variable(Symbol { name: "b".to_string(), location: (2, 12).into(), original_name: None }),
                     }),
                 }),
                 else_statement: Some(Box::new(Statement {
@@ -1999,7 +2016,7 @@ mod test {
                     labels: vec![],
                     kind: StatementKind::Expression(Expression {
                         location: (2, 20).into(),
-                        kind: Variable("c".to_string()),
+                        kind: Variable(Symbol { name: "c".to_string(), location: (2, 20).into(), original_name: None }),
                     }),
                 })),
             },
@@ -2021,6 +2038,7 @@ mod test {
                     identifier: Symbol {
                         name: "i".to_string(),
                         location: (1, 10).into(),
+                        original_name: None,
                     },
                     init_expression: Some(Expression {
                         location: (1, 14).into(),
@@ -2033,7 +2051,7 @@ mod test {
                         BinaryOperator::LessThan,
                         Box::new(Expression {
                             location: (1, 17).into(),
-                            kind: Variable("i".to_string()),
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1, 17).into(), original_name: None }),
                         }),
                         Box::new(Expression {
                             location: (1, 21).into(),
@@ -2047,7 +2065,7 @@ mod test {
                         is_post: true,
                         e: Box::new(Expression {
                             location: (1, 25).into(),
-                            kind: Variable("i".to_string()),
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1, 25).into(), original_name: None }),
                         }),
                     },
                 })),
@@ -2059,7 +2077,7 @@ mod test {
                         kind: Assignment {
                             lvalue: Box::new(Expression {
                                 location: (2, 5).into(),
-                                kind: Variable("x".to_string()),
+                                kind: Variable(Symbol { name: "x".to_string(), location: (2, 5).into(), original_name: None }),
                             }),
                             rvalue: Box::new(Expression {
                                 location: (2, 9).into(),
@@ -2067,11 +2085,11 @@ mod test {
                                     BinaryOperator::Add,
                                     Box::new(Expression {
                                         location: (2, 9).into(),
-                                        kind: Variable("x".to_string()),
+                                        kind: Variable(Symbol { name: "x".to_string(), location: (2, 9).into(), original_name: None }),
                                     }),
                                     Box::new(Expression {
                                         location: (2, 13).into(),
-                                        kind: Variable("i".to_string()),
+                                        kind: Variable(Symbol { name: "i".to_string(), location: (2, 13).into(), original_name: None }),
                                     }),
                                 ),
                             }),
@@ -2101,7 +2119,7 @@ mod test {
                         kind: Assignment {
                             lvalue: Box::new(Expression {
                                 location: (1,6).into(),
-                                kind: Variable("i".to_string()),
+                                kind: Variable(Symbol { name: "i".to_string(), location: (1,6).into(), original_name: None }),
                             }),
                             rvalue: Box::new(Expression {
                                 location: (1,10).into(),
@@ -2117,7 +2135,7 @@ mod test {
                         BinaryOperator::LessThan,
                         Box::new(Expression {
                             location: (1,13).into(),
-                            kind: Variable("i".to_string())
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1,13).into(), original_name: None })
                         }),
                         Box::new(Expression {
                             location: (1,17).into(),
@@ -2131,7 +2149,7 @@ mod test {
                         is_post: true,
                         e: Box::new(Expression {
                             location: (1,21).into(),
-                            kind: Variable("i".to_string())
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1,21).into(), original_name: None })
                         }),
                     },
                 })),
@@ -2143,11 +2161,11 @@ mod test {
                         kind: Assignment {
                             lvalue: Box::new(Expression {
                                 location: (2,5).into(),
-                                kind: Variable("x".to_string()),
+                                kind: Variable(Symbol { name: "x".to_string(), location: (2,5).into(), original_name: None }),
                             }),
                             rvalue: Box::new(Expression {
                                 location: (2,10).into(),
-                                kind: Variable("i".to_string()),
+                                kind: Variable(Symbol { name: "i".to_string(), location: (2,10).into(), original_name: None }),
                             }),
                             op: Some(CompoundAssignmentType::Add),
                         },
@@ -2172,7 +2190,7 @@ mod test {
                     kind: Assignment {
                         lvalue: Box::new(Expression {
                             location: (1, 9).into(),
-                            kind: Variable("i".into()),
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1, 9).into(), original_name: None }),
                         }),
                         rvalue: Box::new(Expression {
                             location: (1, 13).into(),
@@ -2187,7 +2205,7 @@ mod test {
                         BinaryOperator::LessThan,
                         Box::new(Expression {
                             location: (1, 16).into(),
-                            kind: Variable("i".into()),
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1, 9).into(), original_name: None }),
                         }),
                         Box::new(Expression {
                             location: (1, 20).into(),
@@ -2201,7 +2219,7 @@ mod test {
                         is_post: true,
                         e: Box::new(Expression {
                             location: (1, 24).into(),
-                            kind: Variable("i".into()),
+                            kind: Variable(Symbol { name: "i".to_string(), location: (1, 9).into(), original_name: None }),
                         }),
                     },
                 })),
@@ -2213,11 +2231,11 @@ mod test {
                         kind: Assignment {
                             lvalue: Box::new(Expression {
                                 location: (1, 29).into(),
-                                kind: Variable("x".into()),
+                                kind: Variable(Symbol { name: "x".to_string(), location: (1, 16).into(), original_name: None }),
                             }),
                             rvalue: Box::new(Expression {
                                 location: (1, 34).into(),
-                                kind: Variable("i".into()),
+                                kind: Variable(Symbol { name: "i".to_string(), location: (1, 9).into(), original_name: None }),
                             }),
                             op: Some(CompoundAssignmentType::Add),
                         },
@@ -2265,7 +2283,7 @@ mod test {
                         BinaryOperator::LessThan,
                         Box::new(Expression {
                             location: (1, 8).into(),
-                            kind: Variable("x".into()),
+                            kind: Variable(Symbol { name: "x".to_string(), location: (1, 16).into(), original_name: None }),
                         }),
                         Box::new(Expression {
                             location: (1, 12).into(),
@@ -2282,7 +2300,7 @@ mod test {
                             is_post: true,
                             e: Box::new(Expression {
                                 location: (1, 16).into(),
-                                kind: Variable("x".into()),
+                                kind: Variable(Symbol { name: "x".to_string(), location: (1, 16).into(), original_name: None }),
                             }),
                         },
                     }),
@@ -2320,7 +2338,7 @@ mod test {
                                         is_post: true,
                                         e: Box::new(Expression {
                                             location: (2,5).into(),
-                                            kind: Variable("x".into()),
+                                            kind: Variable(Symbol { name: "x".to_string(), location: (1, 16).into(), original_name: None }),
                                         }),
                                     },
                                 }),
@@ -2334,7 +2352,7 @@ mod test {
                                         is_post: false,
                                         e: Box::new(Expression {
                                             location: (2,12).into(),
-                                            kind: Variable("y".into()),
+                                            kind: Variable(Symbol { name: "y".to_string(), location: (2, 12).into(), original_name: None }),
                                         }),
                                     },
                                 }),
@@ -2348,7 +2366,7 @@ mod test {
                         BinaryOperator::LessThan,
                         Box::new(Expression {
                             location: (3,10).into(),
-                            kind: Variable("x".into()),
+                            kind: Variable(Symbol { name: "x".to_string(), location: (1, 16).into(), original_name: None }),
                         }),
                         Box::new(Expression {
                             location: (3,14).into(),
@@ -2404,7 +2422,7 @@ mod test {
         let expected = Ok(Expression {
             location: (1,1).into(),
             kind: FunctionCall {
-                func_name: "foo".to_string(),
+                func_name: Symbol { name: "foo".to_string(), location: (1,1).into(), original_name: None },
                 actual_params: vec![
                     Box::new(Expression { location: (1,5).into(), kind: IntConstant("1".to_string(), Decimal) }),
                     Box::new(Expression { location: (1,7).into(), kind: IntConstant("2".to_string(), Decimal) }),
@@ -2421,7 +2439,7 @@ mod test {
         let expected = Ok(Expression {
             location: (1,1).into(),
             kind: FunctionCall {
-                func_name: "foo".to_string(),
+                func_name: Symbol { name: "foo".to_string(), location: (1,1).into(), original_name: None },
                 actual_params: vec![],
             }
         });
@@ -2840,7 +2858,7 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1, 3).into(),
@@ -2860,14 +2878,14 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1, 1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1, 3).into(),
                     kind: Assignment {
                         lvalue: Box::new(Expression {
                             location: (1, 3).into(),
-                            kind: Variable("b".to_string()),
+                            kind: Variable(Symbol { name: "b".to_string(), location: (1, 3).into(), original_name: None }),
                         }),
                         rvalue: Box::new(Expression {
                             location: (1, 5).into(),
@@ -2960,11 +2978,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::Add),
             },
@@ -2980,11 +2998,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::Subtract),
             },
@@ -3000,11 +3018,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::Multiply),
             },
@@ -3020,11 +3038,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::Divide),
             },
@@ -3040,11 +3058,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::Modulo),
             },
@@ -3060,11 +3078,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::BitwiseAnd),
             },
@@ -3080,11 +3098,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::BitwiseOr),
             },
@@ -3100,11 +3118,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,6).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::BitwiseXor),
             },
@@ -3120,11 +3138,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,7).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::LeftShift),
             },
@@ -3140,11 +3158,11 @@ mod test {
             kind: Assignment {
                 lvalue: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string()),
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                 }),
                 rvalue: Box::new(Expression {
                     location: (1,7).into(),
-                    kind: Variable("b".to_string()),
+                    kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                 }),
                 op: Some(CompoundAssignmentType::RightShift),
             },
@@ -3161,7 +3179,7 @@ mod test {
                 is_post: true,
                 e: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string())
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1,1).into(), original_name: None })
                 })
             }
         });
@@ -3177,7 +3195,7 @@ mod test {
                 is_post: true,
                 e: Box::new(Expression {
                     location: (1,1).into(),
-                    kind: Variable("a".to_string())
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1,1).into(), original_name: None })
                 })
             }
         });
@@ -3193,7 +3211,7 @@ mod test {
                 is_post: false,
                 e: Box::new(Expression {
                     location: (1,3).into(),
-                    kind: Variable("a".to_string())
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1,3).into(), original_name: None })
                 })
             }
         });
@@ -3209,7 +3227,7 @@ mod test {
                 is_post: false,
                 e: Box::new(Expression {
                     location: (1,3).into(),
-                    kind: Variable("a".to_string())
+                    kind: Variable(Symbol { name: "a".to_string(), location: (1,3).into(), original_name: None })
                 })
             }
         });
@@ -3226,7 +3244,7 @@ mod test {
                     is_post: true,
                     e: Box::new(Expression {
                         location: (1,2).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                 },
             }),
@@ -3239,7 +3257,7 @@ mod test {
                     is_post: false,
                     e: Box::new(Expression {
                         location: (1,4).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                 },
             }),
@@ -3256,7 +3274,7 @@ mod test {
                     is_post: true,
                     e: Box::new(Expression {
                         location: (1,2).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                 },
             }),
@@ -3269,7 +3287,7 @@ mod test {
                     is_post: false,
                     e: Box::new(Expression {
                         location: (1,4).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                 },
             }),
@@ -3285,7 +3303,7 @@ mod test {
                 kind: Conditional {
                     condition: Box::new(Expression {
                         location: (1,1).into(),
-                        kind: Variable("is_expected".to_string()),
+                        kind: Variable(Symbol { name: "is_expected".to_string(), location: (1,1).into(), original_name: None }),
                     }),
                     then_expr: Box::new(Expression {
                         location: (1,15).into(),
@@ -3309,14 +3327,14 @@ mod test {
                 kind: Assignment {
                     lvalue: Box::new(Expression {
                         location: (1, 1).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                     rvalue: Box::new(Expression {
                         location: (1, 5).into(),
                         kind: Conditional {
                             condition: Box::new(Expression {
                                 location: (1, 5).into(),
-                                kind: Variable("b".to_string()),
+                                kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                             }),
                             then_expr: Box::new(Expression {
                                 location: (1, 9).into(),
@@ -3348,11 +3366,11 @@ mod test {
                             BinaryOperator::And,
                             Box::new(Expression {
                                 location: (1, 1).into(),
-                                kind: Variable("a".to_string()),
+                                kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                             }),
                             Box::new(Expression {
                                 location: (1, 6).into(),
-                                kind: Variable("b".to_string()),
+                                kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                             }),
                         ),
                     }),
@@ -3379,7 +3397,7 @@ mod test {
                 kind: Conditional {
                     condition: Box::new(Expression {
                         location: (1, 1).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                     then_expr: Box::new(Expression {
                         location: (1, 5).into(),
@@ -3390,7 +3408,7 @@ mod test {
                         kind: Conditional {
                             condition: Box::new(Expression {
                                 location: (1, 9).into(),
-                                kind: Variable("b".to_string()),
+                                kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                             }),
                             then_expr: Box::new(Expression {
                                 location: (1, 13).into(),
@@ -3416,14 +3434,14 @@ mod test {
                 kind: Conditional {
                     condition: Box::new(Expression {
                         location: (1, 1).into(),
-                        kind: Variable("a".to_string()),
+                        kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                     }),
                     then_expr: Box::new(Expression {
                         location: (1, 5).into(),
                         kind: Conditional {
                             condition: Box::new(Expression {
                                 location: (1, 5).into(),
-                                kind: Variable("b".to_string()),
+                                kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                             }),
                             then_expr: Box::new(Expression {
                                 location: (1, 9).into(),
@@ -3465,6 +3483,7 @@ mod test {
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
+                    original_name: None,
                 },
                 init_expression: None,
             }),
@@ -3481,6 +3500,7 @@ mod test {
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
+                    original_name: None,
                 },
                 init_expression: Some(super::Expression {
                     location: (1, 9).into(),
@@ -3557,6 +3577,7 @@ mod test {
                         identifier: Symbol {
                             location: (2, 9).into(),
                             name: "a".to_string(),
+                            original_name: None,
                         },
                         init_expression: Some(Expression {
                             location: (2, 13).into(),
@@ -3570,6 +3591,7 @@ mod test {
                         identifier: Symbol {
                             location: (3, 9).into(),
                             name: "b".to_string(),
+                            original_name: None,
                         },
                         init_expression: None,
                     }),
@@ -3582,7 +3604,7 @@ mod test {
                         kind: Assignment {
                             lvalue: Box::new(Expression {
                                 location: (4, 5).into(),
-                                kind: Variable("b".to_string()),
+                                kind: Variable(Symbol { name: "b".to_string(), location: (1, 1).into(), original_name: None }),
                             }),
                             rvalue: Box::new(Expression {
                                 location: (4, 9).into(),
@@ -3620,6 +3642,7 @@ mod test {
                         identifier: Symbol {
                             name: "a".to_string(),
                             location: (2, 7).into(),
+                            original_name: None,
                         },
                         init_expression: Some(Expression {
                             location: (2, 11).into(),
@@ -3637,7 +3660,7 @@ mod test {
                             BlockItem::Declaration(Declaration {
                                 location: (4, 5).into(),
                                 kind: DeclarationKind::VarDeclaration(VariableDeclaration {
-                                    identifier: Symbol { location: (4, 9).into(), name: "b".to_string() },
+                                    identifier: Symbol { location: (4, 9).into(), name: "b".to_string(), original_name: None },
                                     init_expression: Some(Expression {
                                         location: (4, 13).into(),
                                         kind: IntConstant("20".to_string(), Decimal),
@@ -3647,7 +3670,7 @@ mod test {
                             BlockItem::Declaration(Declaration {
                                 location: (5, 5).into(),
                                 kind: DeclarationKind::VarDeclaration(VariableDeclaration {
-                                    identifier: Symbol { location: (5, 9).into(), name: "c".to_string() },
+                                    identifier: Symbol { location: (5, 9).into(), name: "c".to_string(), original_name: None },
                                     init_expression: Some(Expression {
                                         location: (5, 13).into(),
                                         kind: IntConstant("30".to_string(), Decimal),
@@ -3662,7 +3685,7 @@ mod test {
                                     kind: Assignment {
                                         lvalue: Box::new(Expression {
                                             location: (6, 5).into(),
-                                            kind: Variable("a".to_string()),
+                                            kind: Variable(Symbol { name: "a".to_string(), location: (1, 5).into(), original_name: None }),
                                         }),
                                         rvalue: Box::new(Expression {
                                             location: (6, 9).into(),
@@ -3670,11 +3693,11 @@ mod test {
                                                 BinaryOperator::Add,
                                                 Box::new(Expression {
                                                     location: (6, 9).into(),
-                                                    kind: Variable("b".to_string()),
+                                                    kind: Variable(Symbol { name: "b".to_string(), location: (6, 9).into(), original_name: None }),
                                                 }),
                                                 Box::new(Expression {
                                                     location: (6, 13).into(),
-                                                    kind: Variable("c".to_string()),
+                                                    kind: Variable(Symbol { name: "c".to_string(), location: (6, 13).into(), original_name: None }),
                                                 }),
                                             ),
                                         }),

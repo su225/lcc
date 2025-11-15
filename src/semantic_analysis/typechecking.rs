@@ -2,10 +2,10 @@ use std::cmp::PartialEq;
 use std::collections::HashMap;
 
 use thiserror::Error;
-
+use TypecheckError::FunctionUsedAsVariable;
 use crate::common::Location;
 use crate::parser;
-use crate::parser::{BinaryOperator, Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, PrimitiveKind, Program, Statement, StatementKind, Symbol, TypeExpressionKind, UnaryOperator, VariableDeclaration};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, PrimitiveKind, Program, Statement, StatementKind, Symbol, TypeExpressionKind, UnaryOperator, VariableDeclaration};
 use crate::semantic_analysis::typechecking::TypecheckError::{IncompatibleTypeForUnaryOp, IncompatibleTypes, IncompatibleTypesForTernary};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -84,13 +84,13 @@ struct BlockScope {
 }
 
 impl BlockScope {
-    fn add_declaration_ignore_conflict(&mut self, symbol: String, ty: Type) -> Result<(), TypecheckError> {
-        self.symbol_types.insert(symbol, ty);
+    fn add_declaration_ignore_conflict(&mut self, symbol: Symbol, ty: Type) -> Result<(), TypecheckError> {
+        self.symbol_types.insert(symbol.name, ty);
         Ok(())
     }
 
-    fn add_declaration(&mut self, symbol: String, ty: Type) -> Result<(), TypecheckError> {
-        if let Some(prev_decl) = self.symbol_types.get(&symbol) {
+    fn add_declaration(&mut self, symbol: Symbol, ty: Type) -> Result<(), TypecheckError> {
+        if let Some(prev_decl) = self.symbol_types.get(&symbol.name) {
             return Err(TypecheckError::RedeclarationNotAllowed {
                 symbol,
                 previous_decl: prev_decl.clone(),
@@ -154,24 +154,25 @@ impl TypecheckContext {
         }
         // in case of function, we can declare the same signature multiple times in the same
         // scope or even across scopes. This is not a conflict.
+        self.declared_funcs.insert(f.name.name.clone(), symbol_type.clone());
         let cur_scope = self.get_current_scope_mut();
-        cur_scope.add_declaration_ignore_conflict(f.name.name.clone(), symbol_type)?;
+        cur_scope.add_declaration_ignore_conflict(f.name.clone(), symbol_type)?;
         Ok(())
     }
 
     fn add_variable_declaration(&mut self, ident: Symbol, ty: Type) -> Result<(), TypecheckError> {
         let cur_scope = self.get_current_scope_mut();
-        cur_scope.add_declaration(ident.name.clone(), ty)
+        cur_scope.add_declaration(ident, ty)
     }
 
-    fn get_type(&self, v: &String) -> Result<Type, TypecheckError> {
+    fn get_type(&self, v: &Symbol) -> Result<Type, TypecheckError> {
         for scope in self.scopes.iter().rev() {
-            let ty = scope.get_type(v);
+            let ty = scope.get_type(&v.name);
             if let Some(t) = ty {
                 return Ok(t)
             }
         }
-        Err(TypecheckError::UnknownTypeForSymbol { symbol: v.clone() })
+        Err(TypecheckError::UnknownTypeForSymbol { symbol: v.clone(), location: v.location.clone() })
     }
 
     #[inline]
@@ -194,15 +195,15 @@ impl TypecheckContext {
 #[derive(Debug, Error)]
 pub enum TypecheckError {
     #[error("{location:?}: function '{symbol:?}' used as variable")]
-    FunctionUsedAsVariable { symbol: String, location: Location },
+    FunctionUsedAsVariable { symbol: Symbol, location: Location },
 
     #[error("{location:?}: variable '{symbol:?}' of type '{symbol_type:?}' used as function")]
-    VariableUsedAsFunction { symbol: String, symbol_type: TypeDescriptor, location: Location },
+    VariableUsedAsFunction { symbol: Symbol, symbol_type: TypeDescriptor, location: Location },
 
     #[error("{location:?}: function '{func_name:?}' called with wrong number of args (expected:{expected_param_count:?}, actual:{actual_param_count:?}")]
     FunctionCalledWithWrongNumberOfArguments {
         location: Location,
-        func_name: String,
+        func_name: Symbol,
         expected_param_count: usize,
         actual_param_count: usize,
     },
@@ -215,10 +216,10 @@ pub enum TypecheckError {
     },
 
     #[error("symbol '{symbol:?}' re-declared in scope. Prev:{previous_decl:?}, Cur:{current_decl:?}")]
-    RedeclarationNotAllowed { symbol: String, previous_decl: Type, current_decl: Type },
+    RedeclarationNotAllowed { symbol: Symbol, previous_decl: Type, current_decl: Type },
 
-    #[error("type for symbol '{symbol:?}' unknown")]
-    UnknownTypeForSymbol { symbol: String },
+    #[error("{location:?}: type for symbol '{symbol:?}' unknown")]
+    UnknownTypeForSymbol { location: Location, symbol: Symbol },
 
     #[error("{location:?}: incompatible type `{op_type:?}` for unary operator {unary_op:?}")]
     IncompatibleTypeForUnaryOp { location: Location, unary_op: UnaryOperator, op_type: TypeDescriptor },
@@ -251,7 +252,12 @@ fn typecheck_function_declaration(ctx: &mut TypecheckContext, decl: &Function) -
         if let Some(ref body) = decl.body {
             for formal_param in decl.params.iter() {
                 let p = Type::from(&*formal_param.param_type);
-                sub_ctx.add_variable_declaration(decl.name.clone(), p)?;
+                let formal_param_symbol = Symbol {
+                    name: formal_param.param_name.clone(),
+                    location: formal_param.loc.clone(),
+                    original_name: None,
+                };
+                sub_ctx.add_variable_declaration(formal_param_symbol, p)?;
             }
             // typecheck without introducing a new scope. This is because re-declaring
             // the same formal parameter with a different type is an error if it is done
@@ -291,7 +297,17 @@ fn typecheck_variable_declaration(ctx: &mut TypecheckContext, decl: &VariableDec
         location: decl.identifier.location.clone(),
         descriptor: var_type_descriptor.clone(),
     };
-    ctx.add_variable_declaration(decl.identifier.clone(), int_variable_type)?;
+    ctx.add_variable_declaration(decl.identifier.clone(), int_variable_type.clone())?;
+    if let Some(ref init_expr) = decl.init_expression {
+        let init_expr_type = typecheck_expression(ctx, init_expr)?;
+        if !init_expr_type.is_assignable_to(&int_variable_type.descriptor) {
+            return Err(IncompatibleTypes {
+                location: init_expr.location.clone(),
+                lhs_type: int_variable_type.descriptor,
+                rhs_type: init_expr_type,
+            });
+        }
+    }
     Ok(var_type_descriptor)
 }
 
@@ -318,8 +334,8 @@ fn typecheck_statement(ctx: &mut TypecheckContext, stmt: &Statement) -> Result<T
         StatementKind::For { init, condition, post, loop_body, .. } => {
             ctx.with_scope(|sub_ctx| {
                 match init {
-                    ForInit::InitDecl(_) => {}
-                    ForInit::InitExpr(_) => {}
+                    ForInit::InitDecl(decl) => { typecheck_variable_declaration(sub_ctx, &*decl)?; }
+                    ForInit::InitExpr(expr) => { typecheck_expression(sub_ctx, &*expr)?; }
                     ForInit::Null => {}
                 };
                 if let Some(ref cond) = condition {
@@ -344,12 +360,9 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
     let loc = expr.location.clone();
     match &expr.kind {
         ExpressionKind::Variable(v) => {
-            let actual_symbol_type = ctx.get_type(v)?.descriptor;
+            let actual_symbol_type = ctx.get_type(&v)?.descriptor;
             if actual_symbol_type != TypeDescriptor::Integer {
-                return Err(TypecheckError::FunctionUsedAsVariable {
-                    symbol: v.clone(),
-                    location: loc,
-                })
+                return Err(FunctionUsedAsVariable { symbol: v.clone(), location: loc })
             }
             Ok(actual_symbol_type.clone())
         }
@@ -357,16 +370,17 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
             let lhs_type = typecheck_expression(ctx, &*lvalue)?;
             let rhs_type = typecheck_expression(ctx, &*rvalue)?;
             if !rhs_type.is_assignable_to(&lhs_type) {
-                return Err(TypecheckError::IncompatibleTypes {
+                return Err(IncompatibleTypes {
                     location: loc.clone(),
                     lhs_type: lhs_type.clone(),
                     rhs_type: rhs_type.clone(),
                 })
             }
-            Ok(TypeDescriptor::Void)
+            Ok(lhs_type)
         }
         ExpressionKind::FunctionCall { func_name, actual_params } => {
-            let actual_symbol_type = ctx.get_type(func_name)?.descriptor;
+            let func_name_symbol = Symbol { name: func_name.name.clone(), location: loc.clone(), original_name: None };
+            let actual_symbol_type = ctx.get_type(&func_name_symbol)?.descriptor;
             match actual_symbol_type {
                 TypeDescriptor::Function(func_type) => {
                     let return_type = func_type.return_type.clone();
@@ -375,7 +389,7 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
                     if expected_num_params != actual_num_params {
                         return Err(TypecheckError::FunctionCalledWithWrongNumberOfArguments {
                             location: loc,
-                            func_name: func_name.clone(),
+                            func_name: func_name_symbol,
                             expected_param_count: expected_num_params,
                             actual_param_count: actual_num_params,
                         });
@@ -391,7 +405,7 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
                 }
                 other_type_descriptor => {
                     return Err(TypecheckError::VariableUsedAsFunction {
-                        symbol: func_name.clone(),
+                        symbol: func_name_symbol.clone(),
                         symbol_type: other_type_descriptor,
                         location: loc,
                     });
@@ -410,7 +424,7 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
             }
             Ok(etype)
         },
-        ExpressionKind::Binary(bin_op, lexpr, rexpr) => {
+        ExpressionKind::Binary(_, lexpr, rexpr) => {
             let ltype = typecheck_expression(ctx, &*lexpr)?;
             let rtype = typecheck_expression(ctx, &*rexpr)?;
             if ltype != TypeDescriptor::Integer || rtype != TypeDescriptor::Integer {
@@ -441,5 +455,93 @@ fn typecheck_expression(ctx: &mut TypecheckContext, expr: &Expression) -> Result
             }
             Ok(TypeDescriptor::Integer)
         }
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::lexer::Lexer;
+    use crate::parser::{Parser, Program};
+    use crate::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
+    use crate::semantic_analysis::typechecking::{FunctionType, typecheck_program, TypecheckError, TypeDescriptor};
+
+    #[test]
+    fn test_incompatible_func_declarations_in_different_scopes_must_error() {
+        let program = r#"
+        int bar(void);
+
+        int main(void) {
+            int foo(int a);
+            return bar() + foo(1);
+        }
+
+        int bar(void) {
+            int foo(int a, int b);
+            return foo(1, 2);
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    #[test]
+    fn test_cannot_divide_by_function_type() {
+        let program = r#"
+        int x(void);
+
+        int main(void) {
+            int a = 10 / x;
+            return 0;
+        }
+        "#;
+        let res = run_program_typechecks(program);
+        assert!(res.is_err(), "{:?}", res);
+    }
+
+    fn run_program_typechecks(program: &str) -> Result<(), TypecheckError> {
+        let lexer = Lexer::new(program);
+        let mut parser = Parser::new(lexer);
+        let parsed = parser.parse();
+        assert!(parsed.is_ok());
+        let resolved_ast = resolve_program(parsed.unwrap());
+        assert!(resolved_ast.is_ok());
+        let typechecked_ast = typecheck_program(&resolved_ast.unwrap());
+        typechecked_ast
+    }
+
+    #[test]
+    fn test_func_type_equality_returns_true_when_return_type_and_arg_types_and_arity_matches() {
+        let f1_descriptor = FunctionType {
+            param_types: vec![
+                Box::new(TypeDescriptor::Integer),
+                Box::new(TypeDescriptor::Integer),
+            ],
+            return_type: Box::new(TypeDescriptor::Integer),
+        };
+        let f2_descriptor = FunctionType {
+            param_types: vec![
+                Box::new(TypeDescriptor::Integer),
+                Box::new(TypeDescriptor::Integer),
+            ],
+            return_type: Box::new(TypeDescriptor::Integer),
+        };
+        assert_eq!(f1_descriptor, f2_descriptor);
+    }
+
+    #[test]
+    fn test_func_type_equality_returns_false_when_there_is_arity_mismatch() {
+        let f1_descriptor = FunctionType {
+            param_types: vec![],
+            return_type: Box::new(TypeDescriptor::Integer),
+        };
+        let f2_descriptor = FunctionType {
+            param_types: vec![
+                Box::new(TypeDescriptor::Integer),
+                Box::new(TypeDescriptor::Integer),
+            ],
+            return_type: Box::new(TypeDescriptor::Integer),
+        };
+        assert_ne!(f1_descriptor, f2_descriptor);
     }
 }

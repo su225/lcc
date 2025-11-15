@@ -149,7 +149,7 @@ impl IdentifierResolutionContext {
             LinkageType::External => ident.clone(),
             LinkageType::Internal => {
                 let mapped_ident = format!("{}${}", ident.name, next);
-                Symbol { name: mapped_ident, location: ident.location.clone() }
+                Symbol { name: mapped_ident, location: ident.location.clone(), original_name: Some(ident.name.clone()) }
             }
         };
         self.get_current_scope_mut().add_mapping(ident, ResolvedIdentifier {
@@ -304,6 +304,7 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> 
             sub_ctx.add_identifier_mapping(Symbol{
                 name: p.param_name.clone(),
                 location: f.location.clone(),
+                original_name: None,
             }, LinkageType::Internal)?;
         }
         match &f.body {
@@ -593,8 +594,8 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
         kind: match &expr.kind {
             ExpressionKind::IntConstant(x, radix) => ExpressionKind::IntConstant(x.to_string(), *radix),
             ExpressionKind::Variable(v) => {
-                let resolved = ctx.get_resolved_identifier(&v)?;
-                ExpressionKind::Variable(resolved.symbol.name.clone())
+                let resolved = ctx.get_resolved_identifier(&v.name)?;
+                ExpressionKind::Variable(resolved.symbol)
             },
             ExpressionKind::Unary(unary_op, op_expr) => {
                 let resolved_expr = resolve_expression(ctx, op_expr)?;
@@ -668,7 +669,7 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                     resolved_actual_params.push(Box::new(resolved_param_expr));
                 }
                 ExpressionKind::FunctionCall {
-                    func_name: resolved_func_name.symbol.name.clone(),
+                    func_name: resolved_func_name.symbol,
                     actual_params: resolved_actual_params,
                 }
             },
