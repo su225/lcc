@@ -89,7 +89,7 @@ impl Scope {
             let incoming_mapping_type = mapped_ident.mapping_type;
             return match (existing_mapping_type, incoming_mapping_type) {
                 (MappingType::Function, MappingType::Function) => Ok(()),
-                (MappingType::Function, MappingType::Variable) => Err(IdentifierResolutionError::CannotRedeclareVariableAsFunction {
+                (MappingType::Function, MappingType::Variable) => Err(IdentifierResolutionError::CannotRedeclareFunctionAsVariable {
                     name: raw_ident.name.clone(),
                     location: incoming_mapping_loc,
                     prev_location: existing_mapping_loc,
@@ -99,7 +99,7 @@ impl Scope {
                     original_loc: existing_mapping_loc,
                     name: raw_ident.name.clone(),
                 }),
-                (MappingType::Variable, MappingType::Function) => Err(IdentifierResolutionError::CannotRedeclareFunctionAsVariable {
+                (MappingType::Variable, MappingType::Function) => Err(IdentifierResolutionError::CannotRedeclareVariableAsFunction {
                     name: raw_ident.name.clone(),
                     location: incoming_mapping_loc,
                     prev_location: existing_mapping_loc,
