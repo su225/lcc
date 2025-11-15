@@ -33,7 +33,12 @@ kind:
                           line: 1
                           column: 3
                         kind:
-                          variable: a
+                          variable:
+                            name: a
+                            location:
+                              line: 1
+                              column: 3
+                            original_name: ~
     - location:
         line: 1
         column: 9
@@ -57,4 +62,9 @@ kind:
                           line: 1
                           column: 11
                         kind:
-                          variable: a
+                          variable:
+                            name: a
+                            location:
+                              line: 1
+                              column: 11
+                            original_name: ~

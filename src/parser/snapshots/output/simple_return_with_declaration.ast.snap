@@ -18,6 +18,7 @@ declarations:
           location:
             line: 1
             column: 5
+          original_name: ~
         params: []
         body:
           start_loc:
@@ -38,6 +39,7 @@ declarations:
                       location:
                         line: 2
                         column: 9
+                      original_name: ~
                     init_expression:
                       location:
                         line: 2
@@ -57,6 +59,7 @@ declarations:
                       location:
                         line: 3
                         column: 9
+                      original_name: ~
                     init_expression: ~
             - statement:
                 location:
@@ -75,7 +78,12 @@ declarations:
                             line: 4
                             column: 5
                           kind:
-                            variable: b
+                            variable:
+                              name: b
+                              location:
+                                line: 4
+                                column: 5
+                              original_name: ~
                         rvalue:
                           location:
                             line: 4
@@ -102,9 +110,19 @@ declarations:
                             line: 5
                             column: 12
                           kind:
-                            variable: a
+                            variable:
+                              name: a
+                              location:
+                                line: 5
+                                column: 12
+                              original_name: ~
                         - location:
                             line: 5
                             column: 16
                           kind:
-                            variable: b
+                            variable:
+                              name: b
+                              location:
+                                line: 5
+                                column: 16
+                              original_name: ~

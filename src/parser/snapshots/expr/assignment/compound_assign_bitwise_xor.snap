@@ -14,7 +14,12 @@ kind:
         line: 1
         column: 1
       kind:
-        variable: a
+        variable:
+          name: a
+          location:
+            line: 1
+            column: 1
+          original_name: ~
     rvalue:
       location:
         line: 1

@@ -18,6 +18,7 @@ declarations:
           location:
             line: 1
             column: 5
+          original_name: ~
         params: []
         body:
           start_loc:
@@ -38,6 +39,7 @@ declarations:
                       location:
                         line: 2
                         column: 9
+                      original_name: ~
                     init_expression:
                       location:
                         line: 2
@@ -57,6 +59,7 @@ declarations:
                       location:
                         line: 3
                         column: 9
+                      original_name: ~
                     init_expression: ~
             - statement:
                 location:
@@ -89,7 +92,12 @@ declarations:
                                       line: 4
                                       column: 9
                                     kind:
-                                      variable: b
+                                      variable:
+                                        name: b
+                                        location:
+                                          line: 4
+                                          column: 9
+                                        original_name: ~
                                   rvalue:
                                     location:
                                       line: 4
@@ -116,7 +124,12 @@ declarations:
                                       line: 5
                                       column: 9
                                     kind:
-                                      variable: a
+                                      variable:
+                                        name: a
+                                        location:
+                                          line: 5
+                                          column: 9
+                                        original_name: ~
                                   rvalue:
                                     location:
                                       line: 5
@@ -128,12 +141,22 @@ declarations:
                                             line: 5
                                             column: 13
                                           kind:
-                                            variable: a
+                                            variable:
+                                              name: a
+                                              location:
+                                                line: 5
+                                                column: 13
+                                              original_name: ~
                                         - location:
                                             line: 5
                                             column: 17
                                           kind:
-                                            variable: b
+                                            variable:
+                                              name: b
+                                              location:
+                                                line: 5
+                                                column: 17
+                                              original_name: ~
                                   op: ~
             - statement:
                 location:
@@ -146,4 +169,9 @@ declarations:
                       line: 7
                       column: 12
                     kind:
-                      variable: a
+                      variable:
+                        name: a
+                        location:
+                          line: 7
+                          column: 12
+                        original_name: ~

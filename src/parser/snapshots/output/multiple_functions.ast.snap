@@ -18,6 +18,7 @@ declarations:
           location:
             line: 1
             column: 5
+          original_name: ~
         params: []
         body:
           start_loc:
@@ -54,6 +55,7 @@ declarations:
           location:
             line: 5
             column: 5
+          original_name: ~
         params: []
         body:
           start_loc:

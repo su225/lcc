@@ -662,7 +662,7 @@ fn resolve_expression<'a>(ctx: &mut IdentifierResolutionContext, expr: &Expressi
                 }
             },
             ExpressionKind::FunctionCall { func_name, actual_params } => {
-                let resolved_func_name = ctx.get_resolved_identifier(&func_name)?;
+                let resolved_func_name = ctx.get_resolved_identifier(&func_name.name.clone())?;
                 let mut resolved_actual_params = Vec::with_capacity(actual_params.len());
                 for ap in actual_params.iter() {
                     let resolved_param_expr = resolve_expression(ctx, ap)?;
