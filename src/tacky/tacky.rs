@@ -1,8 +1,10 @@
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
+use std::vec::Vec;
 
 use derive_more::Display;
 use thiserror::Error;
+use itertools::Itertools;
 
 use crate::parser::{BinaryOperator, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, Program, Statement, StatementKind, Symbol, UnaryOperator, VariableDeclaration};
 use crate::tacky::TackyInstruction::*;
@@ -206,6 +208,7 @@ pub enum TackyInstruction {
     JumpIfZero { condition: TackyValue, target: TackySymbol },
     JumpIfNotZero { condition: TackyValue, target: TackySymbol },
     Label(TackySymbol),
+    FunctionCall { func_name: TackySymbol, args: Vec<TackyValue>, dst: TackyValue },
 }
 
 impl TackyInstruction {
@@ -242,6 +245,8 @@ impl Display for TackyInstruction {
                 f.write_fmt(format_args!("    jump_if_not_zero ({condition}) {target};"))
             },
             Label(lbl) => f.write_fmt(format_args!("{}:", lbl.0)),
+            FunctionCall { func_name, args, dst } => f.write_fmt(format_args!("    {dst} = func_call ({func_name}) (args:{a})",
+                                                                              a = args.iter().map(|v| v.to_string()).join(","))),
         }
     }
 }
@@ -321,7 +326,14 @@ fn emit_tacky_for_block_item(ctx: &mut TackyContext, blk_item: &BlockItem) -> Re
 fn emit_tacky_for_declaration(ctx: &mut TackyContext, decl: &Declaration) -> Result<Vec<TackyInstruction>, TackyError> {
     match &decl.kind {
         DeclarationKind::VarDeclaration(v) => emit_tacky_for_variable_declaration(ctx, v),
-        DeclarationKind::FunctionDeclaration(_) => todo!()
+        DeclarationKind::FunctionDeclaration(_) => {
+            // We do nothing here because functions can only be defined at the top-level, and
+            // it already calls emit_tacky_for_function to get TackyFunction. We reach here only
+            // when we are in a function body. If there is a definition inside another function body,
+            // then it is already an ERROR caught in the earlier phases. We won't have a body and
+            // hence, there is NOTHING to do.
+            Ok(vec![])
+        },
     }
 }
 
@@ -588,15 +600,14 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             let (src2_tacky, src2_tacky_instrs) = emit_tacky_for_expression(ctx, op2)?;
             let dst_tacky_identifier = ctx.next_temporary_identifier();
             let dst_tacky = Variable(dst_tacky_identifier.clone());
-            let result = Variable(dst_tacky_identifier);
             tacky_instrs.extend(src2_tacky_instrs);
             tacky_instrs.push(Binary {
                 operator: TackyBinaryOperator::from(binary_op),
                 src1: src1_tacky,
                 src2: src2_tacky,
-                dst: dst_tacky,
+                dst: dst_tacky.clone(),
             });
-            Ok((result, tacky_instrs))
+            Ok((dst_tacky, tacky_instrs))
         },
         ExpressionKind::Assignment { lvalue, rvalue, op} => {
             debug_assert!(op.is_none(), "compound assignment not desugared before IR generation");
@@ -680,7 +691,27 @@ fn emit_tacky_for_expression(ctx: &mut TackyContext, e: &Expression) -> Result<(
             instructions.push(Label(cond_end_lbl));
             Ok((Variable(tmp_final_res), instructions))
         }
-        ExpressionKind::FunctionCall {..} => unimplemented!(),
+        ExpressionKind::FunctionCall { func_name, actual_params } => {
+            let mut actual_param_tacky = Vec::with_capacity(actual_params.len());
+            let mut instructions = vec![];
+            for ap in actual_params.iter() {
+                let (av, instrs) = emit_tacky_for_expression(ctx, ap)?;
+                instructions.extend(instrs);
+
+                let apv = ctx.next_temporary_identifier();
+                instructions.push(Copy { src: av, dst: apv.clone() });
+                actual_param_tacky.push(Variable(apv));
+            }
+            let dst = ctx.next_temporary_identifier();
+            let dst_val = Variable(dst);
+            let func_call_instr = FunctionCall {
+                func_name: TackySymbol::from(func_name),
+                args: actual_param_tacky,
+                dst: dst_val.clone(),
+            };
+            instructions.push(func_call_instr);
+            Ok((dst_val, instructions))
+        },
     }
 }
 

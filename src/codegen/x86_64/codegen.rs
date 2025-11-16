@@ -486,6 +486,7 @@ fn generate_instruction_assembly(ti: TackyInstruction) -> Result<Vec<AsmInstruct
             JmpConditional { condition_code: ConditionCode::NotEqual, target_if_true: AsmLabel::from(target) },
         ]),
         TackyInstruction::Label(lbl) => Ok(vec![Label(AsmLabel::from(lbl))]),
+        TackyInstruction::FunctionCall { .. } => unimplemented!("function call unimplemented"),
     }
 }
 
