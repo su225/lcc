@@ -37,6 +37,7 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
         Not32 { op } => emit_instruction!(w, "notl {op}")?,
         Neg32 { op } => emit_instruction!(w, "negl {op}")?,
         AllocateStack(stack_size) => emit_instruction!(w, "subq ${stack_size}, %rsp")?,
+        DeallocateStack(stack_size) => emit_instruction!(w, "addq ${stack_size}, %rsp")?,
         Add32 { src, dst } => emit_instruction!(w, "addl {src}, {dst}")?,
         Sub32 { src, dst } => emit_instruction!(w, "subl {src}, {dst}")?,
         IMul32 { src, dst } => emit_instruction!(w, "imull {src}, {dst}")?,
@@ -57,7 +58,9 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
             emit_instruction!(w, "j{condition_code} {target_if_true}")?,
         SetCondition { condition_code, dst } =>
             emit_instruction!(w, "set{condition_code} {dst}")?,
-        Label(lbl) => writeln!(w, "{}", format!("{lbl}:"))?,
+        Label(lbl) => emit_instruction!(w, "{}", format!("{lbl}:"))?,
+        Push { op } => emit_instruction!(w, "pushq {op}")?,
+        Call(func_name) => emit_instruction!(w, "call {func_label}", func_label = format_args!("_{func_name}"))?,
     };
     Ok(())
 }

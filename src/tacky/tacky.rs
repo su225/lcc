@@ -54,10 +54,16 @@ impl Display for TackyProgram {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct TackyFunctionParameter {
+    pub name: TackySymbol,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TackyFunction {
     pub identifier: TackySymbol,
     pub body: Vec<TackyInstruction>,
+    pub params: Vec<TackyFunctionParameter>,
 }
 
 impl Display for TackyFunction {
@@ -313,6 +319,9 @@ fn emit_tacky_for_function(ctx: &mut TackyContext, f: &Function) -> Result<Tacky
     Ok(TackyFunction {
         identifier: TackySymbol(f.name.name.clone()),
         body: instructions,
+        params: f.params.iter().map(|p| TackyFunctionParameter {
+            name: TackySymbol::from(&f.name),
+        }).collect_vec(),
     })
 }
 

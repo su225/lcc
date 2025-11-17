@@ -19,15 +19,6 @@ pub struct Symbol {
     pub(crate) original_name: Option<String>,
 }
 
-impl Symbol {
-    fn get_canonical_name(&self) -> String {
-        match &self.original_name {
-            Some(original) => original.clone(),
-            None => self.name.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnaryOperator {

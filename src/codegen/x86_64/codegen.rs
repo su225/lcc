@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
+use derive_more::Display;
+use once_cell::sync::Lazy;
 use thiserror::Error;
 use crate::codegen::x86_64::AsmInstruction::*;
 use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed, SetConditionDestOperandMustBeOneByte};
@@ -93,6 +95,12 @@ impl From<TackySymbol> for AsmLabel {
     }
 }
 
+impl From<&TackySymbol> for AsmLabel {
+    fn from(value: &TackySymbol) -> Self {
+        AsmLabel(value.0.clone())
+    }
+}
+
 impl From<&str> for AsmLabel {
     fn from(value: &str) -> Self {
         AsmLabel(String::from(value))
@@ -105,9 +113,21 @@ impl Display for AsmLabel {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Display)]
+pub struct AsmIdentifier(String);
+
+impl From<TackySymbol> for AsmIdentifier {
+    fn from(value: TackySymbol) -> Self {
+        AsmIdentifier(value.0)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum AsmInstruction {
     AllocateStack(usize),
+    DeallocateStack(usize),
+    Push { op: AsmOperand },
+    Call(AsmIdentifier),
     Mov8 { src: AsmOperand, dst: AsmOperand },
     Mov32 { src: AsmOperand, dst: AsmOperand },
     Neg32 { op: AsmOperand },
@@ -365,8 +385,23 @@ fn validate_generated_function_assembly(asm_func: &AsmFunction) -> Result<(), Co
     Ok(())
 }
 
+static ARG_REGISTERS: Lazy<Vec<Register>> = Lazy::new(|| vec![EDI, ESI, EDX, ECX, R8D, R9D]);
+
 fn generate_function_assembly(f: TackyFunction) -> Result<AsmFunction, CodegenError> {
     let mut asm_instructions = Vec::with_capacity(f.body.len());
+    let (reg_params, stack_params) = split_function_call_args(f.params);
+    for (i, rp) in reg_params.iter().enumerate() {
+        asm_instructions.push(Mov32 {
+            src: Reg(ARG_REGISTERS[i].clone()),
+            dst: Pseudo(rp.name.clone()),
+        });
+    }
+    for (i, sp) in stack_params.iter().enumerate() {
+        asm_instructions.push(Mov32 {
+            src: Stack { offset: StackOffset((16 + (i<<3)) as isize) },
+            dst: Pseudo(sp.name.clone()),
+        });
+    }
     for tacky_inst in f.body {
         let asm_instrs = generate_instruction_assembly(tacky_inst)?;
         asm_instructions.extend(asm_instrs);
@@ -486,7 +521,39 @@ fn generate_instruction_assembly(ti: TackyInstruction) -> Result<Vec<AsmInstruct
             JmpConditional { condition_code: ConditionCode::NotEqual, target_if_true: AsmLabel::from(target) },
         ]),
         TackyInstruction::Label(lbl) => Ok(vec![Label(AsmLabel::from(lbl))]),
-        TackyInstruction::FunctionCall { .. } => unimplemented!("function call unimplemented"),
+        TackyInstruction::FunctionCall { func_name, args, dst } => {
+            let mut instr = Vec::with_capacity((1 + args.len())*2 + 2);
+            let (register_args, stack_args) = split_function_call_args(args.clone());
+            let stack_padding = if stack_args.len() % 2 == 0 { 0 } else { 8 };
+            if stack_padding > 0 {
+                instr.push(AllocateStack(stack_padding));
+            }
+            for (i, reg_arg) in register_args.iter().enumerate() {
+                let reg = ARG_REGISTERS[i].clone();
+                let assembly_arg = reg_arg.into();
+                instr.push(Mov32 { src: assembly_arg, dst: Reg(reg) });
+            }
+            for stack_arg in stack_args.iter().rev() {
+                let assembly_arg = stack_arg.into();
+                instr.push(Push { op: assembly_arg });
+            }
+            instr.push(Call(AsmIdentifier::from(func_name)));
+            let bytes_to_remove = 8 * stack_args.len() + stack_padding;
+            if bytes_to_remove > 0 {
+                instr.push(DeallocateStack(bytes_to_remove));
+            }
+            instr.push(Mov32 { src: Reg(EAX), dst: AsmOperand::from(dst) });
+            Ok(instr)
+        },
+    }
+}
+
+fn split_function_call_args<T>(mut args: Vec<T>) -> (Vec<T>, Vec<T>) {
+    if args.len() < 7 {
+        (args,  vec![])
+    } else {
+        let stack_args = args.split_off(6);
+        (args, stack_args)
     }
 }
 
@@ -580,6 +647,9 @@ fn fixup_generated_asm_instructions(ctx: &mut StackAllocationContext, f: AsmFunc
             Label(lbl) => processed_instrs.push(Label(lbl)),
             SignExtendTo64 => processed_instrs.push(SignExtendTo64),
             Ret => processed_instrs.push(Ret),
+            DeallocateStack(sz) => processed_instrs.push(DeallocateStack(sz)),
+            Push { op } => processed_instrs.extend(fixup_unary_expr!(Push, ctx, op)),
+            Call(func_id) => processed_instrs.push(Call(func_id)),
         }
     }
     Ok(AsmFunction {
@@ -744,6 +814,15 @@ impl From<TackyValue> for AsmOperand {
         match v {
             TackyValue::Int32(c) => Imm32(c),
             TackyValue::Variable(s) => Pseudo(s),
+        }
+    }
+}
+
+impl From<&TackyValue> for AsmOperand {
+    fn from(v: &TackyValue) -> Self {
+        match v {
+            TackyValue::Int32(c) => Imm32(c.clone()),
+            TackyValue::Variable(s) => Pseudo(s.clone()),
         }
     }
 }
