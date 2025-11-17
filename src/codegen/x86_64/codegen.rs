@@ -360,7 +360,10 @@ pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
         let asm_func = generate_function_assembly(f)?;
         let mut stack_alloc_ctx = StackAllocationContext::new();
         let mut stack_alloced = fixup_generated_asm_instructions(&mut stack_alloc_ctx, asm_func)?;
-        let reqd_stack_size = stack_alloc_ctx.stack_size;
+
+        // We need to round up the stack size to a multiple of 16 according to the ABI requirements
+        let reqd_stack_size = (stack_alloc_ctx.stack_size + 15) / 16;
+
         stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size)); // not-efficient
         validate_generated_function_assembly(&stack_alloced)?;
         asm_functions.push(stack_alloced);
