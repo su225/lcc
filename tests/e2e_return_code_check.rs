@@ -98,6 +98,12 @@ fn test_e2e_loops(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }
 
+#[rstest]
+#[case("functions/helloworld.c")]
+fn test_e2e_functions(#[case] input_file: &str) {
+    run_e2e_against_clang(input_file)
+}
+
 fn run_e2e_against_clang(input_file: &str) {
     println!("current working directory: {}", env::current_dir().unwrap().display());
 
@@ -111,6 +117,9 @@ fn run_e2e_against_clang(input_file: &str) {
     println!("LCC STDOUT:\n {}", lcc_res.clone().compile_stdout);
     assert_eq!(clang_res.exit_code, lcc_res.exit_code,
                "{}: clang and lcc generated binary execution should return the same code. clang={:?}, lcc={:?}",
+               input_file, clang_res, lcc_res);
+    assert_eq!(clang_res.run_stdout, lcc_res.run_stdout,
+               "{}: clang and lcc output different results.\nclang:\n{:?}, \nlcc:\n{:?}",
                input_file, clang_res, lcc_res);
 }
 

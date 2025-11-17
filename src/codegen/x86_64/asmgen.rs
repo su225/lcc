@@ -58,7 +58,7 @@ fn emit_instruction<W: Write>(instr: &AsmInstruction, w: &mut W) -> io::Result<(
             emit_instruction!(w, "j{condition_code} {target_if_true}")?,
         SetCondition { condition_code, dst } =>
             emit_instruction!(w, "set{condition_code} {dst}")?,
-        Label(lbl) => emit_instruction!(w, "{}", format!("{lbl}:"))?,
+        Label(lbl) => writeln!(w, "{}", format!("{lbl}:"))?,
         Push { op } => emit_instruction!(w, "pushq {op}")?,
         Call(func_name) => emit_instruction!(w, "call {func_label}", func_label = format_args!("_{func_name}"))?,
     };
