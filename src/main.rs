@@ -52,6 +52,9 @@ struct Args {
     /// Generate and emit .S file for assembler and stop there
     #[arg(short = 'S', long = "emit-assembly", long, default_value_t = false)]
     emit_assembly: bool,
+
+    #[arg(short = 'c', long = "compile-only", long, default_value_t = false)]
+    compile_only: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {

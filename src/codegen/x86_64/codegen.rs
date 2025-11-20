@@ -583,6 +583,18 @@ fn generate_instruction_assembly_for_relational(condition_code: ConditionCode, s
 macro_rules! fixup_binary_expr {
     ($instruction:ident, $ctx:expr, $src:expr, $dst:expr) => {
         match ($src, $dst) {
+            (Stack { offset: src_offset }, Stack { offset: dst_offset }) => vec![
+                Mov32 { src: Stack { offset: src_offset }, dst: Reg(R10D) },
+                $instruction { src: Reg(R10D), dst: Stack { offset: dst_offset } },
+            ],
+            (Stack { offset: src_offset }, Pseudo(d)) => vec![
+                Mov32 { src: Stack { offset: src_offset }, dst: Reg(R10D) },
+                $instruction { src: Reg(R10D), dst: Stack { offset: $ctx.get_or_allocate_stack(d) } },
+            ],
+            (Pseudo(s), Stack { offset: dst_offset }) => vec![
+                Mov32 { src: Stack { offset: $ctx.get_or_allocate_stack(s) }, dst: Reg(R10D) },
+                $instruction { src: Reg(R10D), dst: Stack { offset: dst_offset }},
+            ],
             (Pseudo(s), Pseudo(d)) => vec![
                 Mov32 { src: Stack { offset: $ctx.get_or_allocate_stack(s) }, dst: Reg(R10D) },
                 $instruction { src: Reg(R10D), dst: Stack { offset: $ctx.get_or_allocate_stack(d) } },
