@@ -100,6 +100,7 @@ fn test_e2e_loops(#[case] input_file: &str) {
 
 #[rstest]
 #[case("functions/helloworld.c")]
+#[case("functions/dont_clobber_edx.c")]
 fn test_e2e_functions(#[case] input_file: &str) {
     run_e2e_against_clang(input_file)
 }

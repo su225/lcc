@@ -8,7 +8,7 @@ info: binary/arithmetic_multiplication.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $8, %rsp
+    subq $16, %rsp
     movl $2, -8(%rbp)
     movl -8(%rbp), %r11d
     imull $3, %r11d

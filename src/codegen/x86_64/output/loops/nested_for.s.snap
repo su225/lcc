@@ -8,7 +8,7 @@ info: loops/nested_for.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $88, %rsp
+    subq $96, %rsp
     movl $0, -8(%rbp)
     movl $0, -16(%rbp)
     movl $0, -8(%rbp)

@@ -320,7 +320,7 @@ fn emit_tacky_for_function(ctx: &mut TackyContext, f: &Function) -> Result<Tacky
         identifier: TackySymbol(f.name.name.clone()),
         body: instructions,
         params: f.params.iter().map(|p| TackyFunctionParameter {
-            name: TackySymbol::from(&f.name),
+            name: TackySymbol::from(&p.param_name),
         }).collect_vec(),
     })
 }

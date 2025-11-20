@@ -8,7 +8,7 @@ info: conditional/ternary.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $40, %rsp
+    subq $48, %rsp
     movl $8, -8(%rbp)
     cmpl $10, -8(%rbp)
     movl $0, -16(%rbp)

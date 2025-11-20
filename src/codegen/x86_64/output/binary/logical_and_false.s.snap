@@ -8,7 +8,7 @@ info: binary/logical_and_false.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $88, %rsp
+    subq $96, %rsp
     movl $10, -8(%rbp)
     cmpl $0, -8(%rbp)
     je _L.and_false.0

@@ -8,7 +8,7 @@ info: binary/arithmetic_modulo.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $8, %rsp
+    subq $16, %rsp
     movl $10, %eax
     cdq
     movl $3, %r10d

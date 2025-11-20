@@ -8,7 +8,7 @@ info: loops/while_with_break.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $56, %rsp
+    subq $64, %rsp
     movl $0, -8(%rbp)
     movl $0, -16(%rbp)
 .loop.0.continue:

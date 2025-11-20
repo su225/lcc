@@ -8,7 +8,7 @@ info: unary/not.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $8, %rsp
+    subq $16, %rsp
     movl $0, %r10d
     cmpl $0, %r10d
     movl $0, -8(%rbp)

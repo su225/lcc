@@ -8,7 +8,7 @@ info: localvars/expression_with_var.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $40, %rsp
+    subq $48, %rsp
     movl $10, -8(%rbp)
     movl $20, -16(%rbp)
     movl $30, -24(%rbp)

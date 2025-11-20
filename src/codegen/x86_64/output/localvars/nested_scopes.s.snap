@@ -8,7 +8,7 @@ info: localvars/nested_scopes.c
 _main:
     pushq %rbp
     movq  %rsp, %rbp
-    subq $24, %rsp
+    subq $32, %rsp
     movl $10, -8(%rbp)
     movl $20, -16(%rbp)
     movl -16(%rbp), %r10d

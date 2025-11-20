@@ -5,7 +5,7 @@ use derive_more::Display;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 use crate::codegen::x86_64::AsmInstruction::*;
-use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed, SetConditionDestOperandMustBeOneByte};
+use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed, SetConditionDestOperandMustBeOneByte, StackAlignmentError};
 use crate::codegen::x86_64::AsmOperand::*;
 use crate::codegen::x86_64::CodegenError::{CannotDownsizeRegisterError, InstructionValidationError};
 use crate::codegen::x86_64::register::Register;
@@ -174,6 +174,9 @@ pub enum AsmInstructionValidationError {
 
     #[error("operand out of range: {0}")]
     OperandOutOfRange(i32),
+
+    #[error("stack is not aligned to 16B: actual_stack_size={0}")]
+    StackAlignmentError(usize),
 }
 
 impl AsmInstruction {
@@ -362,13 +365,22 @@ pub fn generate_assembly(p: TackyProgram) -> Result<AsmProgram, CodegenError> {
         let mut stack_alloced = fixup_generated_asm_instructions(&mut stack_alloc_ctx, asm_func)?;
 
         // We need to round up the stack size to a multiple of 16 according to the ABI requirements
-        let reqd_stack_size = (stack_alloc_ctx.stack_size + 15) / 16;
-
-        stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size)); // not-efficient
+        let reqd_stack_size = calculate_function_stack_size(&stack_alloc_ctx);
+        debug_assert!(reqd_stack_size > 0 && reqd_stack_size % 16 == 0);
+        stack_alloced.instructions.insert(0, AllocateStack(reqd_stack_size));
         validate_generated_function_assembly(&stack_alloced)?;
         asm_functions.push(stack_alloced);
     }
     Ok(AsmProgram { functions: asm_functions })
+}
+
+fn calculate_function_stack_size(stack_alloc_ctx: &StackAllocationContext) -> usize {
+    if stack_alloc_ctx.stack_size == 0 {
+        return 16;
+    }
+    // Align stack size to 16B
+    const STACK_ALIGN: usize = 16;
+    return (stack_alloc_ctx.stack_size + (STACK_ALIGN-1)) & !(STACK_ALIGN-1);
 }
 
 // validate_generated_function_assembly validates generated assembly code as a sanity check to
