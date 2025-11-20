@@ -1,0 +1,73 @@
+---
+source: src/tacky/tacky.rs
+description: function calls
+expression: tacky
+info: functions/dont_clobber_edx.c
+---
+int x(a$0,b$1,c$2,d$3,e$4,f$5) {
+    <t>.5 = a$0 == (int32 1);
+    <t>.6 = <t>.5;
+    jump_if_zero (<t>.6) _L.and_false.8;
+    <t>.7 = b$1 == (int32 2);
+    <t>.8 = <t>.7;
+    jump_if_zero (<t>.8) _L.and_false.8;
+    <t>.4 = (int32 1);
+    jump _L.and_end.9;
+_L.and_false.8:
+    <t>.4 = (int32 0);
+_L.and_end.9:
+    <t>.9 = <t>.4;
+    jump_if_zero (<t>.9) _L.and_false.6;
+    <t>.10 = c$2 == (int32 3);
+    <t>.11 = <t>.10;
+    jump_if_zero (<t>.11) _L.and_false.6;
+    <t>.3 = (int32 1);
+    jump _L.and_end.7;
+_L.and_false.6:
+    <t>.3 = (int32 0);
+_L.and_end.7:
+    <t>.12 = <t>.3;
+    jump_if_zero (<t>.12) _L.and_false.4;
+    <t>.13 = d$3 == (int32 4);
+    <t>.14 = <t>.13;
+    jump_if_zero (<t>.14) _L.and_false.4;
+    <t>.2 = (int32 1);
+    jump _L.and_end.5;
+_L.and_false.4:
+    <t>.2 = (int32 0);
+_L.and_end.5:
+    <t>.15 = <t>.2;
+    jump_if_zero (<t>.15) _L.and_false.2;
+    <t>.16 = e$4 == (int32 5);
+    <t>.17 = <t>.16;
+    jump_if_zero (<t>.17) _L.and_false.2;
+    <t>.1 = (int32 1);
+    jump _L.and_end.3;
+_L.and_false.2:
+    <t>.1 = (int32 0);
+_L.and_end.3:
+    <t>.18 = <t>.1;
+    jump_if_zero (<t>.18) _L.and_false.0;
+    <t>.19 = f$5 == (int32 6);
+    <t>.20 = <t>.19;
+    jump_if_zero (<t>.20) _L.and_false.0;
+    <t>.0 = (int32 1);
+    jump _L.and_end.1;
+_L.and_false.0:
+    <t>.0 = (int32 0);
+_L.and_end.1:
+    return <t>.0;
+}
+
+int main(void) {
+    a$6 = (int32 4);
+    <t>.21 = (int32 1);
+    <t>.22 = (int32 2);
+    <t>.23 = (int32 3);
+    <t>.24 = (int32 4);
+    <t>.25 = (int32 5);
+    <t>.26 = (int32 24) / a$6;
+    <t>.27 = <t>.26;
+    <t>.28 = func_call (x) (args:<t>.21,<t>.22,<t>.23,<t>.24,<t>.25,<t>.27)
+    return <t>.28;
+}

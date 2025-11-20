@@ -870,7 +870,7 @@ mod test {
             functions: vec![AsmFunction {
                 name: "main".into(),
                 instructions: vec![
-                    AllocateStack(0),
+                    AllocateStack(16),
                     Mov32 { src: Imm32(0), dst: Reg(EAX) },
                     Ret,
                 ],
@@ -891,7 +891,7 @@ mod test {
             functions: vec![AsmFunction {
                 name: "main".into(),
                 instructions: vec![
-                    AllocateStack(0),
+                    AllocateStack(16),
                     Mov32 { src: Imm32(100), dst: Reg(EAX) },
                     Ret,
                 ],
@@ -911,7 +911,7 @@ mod test {
             functions: vec![AsmFunction {
                 name: "main".into(),
                 instructions: vec![
-                    AllocateStack(8),
+                    AllocateStack(16),
                     Mov32 { src: Imm32(0), dst: Stack { offset: StackOffset(-8) } },
                     Not32 { op: Stack { offset: StackOffset(-8) } },
                     Mov32 { src: Stack { offset: StackOffset(-8) }, dst: Reg(EAX) },

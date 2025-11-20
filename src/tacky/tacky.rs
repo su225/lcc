@@ -59,6 +59,12 @@ pub struct TackyFunctionParameter {
     pub name: TackySymbol,
 }
 
+impl Display for TackyFunctionParameter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.name.0))
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TackyFunction {
     pub identifier: TackySymbol,
@@ -68,7 +74,12 @@ pub struct TackyFunction {
 
 impl Display for TackyFunction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("int {}(void) {{\n", self.identifier.0))?;
+        f.write_fmt(format_args!("int {}({}) {{\n",
+             self.identifier.0,
+             if self.params.is_empty() { String::from("void") } else {
+                 self.params.iter().map(ToString::to_string)
+                     .collect::<Vec<_>>().join(",")
+             }))?;
         for instr in self.body.iter() {
             f.write_fmt(format_args!("{}\n", instr))?;
         }
@@ -1343,6 +1354,12 @@ mod test {
     #[case("loops/dowhile_with_continue.c")]
     fn test_generation_with_do_while_loops(#[case] input_path: &str) {
         run_ir_generation_snapshot_test("do-while loop", input_path)
+    }
+
+    #[rstest]
+    #[case("functions/dont_clobber_edx.c")]
+    fn test_generation_with_function_calls(#[case] input_path: &str) {
+        run_ir_generation_snapshot_test("function calls", input_path)
     }
 
     fn run_ir_generation_snapshot_test(suite_description: &str, src_file: &str) {
