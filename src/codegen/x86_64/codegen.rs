@@ -5,7 +5,7 @@ use derive_more::Display;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 use crate::codegen::x86_64::AsmInstruction::*;
-use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed, SetConditionDestOperandMustBeOneByte, StackAlignmentError};
+use crate::codegen::x86_64::AsmInstructionValidationError::{BothOperandsCannotBeMemoryLocations, InvalidDestinationOperand, InvalidLabel, InvalidSourceOperand, OperandOutOfRange, PseudoLocationOperandsNotAllowed, SetConditionDestOperandMustBeOneByte};
 use crate::codegen::x86_64::AsmOperand::*;
 use crate::codegen::x86_64::CodegenError::{CannotDownsizeRegisterError, InstructionValidationError};
 use crate::codegen::x86_64::register::Register;
