@@ -1,16 +1,18 @@
 use std::{fs, io};
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::process::{Command, ExitStatus};
 
 use clap::Parser as ClapParser;
 use thiserror::Error;
+
+use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
 use lcc::lexer::{Lexer, LexerError, Token};
 use lcc::parser::{Parser, ParserError};
-use lcc::codegen::x86_64::{asmgen, codegen, CodegenError};
 use lcc::semantic_analysis::identifier_resolution::{IdentifierResolutionError, resolve_program};
-use lcc::semantic_analysis::typechecking::{TypecheckError, typecheck_program};
 use lcc::semantic_analysis::loop_labeling::{loop_label_program_definition, LoopLabelingError};
+use lcc::semantic_analysis::typechecking::{typecheck_program, TypecheckError};
 use lcc::tacky;
 use lcc::tacky::TackyError;
 
@@ -19,8 +21,8 @@ use lcc::tacky::TackyError;
 #[derive(ClapParser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Input source code for compilation
-    input_file: String,
+    /// Input source files for compilation
+    input_files: Vec<String>,
 
     /// Output object file name
     #[arg(short = 'o', default_value_t = String::new())]
@@ -59,8 +61,11 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    let source_code = fs::read_to_string(&args.input_file)?;
-    Ok(invoke_compiler_driver(&args, source_code)?)
+    for input_file in &args.input_files {
+        let source_code = fs::read_to_string(input_file)?;
+        invoke_compiler_driver(&args, input_file, source_code)?;
+    }
+    Ok(())
 }
 
 #[derive(Error, Debug)]
@@ -98,7 +103,7 @@ enum CompilerDriverError {
 
 /// invoke_compiler_driver invokes different compiler stages. Depending on
 /// the flags, it may stop early in some stage
-fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), CompilerDriverError> {
+fn invoke_compiler_driver(args: &Args, input_file: &str, source_code: String) -> Result<(), CompilerDriverError> {
     // Lexer
     let lexer = Lexer::new(&source_code);
     if args.lex {
@@ -139,7 +144,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         return Ok(());
     }
     let output_file = if args.output.is_empty() {
-        let output_stem = args.input_file.strip_suffix(".c").unwrap_or(&args.input_file);
+        let output_stem = input_file.strip_suffix(".c").unwrap_or(input_file);
         output_stem
     } else {
         &args.output
@@ -160,7 +165,7 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         .and_then(|f| asmgen::emit_assembly(asm_code, f))
         .map_err(|e| CompilerDriverError::CodeEmitError(output_asm_file.clone(), e))?;
 
-    invoke_system_assembler(&output_file, &output_asm_file)
+    invoke_system_assembler(&output_file, &output_asm_file, args.compile_only)
         .and_then(|assembler_status| {
             if assembler_status.success() {
                 Ok(())
@@ -170,11 +175,20 @@ fn invoke_compiler_driver(args: &Args, source_code: String) -> Result<(), Compil
         })
 }
 
+const DEFAULT_ASSEMBLER: &'static str = "gcc";
+
 /// invoke_system_assembler invokes the assembler installed in the system for the assembly
 /// code generated. In Mac OS X, this is actually clang.
-fn invoke_system_assembler(output_file: &str, assembly_file: &str) -> Result<ExitStatus, CompilerDriverError> {
-    Command::new("gcc")
-        .args(["-m64", "-o", output_file, assembly_file])
+fn invoke_system_assembler(output_file: &str, assembly_file: &str, compile_only: bool) -> Result<ExitStatus, CompilerDriverError> {
+    let mut assembler_args = vec!["-m64"];
+    if compile_only {
+        assembler_args.push("-c");
+    }
+    assembler_args.extend(vec!["-o", output_file]);
+    assembler_args.push(assembly_file);
+    let assembler_binary: &OsStr = OsStr::new(DEFAULT_ASSEMBLER);
+    Command::new(assembler_binary)
+        .args(assembler_args)
         .status()
         .map_err(|e| CompilerDriverError::SystemAssemblerInvocationError(e))
 }
