@@ -183,8 +183,9 @@ fn invoke_system_assembler(output_file: &str, assembly_file: &str, compile_only:
     let mut assembler_args = vec!["-m64"];
     if compile_only {
         assembler_args.push("-c");
+    } else {
+        assembler_args.extend(vec!["-o", output_file]);
     }
-    assembler_args.extend(vec!["-o", output_file]);
     assembler_args.push(assembly_file);
     let assembler_binary: &OsStr = OsStr::new(DEFAULT_ASSEMBLER);
     Command::new(assembler_binary)
