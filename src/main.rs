@@ -180,13 +180,14 @@ const DEFAULT_ASSEMBLER: &'static str = "gcc";
 /// invoke_system_assembler invokes the assembler installed in the system for the assembly
 /// code generated. In Mac OS X, this is actually clang.
 fn invoke_system_assembler(output_file: &str, assembly_file: &str, compile_only: bool) -> Result<ExitStatus, CompilerDriverError> {
-    let mut assembler_args = vec!["-m64"];
+    let mut assembler_args: Vec<String> = vec!["-m64".to_string()];
     if compile_only {
-        assembler_args.push("-c");
+        assembler_args.push("-c".to_string());
+        assembler_args.extend(vec!["-o".to_string(), format!("{output_file}.o")]);
     } else {
-        assembler_args.extend(vec!["-o", output_file]);
+        assembler_args.extend(vec!["-o".to_string(), output_file.to_string()]);
     }
-    assembler_args.push(assembly_file);
+    assembler_args.push(assembly_file.to_string());
     let assembler_binary: &OsStr = OsStr::new(DEFAULT_ASSEMBLER);
     Command::new(assembler_binary)
         .args(assembler_args)
