@@ -23,6 +23,9 @@ pub enum KeywordIdentifier {
     For,
     Break,
     Continue,
+
+    Static,
+    Extern,
 }
 
 impl Radix {
@@ -286,6 +289,9 @@ static KEYWORDS: Lazy<HashMap<&'static str, KeywordIdentifier>> = Lazy::new(|| {
         ("for", KeywordIdentifier::For),
         ("break", KeywordIdentifier::Break),
         ("continue", KeywordIdentifier::Continue),
+
+        ("extern", KeywordIdentifier::Extern),
+        ("static", KeywordIdentifier::Static),
     ])
 });
 
@@ -305,6 +311,9 @@ static KEYWORD_STRINGS: Lazy<HashMap<KeywordIdentifier, &'static str>> = Lazy::n
         (KeywordIdentifier::For, "for"),
         (KeywordIdentifier::Break, "break"),
         (KeywordIdentifier::Continue, "continue"),
+
+        (KeywordIdentifier::Extern, "extern"),
+        (KeywordIdentifier::Static, "static"),
     ])
 });
 
