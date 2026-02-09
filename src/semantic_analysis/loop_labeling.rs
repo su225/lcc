@@ -1,6 +1,6 @@
 use thiserror::Error;
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Function, Program, Statement, StatementKind};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Function, Program, Statement, StatementKind, StorageClass};
 
 #[derive(Debug, Error)]
 pub enum LoopLabelingError {
@@ -73,6 +73,7 @@ fn loop_label_function(ctx: &mut LoopLabelingContext, function: Function) -> Res
         name: function.name,
         params: function.params,
         body: loop_labeled_body,
+        storage_class: StorageClass::Auto,
     })
 }
 

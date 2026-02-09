@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use crate::common::Location;
-use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Program, Statement, StatementKind, Symbol, TypeExpression, TypeExpressionKind, VariableDeclaration};
+use crate::parser::{Block, BlockItem, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Program, Statement, StatementKind, StorageClass, Symbol, TypeExpression, TypeExpressionKind, VariableDeclaration};
 
 #[derive(Debug, Error)]
 pub enum IdentifierResolutionError {
@@ -313,6 +313,7 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> 
                     name: f.name.clone(),
                     params: resolved_params,
                     body: None,
+                    storage_class: StorageClass::Auto,
                 })
             }
             Some(func_definition) => {
@@ -324,6 +325,7 @@ fn resolve_function<'a>(ctx: &mut IdentifierResolutionContext, f: &Function) -> 
                             name: f.name.clone(),
                             params: resolved_params,
                             body: Some(resolved_block),
+                            storage_class: StorageClass::Auto,
                         }
                     })
             }
@@ -583,6 +585,7 @@ fn resolve_variable_declaration(ctx: &mut IdentifierResolutionContext, loc: Loca
             None => None,
             Some(expr) => Some(resolve_expression(ctx, expr)?),
         },
+        storage_class: StorageClass::Auto,
     })
 }
 

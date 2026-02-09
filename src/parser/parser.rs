@@ -201,6 +201,14 @@ pub struct Expression {
 }
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
+pub enum StorageClass {
+    Auto,
+    Register,
+    Static,
+    Extern,
+}
+
+#[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum PrimitiveKind {
     Integer,
@@ -283,6 +291,7 @@ pub enum DeclarationKind {
 pub struct VariableDeclaration {
     pub(crate) identifier: Symbol,
     pub(crate) init_expression: Option<Expression>,
+    pub(crate) storage_class: StorageClass,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -330,6 +339,7 @@ pub struct Function {
     pub name: Symbol,
     pub params: Vec<FunctionParameter>,
     pub body: Option<Block>,
+    pub storage_class: StorageClass,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -556,6 +566,7 @@ impl<'a> Parser<'a> {
                             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                 identifier: ident,
                                 init_expression: Some(init_expr),
+                                storage_class: StorageClass::Auto,
                             }),
                         })
                     }
@@ -565,6 +576,7 @@ impl<'a> Parser<'a> {
                             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                 identifier: ident,
                                 init_expression: None,
+                                storage_class: StorageClass::Auto,
                             }),
                         })
                     }
@@ -577,6 +589,7 @@ impl<'a> Parser<'a> {
                                 name: ident,
                                 params: func_params,
                                 body: func_body,
+                                storage_class: StorageClass::Auto,
                             })
                         })
                     }
@@ -1272,7 +1285,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Parser, ParserError, Program, Statement, StatementKind, Symbol, TypeExpression, UnaryOperator, VariableDeclaration};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Parser, ParserError, Program, Statement, StatementKind, StorageClass, Symbol, TypeExpression, UnaryOperator, VariableDeclaration};
     use crate::parser::DeclarationKind::FunctionDeclaration;
     use crate::parser::ExpressionKind::*;
     use crate::parser::PrimitiveKind::Integer;
@@ -1291,6 +1304,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
+                        storage_class: StorageClass::Auto,
                         name: Symbol {
                             name: "main".to_string(),
                             location: (1,8).into(),
@@ -1339,6 +1353,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1, 1).into(),
+                        storage_class: StorageClass::Auto,
                         name: Symbol { name: "main".to_string(), location: (1, 5).into(), original_name: None  },
                         params: vec![],
                         body: Some(Block {
@@ -1361,6 +1376,7 @@ mod test {
                     location: (5,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (5,1).into(),
+                        storage_class: StorageClass::Auto,
                         name: Symbol { name: "foo".to_string(), location: (5,5).into(), original_name: None },
                         params: vec![],
                         body: Some(Block {
@@ -1399,6 +1415,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
+                        storage_class: StorageClass::Auto,
                         name: Symbol {
                             name: "add".to_string(),
                             location: (1,5).into(),
@@ -1474,6 +1491,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
+                        storage_class: StorageClass::Auto,
                         name: Symbol { location: (1,5).into(), name: "add".to_string(), original_name: None },
                         params: vec![
                             FunctionParameter {
@@ -1532,6 +1550,7 @@ mod test {
                     location: (1,1).into(),
                     kind: FunctionDeclaration(Function {
                         location: (1,1).into(),
+                        storage_class: StorageClass::Auto,
                         name: Symbol { name: "main".to_string(), location: (1,5).into(), original_name: None },
                         params: vec![],
                         body: Some(Block {
