@@ -200,7 +200,7 @@ pub struct Expression {
     pub kind: ExpressionKind,
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Serialize, Copy, Clone)]
 pub enum StorageClass {
     Auto,
     Register,
@@ -388,6 +388,9 @@ pub enum ParserError {
 
     #[error("{location:?}: function declaration is not allowed in for-loop initialization")]
     ForLoopInitDoesNotAllowFunctionDeclaration { location: Location },
+
+    #[error("{location:?}: function parameter cannot have storage class")]
+    FunctionParameterCannotHaveStorageClass { location: Location },
 }
 
 pub struct Parser<'a> {
@@ -470,7 +473,10 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            let param_type = self.parse_type_expression()?;
+            let (param_type, sc) = self.parse_type_expression_and_storage_class()?;
+            if sc != StorageClass::Auto {
+                return Err(FunctionParameterCannotHaveStorageClass { location: param_type.location });
+            }
             let param_ident = self.parse_identifier()?;
             params.push(FunctionParameter {
                 param_type: Box::new(param_type),
@@ -549,7 +555,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration, ParserError> {
-        let ty_decl = self.parse_type_expression()?;
+        let (ty_decl, storage_class) = self.parse_type_expression_and_storage_class()?;
         let ident = self.parse_identifier()?;
         let next_tok = self.token_provider.next();
         match next_tok {
@@ -566,7 +572,7 @@ impl<'a> Parser<'a> {
                             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                 identifier: ident,
                                 init_expression: Some(init_expr),
-                                storage_class: StorageClass::Auto,
+                                storage_class,
                             }),
                         })
                     }
@@ -576,7 +582,7 @@ impl<'a> Parser<'a> {
                             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
                                 identifier: ident,
                                 init_expression: None,
-                                storage_class: StorageClass::Auto,
+                                storage_class,
                             }),
                         })
                     }
@@ -589,7 +595,7 @@ impl<'a> Parser<'a> {
                                 name: ident,
                                 params: func_params,
                                 body: func_body,
-                                storage_class: StorageClass::Auto,
+                                storage_class,
                             })
                         })
                     }
@@ -645,12 +651,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_type_expression(&mut self) -> Result<TypeExpression, ParserError> {
+    fn parse_type_expression_and_storage_class(&mut self) -> Result<(TypeExpression, StorageClass), ParserError> {
         let kw_loc = self.expect_keyword(KeywordIdentifier::TypeInt)?;
-        Ok(TypeExpression {
+        Ok((TypeExpression {
             location: kw_loc,
             kind: TypeExpressionKind::Primitive(PrimitiveKind::Integer),
-        })
+        }, StorageClass::Auto))
     }
 
     fn parse_statement_labels(&mut self) -> Result<(Vec<String>, Option<Location>), ParserError> {
@@ -1285,7 +1291,7 @@ mod test {
     use crate::common::{Location, Radix};
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Parser, ParserError, Program, Statement, StatementKind, StorageClass, Symbol, TypeExpression, UnaryOperator, VariableDeclaration};
+    use crate::parser::{BinaryOperator, Block, BlockItem, CompoundAssignmentType, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Function, FunctionParameter, Parser, ParserError, PrimitiveKind, Program, Statement, StatementKind, StorageClass, Symbol, TypeExpression, TypeExpressionKind, UnaryOperator, VariableDeclaration};
     use crate::parser::DeclarationKind::FunctionDeclaration;
     use crate::parser::ExpressionKind::*;
     use crate::parser::PrimitiveKind::Integer;
@@ -1527,6 +1533,7 @@ mod test {
                         name: Symbol { location: (2,5).into(), name: "do_foo".to_string(), original_name: None },
                         params: vec![],
                         body: None,
+                        storage_class: StorageClass::Auto,
                     }),
                 }
             ],
@@ -2055,6 +2062,7 @@ mod test {
             labels: vec![],
             kind: For {
                 init: ForInit::InitDecl(Box::new(VariableDeclaration {
+                    storage_class: StorageClass::Auto,
                     identifier: Symbol {
                         name: "i".to_string(),
                         location: (1, 10).into(),
@@ -3527,6 +3535,7 @@ mod test {
         let expected = Ok(Declaration {
             location: (1, 1).into(),
             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                storage_class: StorageClass::Auto,
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
@@ -3544,6 +3553,7 @@ mod test {
         let expected = Ok(Declaration {
             location: (1, 1).into(),
             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                storage_class: StorageClass::Auto,
                 identifier: Symbol {
                     name: "a".to_string(),
                     location: (1, 5).into(),
@@ -3621,6 +3631,7 @@ mod test {
                 BlockItem::Declaration(Declaration {
                     location: (2, 5).into(),
                     kind: DeclarationKind::VarDeclaration(VariableDeclaration{
+                        storage_class: StorageClass::Auto,
                         identifier: Symbol {
                             location: (2, 9).into(),
                             name: "a".to_string(),
@@ -3635,6 +3646,7 @@ mod test {
                 BlockItem::Declaration(Declaration {
                     location: (3, 5).into(),
                     kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                        storage_class: StorageClass::Auto,
                         identifier: Symbol {
                             location: (3, 9).into(),
                             name: "b".to_string(),
@@ -3690,6 +3702,7 @@ mod test {
                 BlockItem::Declaration(Declaration {
                     location: (2, 3).into(),
                     kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                        storage_class: StorageClass::Auto,
                         identifier: Symbol {
                             name: "a".to_string(),
                             location: (2, 7).into(),
@@ -3711,6 +3724,7 @@ mod test {
                             BlockItem::Declaration(Declaration {
                                 location: (4, 5).into(),
                                 kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                                    storage_class: StorageClass::Auto,
                                     identifier: Symbol { location: (4, 9).into(), name: "b".to_string(), original_name: None },
                                     init_expression: Some(Expression {
                                         location: (4, 13).into(),
@@ -3721,6 +3735,7 @@ mod test {
                             BlockItem::Declaration(Declaration {
                                 location: (5, 5).into(),
                                 kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                                    storage_class: StorageClass::Auto,
                                     identifier: Symbol { location: (5, 9).into(), name: "c".to_string(), original_name: None },
                                     init_expression: Some(Expression {
                                         location: (5, 13).into(),
@@ -3774,6 +3789,74 @@ mod test {
             ],
         });
         run_parse_block_test_case(BlockTestCase { src, expected })
+    }
+
+    struct TypeAndStorageClassTestCase<'a> {
+        src: &'a str,
+        expected: Result<(TypeExpression, StorageClass), ParserError>,
+    }
+
+    fn run_type_and_storage_class_test_case(test_case: TypeAndStorageClassTestCase) {
+        let lexer = Lexer::new(test_case.src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_type_expression_and_storage_class();
+        assert_eq!(test_case.expected, actual);
+    }
+
+    #[test]
+    fn parse_type_and_storage_class_no_storage_class_specified() {
+        let src = "int";
+        run_type_and_storage_class_test_case(TypeAndStorageClassTestCase {
+            src, 
+            expected: Ok((TypeExpression {
+                location: (1,1).into(),
+                kind: TypeExpressionKind::Primitive(PrimitiveKind::Integer),
+            }, StorageClass::Auto))
+        })
+    }
+
+    #[rstest]
+    #[case("pre", "static int")]
+    #[case("post", "int static")]
+    fn parse_type_and_storage_class_static_storage_class(#[case] case_name: &str, #[case] src: &str) {
+        run_type_and_storage_class_test_case(TypeAndStorageClassTestCase {
+            src,
+            expected: Ok((TypeExpression {
+                location: (1,1).into(),
+                kind: TypeExpressionKind::Primitive(PrimitiveKind::Integer),
+            }, StorageClass::Static))
+        })
+    }
+
+    #[rstest]
+    #[case("pre", "extern int")]
+    #[case("post", "int extern")]
+    fn parse_type_and_storage_class_extern_storage_class(#[case] case_name: &str, #[case] src: &str) {
+        run_type_and_storage_class_test_case(TypeAndStorageClassTestCase {
+            src,
+            expected: Ok((TypeExpression {
+                location: (1,1).into(),
+                kind: TypeExpressionKind::Primitive(PrimitiveKind::Integer),
+            }, StorageClass::Extern))
+        })
+    }
+
+    #[rstest]
+    #[case("multiple_storage_class", "extern static int")]
+    #[case("multiple_storage_class-2", "static extern int")]
+    #[case("repeated_static", "static static int")]
+    #[case("repeated_static_post", "static int static")]
+    #[case("repeated_extern", "extern extern int")]
+    #[case("repeated_extern_post", "int extern extern")]
+    fn parse_type_and_storage_class_error(#[case] name: &str, #[case] src: &str) {
+        let lexer = Lexer::new(src);
+        let mut parser = Parser::new(lexer);
+        let actual = parser.parse_type_expression_and_storage_class();
+        assert!(actual.is_err());
+    }
+
+    fn parse_type_and_storage_class_error_with_repeated_storage_class() {
+
     }
 
     #[rstest]

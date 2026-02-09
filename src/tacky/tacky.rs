@@ -745,7 +745,7 @@ mod test {
 
     use crate::common::Radix::Decimal;
     use crate::lexer::Lexer;
-    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Parser, Statement, StatementKind, Symbol, UnaryOperator, VariableDeclaration};
+    use crate::parser::{BinaryOperator, Declaration, DeclarationKind, Expression, ExpressionKind, ForInit, Parser, Statement, StatementKind, StorageClass, Symbol, UnaryOperator, VariableDeclaration};
     use crate::parser::ExpressionKind::{Assignment, Binary, Decrement, Increment, IntConstant, Unary};
     use crate::parser::StatementKind::For;
     use crate::semantic_analysis::identifier_resolution::resolve_program;
@@ -1046,6 +1046,7 @@ mod test {
         let decl = Declaration {
             location: (0,0).into(),
             kind: DeclarationKind::VarDeclaration(VariableDeclaration {
+                storage_class: StorageClass::Auto,
                 identifier: Symbol {
                     location: (0, 0).into(),
                     name: "a".to_string(),
@@ -1071,6 +1072,7 @@ mod test {
             labels: vec![],
             kind: For {
                 init: ForInit::InitDecl(Box::new(VariableDeclaration {
+                    storage_class: StorageClass::Auto,
                     identifier: Symbol { name: "i".to_string(), location: (0,0).into(), original_name: None },
                     init_expression: Some(Expression {
                         location: (0,0).into(),
