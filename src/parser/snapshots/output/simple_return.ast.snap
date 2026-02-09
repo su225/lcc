@@ -42,3 +42,4 @@ declarations:
                       int_constant:
                         - "0"
                         - decimal
+        storage_class: Auto

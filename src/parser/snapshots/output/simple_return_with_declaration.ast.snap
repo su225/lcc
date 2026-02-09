@@ -48,6 +48,7 @@ declarations:
                         int_constant:
                           - "10"
                           - decimal
+                    storage_class: Auto
             - declaration:
                 location:
                   line: 3
@@ -61,6 +62,7 @@ declarations:
                         column: 9
                       original_name: ~
                     init_expression: ~
+                    storage_class: Auto
             - statement:
                 location:
                   line: 4
@@ -126,3 +128,4 @@ declarations:
                                 line: 5
                                 column: 16
                               original_name: ~
+        storage_class: Auto
